@@ -1,4 +1,4 @@
-i# Neovim (Lua Powered) Network File Manager
+# Neovim (Lua Powered) Network File Manager
 
 ## WIP
 
@@ -35,11 +35,12 @@ The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
 
 Accessing files/directories over ssh can be done in below format
 - $PROTOCOL://[$USERNAME@]$HOSTNAME[:$PORT]/[//][$PATH]
+  
     A break down of what is happening here
-    - $PROTOCOL: Must be either `sftp` or `scp`
-    - $USERNAME: The username to authenticate with (Optional)
-    - $HOSTNAME: The hostname to connect to. Supports using hostnames defined in an [SSH CONFIG](https://linux.die.net/man/5/ssh_config) file
-    - $PORT    : The port to connect to (Optional)
-    - /[//]    : Forward slash (one) is considered a relative path to the `$USER` home directory. Note, this will work regardless of if `$USER` is specified or not. Providing `///` will act as a "Full Path" override
-    - $PATH    : The path to a file/directory to interact with. If not provided, defaults to `/[//]` as described above (Optional)
+    - `$PROTOCOL`: Must be either `sftp` or `scp`
+    - `$USERNAME`: The username to authenticate with (Optional)
+    - `$HOSTNAME`: The hostname to connect to. Supports using hostnames defined in an [SSH CONFIG](https://linux.die.net/man/5/ssh_config) file
+    - `$PORT`    : The port to connect to (Optional)
+    - `/[//]`    : Forward slash (one) is considered a relative path to the `$USER` home directory. Note, this will work regardless of if `$USER` is specified or not. Providing `///` will act as a "Full Path" override
+    - `$PATH`    : The path to a file/directory to interact with. If not provided, defaults to `/[//]` as described above (Optional)
 
