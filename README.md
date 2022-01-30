@@ -17,7 +17,11 @@ require('netman.nvim').setup({})
 The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
 ```lua
 {
-    allow_netrw = false -- By default, Netman will remove Netrw and act in its place. You can set this flag to `true` to allow Netman to operate behind Netrw. This is especially useful if you plan on using Netman as a "provider" for other services, as opposed to using Netman as a standin for Netrw
+    allow_netrw = false -- By default, Netman will remove Netrw and act in its place. 
+                        -- You can set this flag to `true` to allow Netman to operate 
+                        -- behind Netrw. This is especially useful if you plan on 
+                        -- using Netman as a "provider" for other services, as opposed
+                        -- to using Netman as a standin for Netrw
 }
 ```
 
