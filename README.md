@@ -6,6 +6,9 @@
 
 Netman's target is to provide a wholely lua written replacement for [Netrw](http://www.drchip.org/astronaut/vim/index.html#NETRW) that acts as a "drop in" replacement for how one would interact with Netrw.
 
+- [ ] Remote File Management
+- [ ] Local File Management
+
 ## Usage
 
 Using Netman should be as simple as adding this line to your `init.lua`
