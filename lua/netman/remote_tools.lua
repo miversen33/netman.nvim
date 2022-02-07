@@ -1,4 +1,6 @@
-local split = vim.fn.split
+local split  = vim.fn.split
+local notify = vim.notify
+local log    = vim.log
 
 local protocol_patterns = {
     sftp = {
@@ -45,7 +47,7 @@ local get_remote_details = function(uri)
     if(remote_info.host ~= nil) then
         uri = uri:gsub(host_pattern, "")
     else
-        print("Error Reading Remote URI: {ENM01} -- " .. remote_info.uri .. "\n -- Consider checking the host definition")
+        notify("Error Reading Remote URI: {ENM01} -- " .. remote_info.uri .. "\n -- Consider checking the host definition", log.levels.ERROR)
         return {}
     end
     if(path_type ~= nil) then
@@ -55,7 +57,7 @@ local get_remote_details = function(uri)
             path_type = "relative"
         end
     else
-        print("Error Reading Remote URI: {ENM02} -- " .. remote_info.uri .. "\n -- Consider checking the path definition")
+        notify("Error Reading Remote URI: {ENM02} -- " .. remote_info.uri .. "\n -- Consider checking the path definition", log.levels.ERROR)
         return {}
     end
     print("Processing URI: " .. uri)
@@ -161,14 +163,15 @@ local get_remote_file = function(path, store_dir, remote_info)
     local file_location = store_dir .. remote_info.path
     local local_location = file_location .. ".gz"
     local command = "ssh " .. remote_info.auth_uri .. " \"/bin/sh -c 'cat " .. remote_info.remote_path .. " | gzip -c'\" > " .. local_location
-    print("Command: " .. command)
-    print("Connecting to host: " .. remote_info.host)
+    notify("Connecting to host: " .. remote_info.host, log.levels.INFO)
     local read_command = 'gzip -d -c ' .. local_location
-    print("Pulling down file: " .. remote_info.path .. " and saving to " .. file_location)
+    notify("Pulling down file: " .. remote_info.path .. " and saving to " .. file_location, log.levels.INFO)
     local worked, exitcode, code = os.execute(command)
     exitcode = exitcode or ""
     code = code or ""
-    print("Worked: " .. worked .. " | Exitcode: " .. exitcode .. " | Code: " .. code)
+    if exitcode then
+        notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. path .. "! Received exitcode: " .. exitcode, log.levels.ERROR)
+    end
     return file_location, read_command
 end
 
