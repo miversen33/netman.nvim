@@ -1,6 +1,12 @@
 local split  = vim.fn.split
-local notify = vim.notify
 local log    = vim.log
+
+local notify = function(message, level)
+    level = level or 0
+    vim.notify(message, level)
+    local log_message = '[Level:' .. level .. '] -- ' .. message
+    os.execute('echo "' .. log_message .. '" >> $HOME/.cache/nvim/netman/logs.txt')
+end
 
 local protocol_patterns = {
     sftp = {
