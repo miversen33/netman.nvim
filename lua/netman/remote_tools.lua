@@ -173,10 +173,9 @@ local get_remote_file = function(path, store_dir, remote_info)
     local read_command = 'gzip -d -c ' .. local_location
     notify("Pulling down file: " .. remote_info.path .. " and saving to " .. file_location, log.levels.INFO)
     local worked, exitcode, code = os.execute(command)
-    exitcode = exitcode or ""
     code = code or ""
     if exitcode then
-        notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. path .. "! Received exitcode: " .. exitcode, log.levels.ERROR)
+        notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. path .. "! Received exitcode: " .. exitcode .. "\n    Additional Details: " .. code, log.levels.ERROR)
     end
     return file_location, read_command
 end
