@@ -113,7 +113,6 @@ local create = function(path)
 end
 
 local export_functions = function()
-    _G.Nmbrowse = browse
     _G.Nmread   = read
     _G.Nmwrite  = write
     _G.Nmdelete = delete
