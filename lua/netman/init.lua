@@ -28,8 +28,21 @@ local override_netrw = function()
     vim.api.nvim_command('augroup END')
 end
 
-local browse = function(path)
-
+local browse = function(path, remote_info, display_results)
+    display_results = display_results or false
+    remote_info = remote_info or remote_tools.get_remote_details(path)
+    contents = remote_tools.get_remote_files(remote_info, path)
+    if not display_results then
+        return contents
+    end
+    -- TODO(Mike): Figure out how to display this?
+    for type, subtable in pairs(contents) do
+        for subtype, array in pairs(subtable) do
+            for _, info in ipairs(array) do
+                notify("Received: " .. type .. '|' .. subtype .. '|' .. info.full_path, vim.log.levels.INFO)
+            end
+        end
+    end
 end
 
 local read = function(path)
