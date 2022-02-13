@@ -40,6 +40,18 @@ local get_remote_details = function(uri)
         end
     end
     if(remote_info.protocol == nil) then
+        local valid_protocols = nil
+        for key, _ in pairs(protocol_patterns) do
+            if valid_protocols then
+                valid_protocols = valid_protocols .. ", " .. key
+            else
+                valid_protocols = "(" .. key
+            end
+        end
+        if valid_protocols then
+            valid_protocols = valid_protocols .. ")"
+        end
+        notify('Error Parsing Remote Protocol: {ENM05} -- ' .. 'Netman only supports ' .. valid_protocols .. ' but received protocol ' .. uri, log.levels.ERROR)
         return remote_info
     end
 
