@@ -32,13 +32,16 @@ local get_remote_details = function(uri)
         is_dir      = false
     }
 
+    notify("Processing uri: " .. uri, log.levels.INFO)
     for key, p in pairs(protocol_patterns) do
         uri, _ = uri:gsub(p.regex .. "://", "")
         if(_ ~= 0) then
             remote_info.protocol = key
+            notify("Found Matching Protocol: " .. key .. " for remote protocol " .. remote_info.protocol, log.levels.DEBUG)
             break
         end
     end
+
     if(remote_info.protocol == nil) then
         local valid_protocols = nil
         for key, _ in pairs(protocol_patterns) do
@@ -181,6 +184,7 @@ local get_remote_file = function(path, store_dir, remote_info)
     local command = "ssh " .. remote_info.auth_uri .. " \"/bin/sh -c 'cat " .. remote_info.remote_path .. " | gzip -c'\" > " .. local_location
     notify("Connecting to host: " .. remote_info.host, log.levels.INFO)
     local read_command = 'gzip -d -c ' .. local_location
+    notify("Running Command: " .. command, log.levels.DEBUG)
     notify("Pulling down file: " .. remote_info.path .. " and saving to " .. file_location, log.levels.INFO)
     local worked, exitcode, code = os.execute(command)
     code = code or ""
