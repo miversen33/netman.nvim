@@ -96,7 +96,11 @@ local setup = function(options)
             opts[key] = value
         end
     end
-
+    if opts.DEBUG then
+        utils.setup(0)
+    else
+        utils.setup()
+    end
     vim.fn.mkdir(cache_dir, 'p')
     export_functions()
     if not opts.allow_netrw then
