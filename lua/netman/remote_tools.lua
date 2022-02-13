@@ -91,6 +91,11 @@ local get_remote_details = function(uri)
     else
         remote_info.auth_uri = remote_info.host
     end
+    if remote_info.remote_path:sub(-1) == '/' then
+        remote_info.is_dir = true
+    else
+        remote_info.is_file = true
+    end
     return remote_info
 end
 
