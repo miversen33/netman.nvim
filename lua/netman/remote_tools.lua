@@ -191,5 +191,6 @@ end
 
 return {
     get_remote_details = get_remote_details,
-    get_remote_file    = get_remote_file
+    get_remote_file    = get_remote_file,
+    get_remote_files   = get_remote_files
 }
