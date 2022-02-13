@@ -27,7 +27,9 @@ local get_remote_details = function(uri)
         remote_path = nil,
         path        = nil,
         auth_uri    = nil,
-        uri         = uri, 
+        uri         = uri,
+        is_file     = false,
+        is_dir      = false
     }
 
     for key, p in pairs(protocol_patterns) do
