@@ -45,18 +45,26 @@ local browse = function(path, remote_info, display_results)
     end
 end
 
-local read = function(path)
+local read = function(path, execute_post_read_cmd)
     local remote_info = remote_tools.get_remote_details(path)
     if not remote_info.protocol then
         return
     end
-    local file_location, read_command = remote_tools.get_remote_file(path, cache_dir, remote_info)
+    if remote_info.is_dir then
+        return browse(path, remote_info)
+    end
+
+    local read_command = remote_tools.get_remote_file(path, cache_dir, remote_info)
     vim.api.nvim_command('keepjumps sil! 0')
     vim.api.nvim_command('keepjumps execute "sil! read ++edit !' .. read_command .. '"')
     vim.api.nvim_command('keepjumps sil! 0d')
     vim.api.nvim_command('keepjumps sil! 0')
+    if execute_post_read_cmd == "buf" then
+        vim.api.nvim_command('execute "sil doautocmd BufReadPost ' .. path .. '"')
+    elseif execute_post_read_cmd == "file" then
+        vim.api.nvim_command('execute "sil doautocmd FileReadPost ' .. path .. '"')
+    end
 end
-
 local write = function(path)
     print("Saving Path: " .. path)
 end
