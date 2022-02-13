@@ -186,7 +186,7 @@ local get_remote_file = function(path, store_dir, remote_info)
     if exitcode then
         notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. path .. "! Received exitcode: " .. exitcode .. "\n    Additional Details: " .. code, log.levels.ERROR)
     end
-    return file_location, read_command
+    return read_command
 end
 
 return {
