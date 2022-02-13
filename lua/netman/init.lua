@@ -5,7 +5,7 @@ local notify       = utils.notify
 local default_options = {
     allow_netrw     = false,
     keymaps         = {}, -- TODO(Mike): Figure this out
-    DEBUG           = true,
+    debug           = false,
     quiet           = false, -- TODO(Mike): Notate this
 }
 
@@ -96,7 +96,7 @@ local setup = function(options)
             opts[key] = value
         end
     end
-    if opts.DEBUG then
+    if opts.debug then
         utils.setup(0)
     else
         utils.setup()
