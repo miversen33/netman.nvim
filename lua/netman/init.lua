@@ -3,7 +3,7 @@ local utils        = require('netman.utils')
 local notify       = utils.notify
 
 local default_options = {
-    allow_netrw     = false,
+    allow_netrw     = true,
     keymaps         = {}, -- TODO(Mike): Figure this out
     debug           = false,
     quiet           = false, -- TODO(Mike): Notate this
