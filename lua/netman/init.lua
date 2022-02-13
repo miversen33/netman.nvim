@@ -46,6 +46,41 @@ local browse = function(path, remote_info, display_results)
 end
 
 local read = function(path, execute_post_read_cmd)
+    -- Read (called via auto command or :Nmread(path)) is used to open a remote file/directory
+    -- :param path (String):
+    --     A string representation of a remote location to open. This should include the full remote URI ($PROTOCOL://[[$USERNAME@]$HOSTNAME[:$PORT]/[//][$PATH]).
+    --     EG: sftp://user@my-remote-host/file_located_in_user_home_directory.txt
+    --     OR: sftp://user@my-remote-host///tmp/file_located_not_in_user_home_directory.txt
+    --     For more details, `:help Nmread`
+    -- :param execute_post_read_cmd (String, optional):
+    --     This should not be used by an end user, this is passed to the `read` command
+    --     via the Auto command set in the `Netman` AuGroup. Note: this is _not_ detailed in `:help Nmread` as it should not be used by end users.
+    --     Available options:
+    --         - "file"
+    --         - "buf"
+    -- :return:
+    --     On successful read, this will return 1 of 2 things
+    --     - Nothing
+    --     - Table object of directory contents
+    --     
+    --     In the event that we are reading a file, this will return nothing and instead
+    --     create a new buffer for which the end user can view/modify the contents of a remote file
+    --     If the path is a rmeote directory _AND_ you have not configured a browse_handler, this will return an non-modifiable buffer with the contents of the directory to browse. It is highly recommended that you use Netman as the backend to a file browser (such as [telescope-file-browser.nvim](https://github.com/nvim-telescope/telescope-file-browser.nvim))
+    --     If the path is a remote directory _AND_ you have configured a browse_handler (TODO(Mike): Create browse handlers), this will return a table of the contents of the directory. For more details. This table will be formatted as follows
+    --     {
+    --          dirs = {
+    --              hidden = {},
+    --              visible = {}
+    --          },
+    --          files = {
+    --              hidden = {},
+    --              visible = {}
+    --          },
+    --          links = {
+    --              hidden = {},
+    --              visible = {}
+    --          }
+    --     }
     local remote_info = remote_tools.get_remote_details(path)
     if not remote_info.protocol then
         return
