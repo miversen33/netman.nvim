@@ -177,6 +177,7 @@ local get_remote_file = function(path, store_dir, remote_info)
     local remote_location = remote_info.remote_path
     local file_location = store_dir .. remote_info.path
     local local_location = file_location .. ".gz"
+    -- TODO(Mike): Make this so it isn't _just_ ssh?
     local command = "ssh " .. remote_info.auth_uri .. " \"/bin/sh -c 'cat " .. remote_info.remote_path .. " | gzip -c'\" > " .. local_location
     notify("Connecting to host: " .. remote_info.host, log.levels.INFO)
     local read_command = 'gzip -d -c ' .. local_location
