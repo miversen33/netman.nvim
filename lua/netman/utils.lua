@@ -31,7 +31,11 @@ local notify = function(message, level, log_path)
     log_path = log_path or "$HOME/.cache/nvim/netman/logs.txt"
     vim.notify(message, level)
     local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-    local log_message = '[' .. timestamp .. '] [Level:' .. level .. '] -- ' .. message
+    local log_message = '[' .. timestamp .. '] [Level:' .. level .. ']'
+    if level:len() == 4 then
+        log_message = log_message .. ' '
+    end
+    log_message = log_message .. ' -- ' .. message
     os.execute('echo "' .. log_message .. '" >> ' .. log_path)
 end
 
