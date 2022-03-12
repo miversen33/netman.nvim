@@ -146,5 +146,12 @@ end
 return {
     notify           = notify,
     setup            = setup,
-    adjust_log_level = adjust_log_level
+    adjust_log_level = adjust_log_level,
+    generate_string  = generate_string,
+    lock_file        = lock_file,
+    unlock_file      = unlock_file,
+    is_file_locked   = is_file_locked,
+    cache_dir        = cache_dir,
+    data_dir         = data_dir,
+    files_dir        = files_dir,
 }
