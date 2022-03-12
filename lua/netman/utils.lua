@@ -36,6 +36,9 @@ local notify = function(message, level, log_path)
         log_message = log_message .. ' '
     end
     log_message = log_message .. ' -- ' .. message
+    if log_message:match("[^A-Za-z0-9_/:=-]") then
+        log_message = log_message:gsub("'", "\\'")
+    end
     os.execute('echo "' .. log_message .. '" >> ' .. log_path)
 end
 
