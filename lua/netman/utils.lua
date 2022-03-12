@@ -1,4 +1,5 @@
-local _notify = vim.notify
+local mkdir   = vim.fn.mkdir
+
 local level_table = {
     'TRACE',
     'DEBUG',
@@ -9,6 +10,10 @@ local level_table = {
 
 local _level_threshold = 3
 local _is_setup = false
+local cache_dir = vim.fn.stdpath('cache') .. '/netman/'
+local files_dir = cache_dir .. 'remote_files/'
+local locks_dir = cache_dir .. 'lock_files/'
+local data_dir  = vim.fn.stdpath('data')  .. '/netman/'
 
 local notify = function(message, level, file_only, log_path)
     level = level or 0
