@@ -26,8 +26,10 @@ local override_netrw = function()
     vim.api.nvim_command('augroup Netman')
     vim.api.nvim_command('autocmd!')
     vim.api.nvim_command('autocmd VimEnter sil! au! FileExplorer *')
-    vim.api.nvim_command('autocmd FileReadCmd sftp://*,scp://*,rsync://* lua Nmread(vim.fn.expand("<amatch>"), "file")')
-    vim.api.nvim_command('autocmd BufReadCmd sftp://*,scp://*,rsync://* lua Nmread(vim.fn.expand("<amatch>"), "buf")')
+    vim.api.nvim_command('autocmd FileReadCmd sftp://*,scp://* lua Nmread(vim.fn.expand("<amatch>"), "file")')
+    vim.api.nvim_command('autocmd BufReadCmd sftp://*,scp://* lua Nmread(vim.fn.expand("<amatch>"), "buf")')
+    vim.api.nvim_command('autocmd FileWriteCmd sftp://*,scp://* lua Nmwrite(vim.fn.expand("<abuf>"), 1, "file")')
+    vim.api.nvim_command('autocmd BufWriteCmd sftp://*,scp://* lua Nmwrite(vim.fn.expand("<abuf>"), 1, "buf")')
     vim.api.nvim_command('augroup END')
 end
 
