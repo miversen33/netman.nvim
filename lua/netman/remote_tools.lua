@@ -4,59 +4,33 @@ local log    = vim.log
 local utils = require('netman.utils')
 local notify = utils.notify
 
-local protocol_patterns = {
-    sftp = {
-        regex = '^sftp',
-        cmd = "ssh"
-    },
-    scp = {
-        regex = '^scp',
-        cmd = "ssh"
-    }
-}
+local _providers = {}
 
-local user_pattern = "^(.*)@"
-local host_pattern = "^([%a%c%d%s%-%.]*)([/]+)"
-
-local get_remote_details = function(uri)
-    local _, path_type
-    local remote_info = {
-        protocol    = nil,
-        user        = nil,
-        host        = nil,
-        remote_path = nil,
-        path        = nil,
-        auth_uri    = nil,
-        uri         = uri,
-        is_file     = false,
-        is_dir      = false
-    }
-
-    notify("Processing uri: " .. uri, log.levels.INFO)
-    for key, p in pairs(protocol_patterns) do
-        uri, _ = uri:gsub(p.regex .. "://", "")
-        if(_ ~= 0) then
-            remote_info.protocol = key
-            notify("Found Matching Protocol: " .. key .. " for remote protocol " .. remote_info.protocol, log.levels.DEBUG)
-            break
-        end
+local init = function(options)
+    -- TODO(Mike): Add way to dynamically add providers _after_ init
+    local providers = options.providers
+    if vim.g.netman_remotetools_setup == 1 then
+        return
     end
-
-    if(remote_info.protocol == nil) then
-        local valid_protocols = nil
-        for key, _ in pairs(protocol_patterns) do
-            if valid_protocols then
-                valid_protocols = valid_protocols .. ", " .. key
+    notify("Initializing Netman", vim.log.levels.DEBUG, true)
+    if(providers) then
+        notify("Loading Providers", vim.log.levels.INFO, true)
+        for _, _provider_path in pairs(providers) do
+            local status, provider = pcall(require, _provider_path)
+            if status then
+                notify('Initializing ' .. provider.name .. ' Provider', log.levels.DEBUG, true)
+                if provider.init then
+                    provider.init(options)
+                end
+                table.insert(_providers, provider)
             else
-                valid_protocols = "(" .. key
+                notify('Failed to initialize provider: ' .. _provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
             end
         end
-        if valid_protocols then
-            valid_protocols = valid_protocols .. ")"
-        end
-        notify('Error Parsing Remote Protocol: {ENM05} -- ' .. 'Netman only supports ' .. valid_protocols .. ' but received protocol ' .. uri, log.levels.ERROR)
-        return remote_info
     end
+
+    vim.g.netman_remotetools_setup = 1
+end
 
     _, _, remote_info.user = uri:find(user_pattern)
     if(remote_info.user ~= nil) then
@@ -195,6 +169,7 @@ local get_remote_file = function(path, store_dir, remote_info)
 end
 
 return {
+    init               = init,
     get_remote_details = get_remote_details,
     get_remote_file    = get_remote_file,
     get_remote_files   = get_remote_files
