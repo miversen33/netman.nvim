@@ -10,26 +10,17 @@ local level_table = {
 local _level_threshold = 3
 local _is_setup = false
 
-local setup = function(level_threshold)
-    if _is_setup then
-        return
-    end
-    _level_threshold = level_threshold or _level_threshold
-    _is_setup = true
-end
-
-local adjust_log_level = function(new_level_threshold)
-    _level_threshold = new_level_threshold
-end
-
-local notify = function(message, level, log_path)
+local notify = function(message, level, file_only, log_path)
     level = level or 0
     if level < _level_threshold then
         return
     end
+    file_only = file_only or false
     level = level_table[level + 1]
-    log_path = log_path or "$HOME/.cache/nvim/netman/logs.txt"
-    vim.notify(message, level)
+    log_path = log_path or data_dir .. "logs.txt"
+    if not file_only then
+        vim.notify(message, level)
+    end
     local timestamp = os.date('%Y-%m-%d %H:%M:%S')
     local log_message = '[' .. timestamp .. '] [Level:' .. level .. ']'
     if level:len() == 4 then
