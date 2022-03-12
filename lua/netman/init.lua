@@ -44,7 +44,7 @@ local browse = function(path, remote_info, display_results)
     for type, subtable in pairs(contents) do
         for subtype, array in pairs(subtable) do
             for _, info in ipairs(array) do
-                notify("Received: " .. type .. '|' .. subtype .. '|' .. info.full_path, vim.log.levels.INFO)
+                notify("Received: " .. type .. '|' .. subtype .. '|' .. info.full_path, vim.log.levels.INFO, true)
             end
         end
     end
