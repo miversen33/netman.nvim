@@ -32,48 +32,41 @@ local init = function(options)
     vim.g.netman_remotetools_setup = 1
 end
 
-    _, _, remote_info.user = uri:find(user_pattern)
-    if(remote_info.user ~= nil) then
-        uri = uri:gsub(user_pattern, "")
-    end
-    _, _, remote_info.host, path_type = uri:find(host_pattern)
-    if(remote_info.host ~= nil) then
-        uri = uri:gsub(host_pattern, "")
-    else
-        notify("Error Reading Remote URI: {ENM01} -- " .. remote_info.uri .. "\n -- Consider checking the host definition", log.levels.ERROR)
-        return {}
-    end
-    if(path_type ~= nil) then
-        if(path_type:len() > 1) then
-            path_type = "absolute"
-        else
-            path_type = "relative"
+local get_remote_details = function(uri)
+    local provider, details = nil
+    for _, _provider in ipairs(_providers) do
+        if _provider.is_valid(uri) then
+            provider = _provider
+            notify("Selecting Provider: " .. provider.name .. " for URI: " .. uri, log.levels.DEBUG)
+            break
         end
-    else
-        notify("Error Reading Remote URI: {ENM02} -- " .. remote_info.uri .. "\n -- Consider checking the path definition", log.levels.ERROR)
+    end
+    if provider == nil then
+        notify("Error parsing URI: {ENMRT01} -- Unable to establish provider for URI: " .. uri, log.levels.ERROR)
         return {}
     end
-    print("Processing URI: " .. uri)
-    if(path_type == "relative") then
-        remote_info.remote_path = "$HOME/"
+    details = provider.get_details(uri, notify)
+    -- Expects a minimum of "host" and "remote_path", "auth_uri"
+    if not details.host or details.path or not details.auth_uri then
+        if not details.host then
+            notify("Error parsing URI: {ENMRT02} -- Unable to parse host from URI: " .. uri, log.levels.ERROR)
+        end
+        if not details.path then
+            notify("Error parsing URI: {ENMRT03} -- Unable to parse path from URI: " .. uri, log.levels.ERROR)
+        end
+        if not details.auth_uri then
+            notify("Error parsing URI: {ENMRT04} -- Unable to parse authentication uri from URI: " .. uri, log.levels.ERROR)
+        end
+        return {}
+    end
+    if details.remote_path:sub(-1) == '/' then
+        details.is_dir = true
     else
-        remote_info.remote_path = "/"
+        details.is_file = true
     end
-    if(uri) then
-        remote_info.remote_path = remote_info.remote_path .. uri
-        remote_info.path = uri
-    end
-    if remote_info.user then
-        remote_info.auth_uri = remote_info.user .. "@" .. remote_info.host
-    else
-        remote_info.auth_uri = remote_info.host
-    end
-    if remote_info.remote_path:sub(-1) == '/' then
-        remote_info.is_dir = true
-    else
-        remote_info.is_file = true
-    end
-    return remote_info
+    details.protocol = provider.name
+    details.provider = provider
+    return details
 end
 
 local get_remote_files = function(remote_info, path)
