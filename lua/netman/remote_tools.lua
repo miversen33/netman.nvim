@@ -142,23 +142,25 @@ local get_remote_files = function(remote_info, path)
 
 end
 
-local get_remote_file = function(path, store_dir, remote_info)
-    remote_info = remote_info or get_remote_details(path)
-    local remote_location = remote_info.remote_path
-    local file_location = store_dir .. remote_info.path
-    local local_location = file_location .. ".gz"
-    -- TODO(Mike): Make this so it isn't _just_ ssh?
-    local command = "ssh " .. remote_info.auth_uri .. " \"/bin/sh -c 'cat " .. remote_info.remote_path .. " | gzip -c'\" > " .. local_location
-    notify("Connecting to host: " .. remote_info.host, log.levels.INFO)
-    local read_command = 'gzip -d -c ' .. local_location
-    notify("Running Command: " .. command, log.levels.DEBUG)
-    notify("Pulling down file: " .. remote_info.path .. " and saving to " .. file_location, log.levels.INFO)
-    local worked, exitcode, code = os.execute(command)
-    code = code or ""
-    if exitcode then
-        notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. path .. "! Received exitcode: " .. exitcode .. "\n    Additional Details: " .. code, log.levels.ERROR)
+local get_remote_file = function(path, details)
+    details = details or get_remote_details(path)
+    if not details then
+        notify("Error Opening Path: {ENMRT05}", log.levels.ERROR)
+        return
     end
-    return read_command
+    local unique_file_name = details.provider.get_unique_name(details)
+    if unique_file_name == nil then
+        notify("Failed to retrieve remote file " .. details.remote_path, vim.log.levels.ERROR)
+        return
+    end
+    local lock_file = utils.lock_file(unique_file_name, '1000')
+    if not lock_file then
+        notify("Failed to lock remote file: " .. details.remote_path, vim.log.levels.ERROR)
+        return nil
+    end
+    local local_file = utils.files_dir .. unique_file_name
+    details.provider.read_file(path, details, local_file)
+    return local_file
 end
 
 return {
