@@ -125,22 +125,37 @@ local export_functions = function()
 end
 
 local setup = function(options)
+    -- TODO(Mike): Input ability to handle ssh weirdness (like needing a password/passphrase) via neovim ui?
+    if vim.g.loaded_netman then
+        return
+    end
+
     local opts = {}
     for key, value in pairs(default_options) do
         opts[key] = value
     end
-    
-    if options then
-       for key, value in pairs(options) do
-            opts[key] = value
-        end
-    end
-    if opts.debug then
+
+    if default_options.debug or options.debug then
         utils.setup(0)
     else
         utils.setup()
     end
-    vim.fn.mkdir(cache_dir, 'p')
+
+    if options then
+        for key, value in pairs(options) do
+            if(key ~= 'providers') then
+                opts[key] = value
+            else
+                for _, provider in pairs(value) do
+                    if opts.providers[provider] == nil then
+                        notify("Received External Provider: " .. provider, vim.log.levels.DEBUG, true)
+                        table.insert(opts.providers, provider)
+                    end
+                end
+            end
+        end
+    end
+
     export_functions()
     if not opts.allow_netrw then
         override_netrw()
