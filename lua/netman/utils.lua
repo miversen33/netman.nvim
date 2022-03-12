@@ -34,6 +34,11 @@ local notify = function(message, level, file_only, log_path)
     os.execute('echo "' .. log_message .. '" >> ' .. log_path)
 end
 
+
+local adjust_log_level = function(new_level_threshold)
+    _level_threshold = new_level_threshold
+end
+
 return {
     notify           = notify,
     setup            = setup,
