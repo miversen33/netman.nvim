@@ -36,10 +36,14 @@ The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
         -- to using Netman as a standin for Netrw
     keymaps = {},
         -- PENDING IMPLEMENTATION
-    debug   = false
+    debug   = false,
         -- Passing this as true will enable significant more log output.
         -- Note: Logs are output by default to `$HOME/.cache/nvim/netman/logs.txt`
         -- though this is likely to change to a better (more fitting) location.
+    providers = {
+        "netman.providers.ssh"
+        -- List of providers to utilize for remote filesystem interfacing
+    },
 }
 ```
 
