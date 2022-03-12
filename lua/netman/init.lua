@@ -7,6 +7,9 @@ local default_options = {
     keymaps         = {}, -- TODO(Mike): Figure this out
     debug           = false,
     quiet           = false, -- TODO(Mike): Notate this
+    providers       = {
+        "netman.providers.ssh"
+    }
 }
 
 local cache_dir = vim.fn.stdpath('cache') .. "/netman/remote_files/"
