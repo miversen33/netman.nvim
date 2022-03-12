@@ -35,6 +35,7 @@ local notify = function(message, level, log_path)
     if level:len() == 4 then
         log_message = log_message .. ' '
     end
+    log_message = log_message .. ' Netman'
     log_message = log_message .. ' -- ' .. message
     if log_message:match("[^A-Za-z0-9_/:=-]") then
         log_message = log_message:gsub("'", "\\'")
