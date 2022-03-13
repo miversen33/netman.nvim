@@ -138,7 +138,7 @@ local get_details = function(uri)
         uri = uri:gsub(port_pattern, '')
         notify("Post port URI reduction: " .. uri, log.levels.DEBUG, true)
     end
-    path_head, path_body = uri:match(path_pattern)
+    local path_head, path_body = uri:match(path_pattern)
     path_body = path_body or ""
     notify("Path Head Match: " .. path_head .. " -- Path Body Match: " .. path_body, log.levels.DEBUG, true) 
     if (path_head:len() ~= 1 and path_head:len() ~= 3) then
