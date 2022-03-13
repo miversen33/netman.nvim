@@ -7,6 +7,7 @@ local notify = utils.notify
 local _providers = {}
 
 local init = function(options)
+    -- TODO(Mike): Probably want a way to roll the netman logs (in the event they are chungoy)
     -- TODO(Mike): Add way to dynamically add providers _after_ init
     local providers = options.providers
     if vim.g.netman_remotetools_setup == 1 then
