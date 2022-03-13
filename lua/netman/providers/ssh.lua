@@ -54,7 +54,7 @@ end
 local get_unique_name = function(remote_info)
     -- Potentially introduces a massive security vulnerability via the "remote_path" variable in 
     -- remote_info
-    local command = 'ssh ' .. remote_info.auth_uri .. ' "echo \\$(hostid)\\$(stat --printf=\'%i\' ' .. remote_info.remote_path .. ')"'
+    local command = 'ssh ' .. remote_info.auth_uri .. ' "echo \\$(hostid)-\\$(stat --printf=\'%i\' ' .. remote_info.remote_path .. ')"'
     local unique_name = ''
 
     local stdout_callback = function(job, output)
@@ -95,6 +95,11 @@ local get_unique_name = function(remote_info)
         return unique_name
     end
     notify("Generated Unique Name: " .. unique_name .. " for file " .. remote_info.remote_path, vim.log.levels.DEBUG, true)
+    local hostid, fileid = unique_name:match('^([%d%a]+)-(%d+)$')
+    if not hostid or not fileid then
+        notify("Failed to validate unique name for file", log.levels.WARN, true)
+        return nil
+    end
     return unique_name
 end
 
