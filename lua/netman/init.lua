@@ -120,7 +120,7 @@ local _write_buffer = function(buffer_id)
     notify("Saving buffer: " .. buffer .. " to " .. local_file, vim.log.levels.DEBUG, true)
     vim.fn.writefile(vim.fn.getbufline(buffer, 1, '$'), local_file)
     remote_tools.save_remote_file(file_info)
-
+    -- TODO(Mike): Handle save errors
     return true
 end
 
