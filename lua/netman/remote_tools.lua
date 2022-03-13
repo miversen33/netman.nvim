@@ -33,7 +33,7 @@ local init = function(options)
 end
 
 local get_remote_details = function(uri)
-    local provider, details = nil
+    local provider, details = nil, nil
     for _, _provider in ipairs(_providers) do
         if _provider.is_valid(uri) then
             provider = _provider
