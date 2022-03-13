@@ -110,7 +110,7 @@ local read = function(path, execute_post_read_cmd)
         vim.api.nvim_command('execute "sil doautocmd FileReadPost ' .. path .. '"')
     end
 
-    buffer_to_file_map["" .. vim.fn.bufnr('%')] = remote_info
+    buffer_details_table["" .. remote_info.buffer] = remote_info
 end
 
 local _write_buffer = function(buffer_id)
