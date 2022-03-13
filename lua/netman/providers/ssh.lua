@@ -61,7 +61,6 @@ local get_unique_name = function(remote_info)
         if unique_name == nil then return end
         for _, line in pairs(output) do
             if(unique_name == '') then
-                notify('Processing: ' .. _ .. " For line: |" .. line .. '|', log.levels.INFO, true)
                 unique_name = line
             elseif(line and not line:match('^(%s*)$')) then
                 notify("Received invalid output -> " .. line .. " <- for unique name command!", log.levels.WARN)
