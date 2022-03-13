@@ -135,22 +135,6 @@ local write = function(path, is_buffer, execute_post_write_cmd)
     if not continue then
         return
     end
-    -- TODO(Mike): Try naive approach (pipe buffer contents directly into gzip)ii
-    -- notify("Saving " .. local .. " From Buffer " .. buffer, vim.log.levels.INFO)
-    -- local remote_info = remote_tools.get_remote_details(remote_path)
-    -- if not remote_info.protocol then
-    --    notify("Unable to reach remote path: " .. remote_path, vim.log.levels.ERROR)
-    --    return
-    -- end
-    -- local lines = ""
-    -- if buffer then
-    --    lines = vim.fn.join(vim.fn.getbufline(buffer, 1, '$'), '\n')
-    --    notify("Saving buffer: " .. buffer, vim.log.levels.DEBUG)
-    -- elseif path then
-    --
-    -- 
-    -- end
-    -- local buffer_contents = vim.fn.join(vim.fn.getline(1, '$'), '\n')
     vim.api.nvim_command('execute "sil set nomodified"')
     if execute_post_write_cmd == 'file' then
         vim.api.nvim_command('execute "sil doautocmd FileWritePost ' .. path .. '"')
