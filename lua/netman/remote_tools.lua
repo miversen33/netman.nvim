@@ -14,6 +14,7 @@ local init = function(options)
         return
     end
     notify("Initializing Netman", vim.log.levels.DEBUG, true)
+    local provider_string = ''
     if(providers) then
         notify("Loading Providers", vim.log.levels.INFO, true)
         for _, _provider_path in pairs(providers) do
@@ -24,6 +25,13 @@ local init = function(options)
                     provider.init(options)
                 end
                 table.insert(_providers, provider)
+                for _, pattern in pairs(provider.protocol_patterns) do
+                    if provider_string == '' then
+                        provider_string = pattern
+                    else
+                        provider_string = provider_string .. ',' .. pattern
+                    end
+                end
             else
                 notify('Failed to initialize provider: ' .. _provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
             end
@@ -31,6 +39,7 @@ local init = function(options)
     end
 
     vim.g.netman_remotetools_setup = 1
+    return provider_string
 end
 
 local get_remote_details = function(uri)

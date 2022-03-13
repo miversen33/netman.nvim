@@ -13,9 +13,9 @@ local utils        = require('netman.utils')
 local notify       = utils.notify
 
 local name = 'ssh' -- This is a required variable that should tell us what protocol is being used
-local protocol_patterns = {
-    '^sftp://',
-    '^scp://',
+local protocol_patterns = { -- This is the list of patterns to apply to the buffer/file autocommands
+    'sftp://*',
+    'scp://*',
     -- '^ssh://'
 }
 
@@ -297,12 +297,13 @@ local write_file = function(details)
 end
 
 return {
-    name           = name,           -- Required Variable
-    is_valid       = is_valid,       -- Required Function
-    get_details    = get_details,    -- Required Function
-    read_file      = read_file,      -- Required Function
-    read_directory = read_directory, -- Required Function
-    write_file     = write_file,     -- Required Function
-    get_unique_name=get_unique_name, -- Required Function
-    init           = init,           -- Optional Function
+    name              = name,              -- Required Variable
+    protocol_patterns = protocol_patterns, -- Required Variable
+    is_valid          = is_valid,          -- Required Function
+    get_details       = get_details,       -- Required Function
+    read_file         = read_file,         -- Required Function
+    read_directory    = read_directory,    -- Required Function
+    write_file        = write_file,        -- Required Function
+    get_unique_name   =get_unique_name,    -- Required Function
+    init              = init,              -- Optional Function
 }

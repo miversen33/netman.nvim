@@ -15,7 +15,7 @@ local default_options = {
 
 local buffer_details_table = {}
 
-local override_netrw = function()
+local override_netrw = function(protocols)
     if vim.g.loaded_netman then
         return
     end
@@ -27,10 +27,12 @@ local override_netrw = function()
     vim.api.nvim_command('augroup Netman')
     vim.api.nvim_command('autocmd!')
     vim.api.nvim_command('autocmd VimEnter sil! au! FileExplorer *')
-    vim.api.nvim_command('autocmd FileReadCmd sftp://*,scp://* lua Nmread(vim.fn.expand("<amatch>"), "file")')
-    vim.api.nvim_command('autocmd BufReadCmd sftp://*,scp://* lua Nmread(vim.fn.expand("<amatch>"), "buf")')
-    vim.api.nvim_command('autocmd FileWriteCmd sftp://*,scp://* lua Nmwrite(vim.fn.expand("<abuf>"), 1, "file")')
-    vim.api.nvim_command('autocmd BufWriteCmd sftp://*,scp://* lua Nmwrite(vim.fn.expand("<abuf>"), 1, "buf")')
+    -- protocols should be provided via the providers. Let remote_tools give you this list
+    vim.api.nvim_command('autocmd FileReadCmd '  .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "file")')
+    vim.api.nvim_command('autocmd BufReadCmd '   .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "buf")')
+    vim.api.nvim_command('autocmd FileWriteCmd ' .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 1, "file")')
+    vim.api.nvim_command('autocmd BufWriteCmd '  .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 1, "buf")')
+    vim.api.nvim_command('autocmd BufUnload '    .. protocols .. ' lua Nmunload(vim.fn.expand("<afile>"), 1, "buf")')
     vim.api.nvim_command('augroup END')
 end
 
@@ -203,9 +205,10 @@ local setup = function(options)
         end
     end
 
+    local protocols = remote_tools.init(opts)
     export_functions()
     if not opts.allow_netrw then
-        override_netrw()
+        override_netrw(protocols)
     end
 end
 
