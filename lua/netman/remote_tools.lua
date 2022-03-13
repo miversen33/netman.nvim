@@ -37,7 +37,7 @@ local get_remote_details = function(uri)
     for _, _provider in ipairs(_providers) do
         if _provider.is_valid(uri) then
             provider = _provider
-            notify("Selecting Provider: " .. provider.name .. " for URI: " .. uri, log.levels.DEBUG)
+            notify("Selecting Provider: " .. provider.name .. " for URI: " .. uri, log.levels.INFO, true)
             break
         end
     end
