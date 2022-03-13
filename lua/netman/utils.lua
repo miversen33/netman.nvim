@@ -130,6 +130,7 @@ local unlock_file = function(file_name)
         return
     end
     os.execute('rm ' .. locks_dir .. file_name)
+    os.execute('rm ' .. files_dir .. file_name)
 end
 
 local adjust_log_level = function(new_level_threshold)
