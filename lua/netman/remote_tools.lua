@@ -98,8 +98,29 @@ local get_remote_file = function(path, details)
     return details.local_file
 end
 
-local save_remote_file = function(file_details)
-    file_details.provider.write_file(file_details)
+local save_remote_file = function(details)
+    details.provider.write_file(details)
+    if details.is_dummy_file then
+        notify("Updating temporary file to be the newly pushed file", vim.log.levels.INFO, true)
+        local unique_file_name = details.provider.get_unique_name(details)
+        if unique_file_name == nil then
+            return
+        end
+        utils.lock_file(unique_file_name, details.buffer)
+        -- NOTE(Mike): This may _potentially_ be the cause for a race condition
+        -- where you try to lock a file that didn't exist before and was 
+        -- magically created remotely (and pulled down locally) before this
+        -- lock was created, thus causing out of sync issues between this buffer
+        -- and whatever buffer you have the updated version of this file on
+        -- Its highly unlikely this will ever happen and thus
+        -- I wont address this yet. Just a thing to keep in the back of your mind
+        utils.unlock_file(details.local_file_name)
+        details.local_file_name = unique_file_name
+        details.local_file = utils.files_dir .. unique_file_name
+        details.is_dummy_file = nil
+    end
+end
+
 end
 
 return {
