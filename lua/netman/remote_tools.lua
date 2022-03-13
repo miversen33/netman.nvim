@@ -86,7 +86,7 @@ local get_remote_file = function(path, details)
         notify("Failed to retrieve remote file " .. details.remote_path, vim.log.levels.ERROR)
         return
     end
-    local lock_file = utils.lock_file(unique_file_name, vim.fn.bufnr('%'))
+    local lock_file = utils.lock_file(unique_file_name, details.buffer)
     if not lock_file then
         notify("Failed to lock remote file: " .. details.remote_path, vim.log.levels.ERROR)
         return nil
