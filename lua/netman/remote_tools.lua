@@ -83,8 +83,9 @@ local get_remote_file = function(path, details)
     end
     local unique_file_name = details.provider.get_unique_name(details)
     if unique_file_name == nil then
-        notify("Failed to retrieve remote file " .. details.remote_path, vim.log.levels.ERROR)
-        return
+        unique_file_name = utils.generate_string(20)
+        notify("It appears that " .. details.remote_path .. " doesn't exist. Generating dummy file and saving later", vim.log.levels.INFO, true)
+        details.is_dummy_file = true
     end
     local lock_file = utils.lock_file(unique_file_name, details.buffer)
     if not lock_file then
