@@ -1,9 +1,11 @@
 -- TODO
 -- [x] Pull and present remote directory contents in a standard format
--- [ ] Stop breaking LSP integration
--- [ ] Create files/directories remotely
--- [ ] Delete files/directories remotely
+-- [x] Create files remotely
+-- [ ] Create directories
+-- [ ] Delete files remotely
+-- [ ] Delete directories remotely
 -- [ ] Handle SSH weirdness (needing passwords/passphrases will break this right now)
+-- [ ] Stop breaking LSP integration
 
 local log = vim.log
 
