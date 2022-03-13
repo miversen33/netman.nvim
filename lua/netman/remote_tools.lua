@@ -121,6 +121,8 @@ local save_remote_file = function(details)
     end
 end
 
+local cleanup = function(details)
+    utils.unlock_file(details.local_file_name)
 end
 
 return {
@@ -128,5 +130,6 @@ return {
     get_remote_details = get_remote_details,
     get_remote_file    = get_remote_file,
     get_remote_files   = get_remote_files,
-    save_remote_file   = save_remote_file
+    save_remote_file   = save_remote_file,
+    cleanup            = cleanup
 }
