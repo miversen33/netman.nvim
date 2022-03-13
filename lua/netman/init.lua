@@ -12,7 +12,7 @@ local default_options = {
     }
 }
 
-local cache_dir = vim.fn.stdpath('cache') .. "/netman/remote_files/"
+local buffer_to_file_map = {}
 
 local override_netrw = function()
     if vim.g.loaded_netman then
@@ -104,6 +104,10 @@ local read = function(path, execute_post_read_cmd)
     elseif execute_post_read_cmd == "file" then
         vim.api.nvim_command('execute "sil doautocmd FileReadPost ' .. path .. '"')
     end
+
+    buffer_to_file_map["" .. vim.fn.bufnr('%')] = remote_info
+end
+
 end
 local write = function(path)
     print("Saving Path: " .. path)
