@@ -36,7 +36,7 @@ end
 local browse = function(path, remote_info, display_results)
     display_results = display_results or false
     remote_info = remote_info or remote_tools.get_remote_details(path)
-    contents = remote_tools.get_remote_files(remote_info, path)
+    local contents = remote_tools.get_remote_files(remote_info, path)
     if not display_results then
         return contents
     end
