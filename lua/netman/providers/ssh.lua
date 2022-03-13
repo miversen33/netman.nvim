@@ -61,11 +61,12 @@ local get_unique_name = function(remote_info)
         if unique_name == nil then return end
         for _, line in pairs(output) do
             if(unique_name == '') then
+                notify('Processing: ' .. _ .. " For line: |" .. line .. '|', log.levels.INFO, true)
                 unique_name = line
             elseif(line and not line:match('^(%s*)$')) then
                 notify("Received invalid output -> " .. line .. " <- for unique name command!", log.levels.WARN)
                 notify("Ran command: " .. command, log.levels.INFO, true)
-                notify("Error Getting Remote File Information: {ENM05} -- Failed to generate unique file name for file: " .. remote_info.remote_path, log.levels.ERROR)
+                notify("Error Getting Remote File Information: {ENM05} -- Failed to generate unique file name for file: " .. remote_info.remote_path, log.levels.TRACE)
                 unique_name = nil
                 return
             end
@@ -75,8 +76,10 @@ local get_unique_name = function(remote_info)
         if unique_name == nil then return end
         for _, line in ipairs(output) do
             if unique_name ~= '' and line and not line:match('^(%s*)$')then
-                notify("Error Getting Remote File Information: {ENM06} -- Received Remote Error: " .. line, log.levels.ERROR)
+                notify("Error Getting Remote File Information: {ENM06} -- Received Remote Error: " .. line, log.levels.WARN, true)
+                -- TODO(Mike): Specifically check if the string `No such file or directory` is in the error. If this is a permission error we should let the user know, but if the file doesn't exist, we can just ignore this
                 unique_name = nil
+                return
             end
         end
     end
@@ -89,8 +92,7 @@ local get_unique_name = function(remote_info)
         })
     vim.fn.jobwait({job})
     if unique_name == nil then
-        notify("Failed to generate unique name for file", log.levels.ERROR)
-        return
+        notify("Failed to generate unique name for file", log.levels.WARN, true)
     end
     notify("Generated Unique Name: " .. unique_name .. " for file " .. remote_info.remote_path, vim.log.levels.DEBUG, true)
     return unique_name
