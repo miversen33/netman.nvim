@@ -129,7 +129,9 @@ local unlock_file = function(file_name)
     if not is_file_locked(file_name) then
         return
     end
+    notify("Removing lock file for " .. file_name, vim.log.levels.INFO, true)
     os.execute('rm ' .. locks_dir .. file_name)
+    notify("Removing cached file for " .. file_name, vim.log.levels.INFO, true)
     os.execute('rm ' .. files_dir .. file_name)
 end
 
