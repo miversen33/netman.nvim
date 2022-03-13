@@ -156,21 +156,21 @@ local get_details = function(uri)
     return details
 end
 
-local read_file = function(path, details, file_location)
+local read_file = function(path, details)
     local compression = ''
     if(use_compression) then
         compression = '-C '
     end
     notify("Connecting to host: " .. details.host, log.levels.INFO, true)
-    local command = "scp " .. compression .. details.auth_uri .. ':' .. details.remote_path .. ' ' .. file_location
+    local command = "scp " .. compression .. details.auth_uri .. ':' .. details.remote_path .. ' ' .. details.local_file
     notify("Running Command: " .. command, log.levels.DEBUG, true)
-    notify("Pulling down file: '" .. details.remote_path .. "' and saving to '" .. file_location .. "'", log.levels.INFO, true)
+    notify("Pulling down file: '" .. details.remote_path .. "' and saving to '" .. details.local_file .. "'", log.levels.INFO, true)
     local worked, exitcode, code = os.execute(command) -- TODO(Mike): Determine if this is "faster" than using vim.jobstart?
     code = code or ""
     if exitcode then
         notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. path .. "! Received exitcode: " .. exitcode .. "\n\tAdditional Details: " .. code, log.levels.ERROR)
     end
-    notify("Saved Remote File: " .. details.remote_path .. " to " .. file_location, log.levels.DEBUG, true)
+    notify("Saved Remote File: " .. details.remote_path .. " to " .. details.local_file, log.levels.DEBUG, true)
 end
 
 local read_directory = function(path, details)
