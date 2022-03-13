@@ -7,6 +7,7 @@ local default_options = {
     keymaps         = {}, -- TODO(Mike): Figure this out
     debug           = false,
     quiet           = false, -- TODO(Mike): Notate this
+    compress        = false, -- TODO(Mike): Document this
     providers       = {
         "netman.providers.ssh"
     }
