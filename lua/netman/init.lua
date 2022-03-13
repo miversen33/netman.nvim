@@ -88,6 +88,7 @@ local read = function(path, execute_post_read_cmd)
     --     }
     local remote_info = remote_tools.get_remote_details(path)
     if not remote_info.protocol then
+        notify("Unable to match any providers to " .. path, vim.log.levels.WARN, true)
         return
     end
     if remote_info.is_dir then
