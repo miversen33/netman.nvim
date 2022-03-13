@@ -168,6 +168,9 @@ local get_details = function(uri)
     if details.port then
         details.auth_uri = details.auth_uri .. ' -p ' .. details.port
     end
+    details.local_file = nil
+    details.protocol = name
+    details.buffer   = nil
     notify("Constructed Auth URI: " .. details.auth_uri, log.levels.DEBUG, true)
     return details
 end
