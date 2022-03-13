@@ -104,7 +104,7 @@ local get_unique_name = function(remote_info)
 end
 
 local get_details = function(uri)
-    local user, port, base_uri
+    local user, port, path_type, base_uri
     base_uri = uri
     -- This should return a table with the following info
     -- {
@@ -156,7 +156,7 @@ local get_details = function(uri)
     else
         details.remote_path = "/" .. path_body
     end
-    notify('Path Match: ' .. details.remote_path, log.levels.DEBUG, true) -- This is likely being generated incorrectly....
+    notify('Path Match: ' .. details.remote_path, log.levels.DEBUG, true)
     if details.user then
         details.auth_uri = details.user .. "@" .. details.host
     else
