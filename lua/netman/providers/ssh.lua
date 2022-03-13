@@ -104,7 +104,7 @@ local get_unique_name = function(remote_info)
 end
 
 local get_details = function(uri)
-    local user, port, path_type, base_uri
+    local user, port, base_uri
     base_uri = uri
     -- This should return a table with the following info
     -- {
