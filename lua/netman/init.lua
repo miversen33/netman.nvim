@@ -93,10 +93,14 @@ local read = function(path, execute_post_read_cmd)
     if remote_info.is_dir then
         return browse(path, remote_info)
     end
+    local local_file = remote_tools.get_remote_file(path, remote_info)
+    if not local_file then
+        notify("Failed to get remote file", vim.log.levels.ERROR)
+        return
+    end
 
-    local read_command = remote_tools.get_remote_file(path, cache_dir, remote_info)
     vim.api.nvim_command('keepjumps sil! 0')
-    vim.api.nvim_command('keepjumps execute "sil! read ++edit !' .. read_command .. '"')
+    vim.api.nvim_command('keepjumps execute "sil! read ++edit ' .. local_file .. '"')
     vim.api.nvim_command('keepjumps sil! 0d')
     vim.api.nvim_command('keepjumps sil! 0')
     if execute_post_read_cmd == "buf" then
