@@ -47,8 +47,7 @@ end
 local get_unique_name = function(remote_info)
     -- Potentially introduces a massive security vulnerability via the "remote_path" variable in 
     -- remote_info
-    local command = 'ssh miversen-dev-desktop "echo \\$(hostid)\\$(stat --printf=\'%i\' /home/miversen/modules.asset)"'
-    -- local command = "ssh " .. remote_info.auth_uri .. " 'echo \\$(hostid)\\$(stat --printf=\\'%i\\' " .. remote_info.remote_path .. ")'"
+    local command = 'ssh ' .. remote_info.auth_uri .. ' "echo \\$(hostid)\\$(stat --printf=\'%i\' ' .. remote_info.remote_path .. ')"'
     local unique_name = ''
 
     local stdout_callback = function(job, output)
