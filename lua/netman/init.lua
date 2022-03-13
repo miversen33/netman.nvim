@@ -144,6 +144,16 @@ local write = function(path, is_buffer, execute_post_write_cmd)
     end
 end
 
+local unload = function(path)
+    notify("Unloading file: " .. path, vim.log.levels.DEBUG, true)
+    local buffer_details = buffer_details_table["" .. vim.fn.bufnr(path)]
+    if not buffer_details then
+        notify("Unable to find details related to buffer: " .. path, vim.log.levels.WARN, true)
+        return
+    end
+    remote_tools.cleanup(buffer_details)
+end
+
 local delete = function(path)
     print("Deleting Path: " .. path)
 end
@@ -157,6 +167,7 @@ local export_functions = function()
     _G.Nmwrite  = write
     _G.Nmdelete = delete
     _G.Nmcreate = create
+    _G.Nmunload   = unload
 end
 
 local setup = function(options)
