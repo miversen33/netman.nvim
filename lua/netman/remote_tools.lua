@@ -158,14 +158,15 @@ local get_remote_file = function(path, details)
         notify("Failed to lock remote file: " .. details.remote_path, vim.log.levels.ERROR)
         return nil
     end
-    local local_file = utils.files_dir .. unique_file_name
-    details.provider.read_file(path, details, local_file)
-    return local_file
+
+local save_remote_file = function(file_details)
+    file_details.provider.write_file(file_details)
 end
 
 return {
     init               = init,
     get_remote_details = get_remote_details,
     get_remote_file    = get_remote_file,
-    get_remote_files   = get_remote_files
+    get_remote_files   = get_remote_files,
+    save_remote_file   = save_remote_file
 }

@@ -112,9 +112,51 @@ local read = function(path, execute_post_read_cmd)
     buffer_to_file_map["" .. vim.fn.bufnr('%')] = remote_info
 end
 
+local _write_buffer = function(buffer_id)
+    local file_info = buffer_to_file_map["" .. buffer_id]
+    local local_file = file_info.local_file
+    local buffer = vim.fn.bufname(buffer_id)
+    notify("Saving buffer: " .. buffer .. " to " .. local_file, vim.log.levels.DEBUG, true)
+    vim.fn.writefile(vim.fn.getbufline(buffer, 1, '$'), local_file)
+    remote_tools.save_remote_file(file_info)
+
+    return true
 end
-local write = function(path)
-    print("Saving Path: " .. path)
+
+local write = function(path, is_buffer, execute_post_write_cmd)
+    -- TODO(Mike): Determine if the provided path is a remote file or not?
+    local continue = false
+    if is_buffer then
+        continue = _write_buffer(path)
+    else
+        continue = _write_file(path)
+    end
+    if not continue then
+        return
+    end
+    -- TODO(Mike): Try naive approach (pipe buffer contents directly into gzip)ii
+    -- notify("Saving " .. local .. " From Buffer " .. buffer, vim.log.levels.INFO)
+    -- local remote_info = remote_tools.get_remote_details(remote_path)
+    -- if not remote_info.protocol then
+    --    notify("Unable to reach remote path: " .. remote_path, vim.log.levels.ERROR)
+    --    return
+    -- end
+    -- local lines = ""
+    -- if buffer then
+    --    lines = vim.fn.join(vim.fn.getbufline(buffer, 1, '$'), '\n')
+    --    notify("Saving buffer: " .. buffer, vim.log.levels.DEBUG)
+    -- elseif path then
+    --
+    -- 
+    -- end
+    -- local buffer_contents = vim.fn.join(vim.fn.getline(1, '$'), '\n')
+    vim.api.nvim_command('execute "sil set nomodified"')
+    if execute_post_write_cmd == 'file' then
+        vim.api.nvim_command('execute "sil doautocmd FileWritePost ' .. path .. '"')
+    end
+    if execute_post_write_cmd == 'buf' then
+        vim.api.nvim_command('execute "sil doautocmd BufWritePost ' .. path .. '"')
+    end
 end
 
 local delete = function(path)

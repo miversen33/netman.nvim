@@ -247,7 +247,33 @@ local read_directory = function(path, details)
 
 end
 
-local write_file = function(contents, details)
+local write_file = function(details)
+    local compression = ''
+    if(use_compression) then
+        compression = '-C '
+    end
+    local command = "scp " .. compression .. details.local_file .. ' ' .. details.auth_uri .. ':' .. details.remote_path
+    notify("Updating remote file: " .. details.remote_path, log.levels.INFO)
+    notify("    Running Command: " .. command, log.levels.DEBUG, true)
+
+    local stdout_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("STDOUT: " .. line, vim.log.levels.INFO, true)
+        end
+    end
+
+    local stderr_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("STDERR: " .. line, vim.log.levels.WARN)
+        end
+    end
+    
+    vim.fn.jobstart(command,
+        {
+            stdout_callback=stdout_callback,
+            stderr_callback=stderr_callback
+    })
+    notify("Saved Remote File: " .. details.remote_path .. " to " .. details.local_file, log.levels.DEBUG, true)
     -- TODO(Mike): Consider a performant way to handle sending large files across the network
 end
 
