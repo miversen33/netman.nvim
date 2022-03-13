@@ -112,6 +112,9 @@ local get_details = function(uri)
     --  host, (As an IP address)
     --  remote_path, (as a string. Relative Path is acceptable)
     --  auth_uri, (a string authentication URI that can be used to authenticate via the listed protocol)
+    --  local_file, (set this to nil, it will be set later)
+    --  protocol, (set this to your global (required) name value)
+    --  buffer, (set this to nil, it will be set later)
     --  -- OPTIONAL FIELDS
     --  user, (The user from the URI. This is optional)
     --  port, (The port from the URI. This is optional)
@@ -156,7 +159,7 @@ local get_details = function(uri)
     else
         details.remote_path = "/" .. path_body
     end
-    notify('Path Match: ' .. details.remote_path, log.levels.DEBUG, true)
+    notify('Path Match: ' .. details.remote_path, log.levels.DEBUG, true) -- This is likely being generated incorrectly....
     if details.user then
         details.auth_uri = details.user .. "@" .. details.host
     else
