@@ -93,6 +93,7 @@ local get_unique_name = function(remote_info)
     vim.fn.jobwait({job})
     if unique_name == nil then
         notify("Failed to generate unique name for file", log.levels.WARN, true)
+        return unique_name
     end
     notify("Generated Unique Name: " .. unique_name .. " for file " .. remote_info.remote_path, vim.log.levels.DEBUG, true)
     return unique_name
