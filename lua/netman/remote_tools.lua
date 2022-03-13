@@ -64,8 +64,9 @@ local get_remote_details = function(uri)
     else
         details.is_file = true
     end
-    details.protocol = provider.name
     details.provider = provider
+    notify("Setting provider: " .. provider.name .. " for " .. details.remote_path, vim.log.levels.DEBUG, true)
+    details.buffer = vim.fn.bufnr('%')
     return details
 end
 
