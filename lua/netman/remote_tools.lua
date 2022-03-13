@@ -70,76 +70,7 @@ local get_remote_details = function(uri)
 end
 
 local get_remote_files = function(remote_info, path)
-    remote_info = remote_info or get_remote_details(path)
-    local remote_files = {
-        dirs  = {
-            hidden = {},
-            visible = {}
-        },
-        files = {
-            hidden = {},
-            visible = {},
-        }, 
-        links = { -- TODO(Mike): Command right now does _not_ resolve links locations. 
-            hidden = {},
-            visible = {} 
-        }
-    }
-    local stdout_callback = function(job, output)
-        for _, line in ipairs(output) do
-            local _,_, type = line:find('^(%a)')
-            line = line:gsub('^(%a)|', "")
-            local _,_, is_empty = line:find('^[%s]*$')
-            if not line or line:len() == 0 or is_empty then goto continue end
-            local is_hidden,_ = line:find('^%.')
-            local store_table = nil
-            if type == 'd' then
-                if is_hidden then
-                    store_table = remote_files.dirs.hidden
-                else
-                    store_table = remote_files.dirs.visible
-                end
-            elseif type == 'f' then
-                if is_hidden then
-                    store_table = remote_files.files.hidden
-                else
-                    store_table = remote_files.files.visible
-                end
-            elseif type == 'N' then
-                if is_hidden then
-                    store_table = remote_files.links.hidden
-                else
-                    store_table = remote_files.links.visible
-                end
-            end
-            if store_table then
-                table.insert(store_table, {
-                    relative_path = line,
-                    full_path = remote_info.remote_path .. line
-                })
-            end
-        ::continue::
-        end
-    end
-    local stderr_callback = function(job, output)
-        for _, line in ipairs(output) do
-            if not line or line:len() == 0 then goto continue end
-            notify("Error Browsing Remote Directory: {ENM04} -- STDERR: " .. line, log.levels.ERROR)
-            ::continue::
-        end
-    end
-    local command = 'ssh ' .. remote_info.auth_uri .. ' "find ' .. remote_info.remote_path .. ' -maxdepth 1 -printf \'%Y|%P\n\' | gzip -c" | gzip -d -c'
-
-    local job = vim.fn.jobstart(
-        command
-        ,{
-            on_stdout = stdout_callback,
-            on_stderr = stderr_callback,
-        })
-    vim.fn.jobwait({job})
-
-    return remote_files
-
+    return remote_info.provider.read_directory(path, remote_info)
 end
 
 local get_remote_file = function(path, details)

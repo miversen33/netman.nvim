@@ -182,7 +182,7 @@ end
 
 local read_directory = function(path, details)
     -- TODO(Mike): Add support for sorting the return info????
-    remote_info = remote_info or get_remote_details(path)
+    details = details or get_details(path)
     local remote_files = {
         dirs  = {
             hidden = {},
@@ -192,7 +192,7 @@ local read_directory = function(path, details)
             hidden = {},
             visible = {},
         }, 
-        links = { -- TODO(Mike): Command right now does _not_ resolve links locations. 
+        links = { -- TODO(Mike): Command right now does _not_ resolve links locations.
             hidden = {},
             visible = {} 
         }
@@ -227,7 +227,7 @@ local read_directory = function(path, details)
             if store_table then
                 table.insert(store_table, {
                     relative_path = line,
-                    full_path = remote_info.remote_path .. line
+                    full_path = details.remote_path .. line
                 })
             end
         ::continue::
@@ -240,7 +240,7 @@ local read_directory = function(path, details)
             ::continue::
         end
     end
-    local command = 'ssh ' .. remote_info.auth_uri .. ' "find ' .. remote_info.remote_path .. ' -maxdepth 1 -printf \'%Y|%P\n\' | gzip -c" | gzip -d -c'
+    local command = 'ssh ' .. details.auth_uri .. ' "find ' .. details.remote_path .. ' -maxdepth 1 -printf \'%Y|%P\n\' | gzip -c" | gzip -d -c'
 
     local job = vim.fn.jobstart(
         command
@@ -249,9 +249,7 @@ local read_directory = function(path, details)
             on_stderr = stderr_callback,
         })
     vim.fn.jobwait({job})
-
     return remote_files
-
 end
 
 local write_file = function(details)
