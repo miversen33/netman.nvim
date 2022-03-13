@@ -86,6 +86,7 @@ local is_file_locked = function(file_name)
             if line and not line:match('^(%s*)$') then
                 notify("Received Lock file check error: " .. line, vim.log.levels.INFO, true)
                 lock_info = nil
+                return
             end
         end
     end
