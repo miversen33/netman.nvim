@@ -67,6 +67,7 @@ local get_remote_details = function(uri)
     details.provider = provider
     notify("Setting provider: " .. provider.name .. " for " .. details.remote_path, vim.log.levels.DEBUG, true)
     details.buffer = vim.fn.bufnr('%')
+    notify("Setting buffer number: " .. details.buffer .. " for " .. details.remote_path, vim.log.levels.DEBUG, true)
     return details
 end
 
