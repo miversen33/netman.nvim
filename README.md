@@ -41,6 +41,13 @@ The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
         -- Passing this as true will enable significant more log output.
         -- Note: Logs are output by default to `$HOME/.cache/nvim/netman/logs.txt`
         -- though this is likely to change to a better (more fitting) location.
+    compress = false,
+        -- Setting "compress" to true will prompt the underlying provider to also
+        -- compress traffic as it pulls it across the network. By defualt
+        -- this is turned off to better compensate for speed lost due
+        -- to compressing files, however it can be enabled if you are 
+        -- experiencing long delays in getting files across the network (usually
+        -- related to slow/underpowered networks)
     providers = {
         "netman.providers.ssh"
         -- List of providers to utilize for remote filesystem interfacing
