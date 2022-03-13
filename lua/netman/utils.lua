@@ -33,10 +33,7 @@ local notify = function(message, level, file_only, log_path)
     end
     log_message = log_message .. ' Netman'
     log_message = log_message .. ' -- ' .. message
-    if log_message:match("[^A-Za-z0-9_/:=-]") then
-        log_message = log_message:gsub("'", "\\'")
-    end
-    os.execute('echo "' .. log_message .. '" >> ' .. log_path)
+    vim.fn.writefile({log_message}, log_path, 'a')
 end
 
 
