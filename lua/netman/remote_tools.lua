@@ -47,11 +47,11 @@ local get_remote_details = function(uri)
     end
     details = provider.get_details(uri, notify)
     -- Expects a minimum of "host" and "remote_path", "auth_uri"
-    if not details.host or details.path or not details.auth_uri then
+    if not details.host or not details.remote_path or not details.auth_uri then
         if not details.host then
             notify("Error parsing URI: {ENMRT02} -- Unable to parse host from URI: " .. uri, log.levels.ERROR)
         end
-        if not details.path then
+        if not details.remote_path then
             notify("Error parsing URI: {ENMRT03} -- Unable to parse path from URI: " .. uri, log.levels.ERROR)
         end
         if not details.auth_uri then
