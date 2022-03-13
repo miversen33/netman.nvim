@@ -12,7 +12,7 @@ local default_options = {
     }
 }
 
-local buffer_to_file_map = {}
+local buffer_details_table = {}
 
 local override_netrw = function()
     if vim.g.loaded_netman then
@@ -114,7 +114,7 @@ local read = function(path, execute_post_read_cmd)
 end
 
 local _write_buffer = function(buffer_id)
-    local file_info = buffer_to_file_map["" .. buffer_id]
+    local file_info = buffer_details_table["" .. buffer_id]
     local local_file = file_info.local_file
     local buffer = vim.fn.bufname(buffer_id)
     notify("Saving buffer: " .. buffer .. " to " .. local_file, vim.log.levels.DEBUG, true)
