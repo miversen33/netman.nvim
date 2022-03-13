@@ -37,6 +37,13 @@ local notify = function(message, level, file_only, log_path)
 end
 
 
+local generate_string = function(string_length)
+    local return_string = ""
+    for index = 1, string_length do
+        return_string = return_string .. string.char(math.random(97,122))
+    end
+    return return_string
+end
 
 local _verify_lock = function(pid)
     local valid_lock = true
