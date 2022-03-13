@@ -70,7 +70,7 @@ end
 local is_file_locked = function(file_name)
     local command = 'cat ' .. locks_dir .. file_name
     notify('Checking if file: ' .. file_name .. ' is locked', vim.log.levels.DEBUG, true)
-    notify("Command: " .. command, vim.log.levels.DEBUG, true)
+    notify("Check Lock Command: " .. command, vim.log.levels.DEBUG, true)
     local lock_info = ''
     local stdout_callback = function(job, output)
         if not lock_info or lock_info:len() > 0 then return end
