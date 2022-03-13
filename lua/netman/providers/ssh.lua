@@ -161,7 +161,7 @@ local get_details = function(uri)
     else
         details.remote_path = "/" .. path_body
     end
-    notify('Path Match: ' .. details.remote_path, log.levels.DEBUG, true) -- This is likely being generated incorrectly....
+    notify('Path Match: ' .. details.remote_path, log.levels.DEBUG, true)
     if details.user then
         details.auth_uri = details.user .. "@" .. details.host
     else
