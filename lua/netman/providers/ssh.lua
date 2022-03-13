@@ -1,3 +1,10 @@
+-- TODO
+-- [x] Pull and present remote directory contents in a standard format
+-- [ ] Stop breaking LSP integration
+-- [ ] Create files/directories remotely
+-- [ ] Delete files/directories remotely
+-- [ ] Handle SSH weirdness (needing passwords/passphrases will break this right now)
+
 local log = vim.log
 
 local utils        = require('netman.utils')
