@@ -11,20 +11,20 @@ local load_provider = function(provider_path, options)
     local provider_string = ''
     options = options or _cache_options
     local status, provider = pcall(require, provider_path)
-            if status then
-                notify('Initializing ' .. provider.name .. ' Provider', log.levels.DEBUG, true)
-                if provider.init then
-                    provider.init(options)
-                end
-                table.insert(_providers, provider)
-                for _, pattern in pairs(provider.protocol_patterns) do
-                    if provider_string == '' then
-                        provider_string = pattern
-                    else
-                        provider_string = provider_string .. ',' .. pattern
-                    end
-                end
+    if status then
+        notify('Initializing ' .. provider.name .. ' Provider', log.levels.DEBUG, true)
+        if provider.init then
+            provider.init(options)
+        end
+        table.insert(_providers, provider)
+        for _, pattern in pairs(provider.protocol_patterns) do
+            if provider_string == '' then
+                provider_string = pattern
             else
+                provider_string = provider_string .. ',' .. pattern
+            end
+        end
+    else
         notify('Failed to initialize provider: ' .. provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
     end
     return provider_string
