@@ -5,6 +5,7 @@ local utils = require('netman.utils')
 local notify = utils.notify
 
 local _providers = {}
+local _cache_options = nil
 
 local load_provider = function(provider_path, options)
     local provider_string = ''
@@ -29,6 +30,26 @@ local load_provider = function(provider_path, options)
     return provider_string
 end
 
+local init = function(options)
+    -- TODO(Mike): Probably want a way to roll the netman logs (in the event they are chungoy)
+    -- TODO(Mike): Add way to dynamically add providers _after_ init
+    if vim.g.netman_remotetools_setup == 1 then
+        return
+    end
+    local providers = options.providers
+    _cache_options = options
+    notify("Initializing Netman", vim.log.levels.DEBUG, true)
+    local provider_string = ''
+    if(providers) then
+        notify("Loading Providers", vim.log.levels.INFO, true)
+        for _, _provider_path in pairs(providers) do
+            local _provider_string = load_provider(_provider_path, options)
+            if _provider_string:len() > 0 then
+                if provider_string == '' then
+                    provider_string = _provider_string
+                else
+                    provider_string = provider_string .. ',' .. _provider_string
+                end
             end
         end
     end
