@@ -3,7 +3,7 @@ local utils        = require('netman.utils')
 local notify       = utils.notify
 
 local default_options = {
-    allow_netrw     = true,
+    allow_netrw     = false,
     keymaps         = {}, -- TODO(Mike): Figure this out
     debug           = false,
     quiet           = false, -- TODO(Mike): Notate this
@@ -21,7 +21,7 @@ local override_netrw = function(protocols)
     end
     vim.g.loaded_netman = 1
     vim.g.loaded_netrwPlugin = 1
-    -- vim.g.loaded_netman = 1 -- TODO(Mike) By disabling netrw, we prevent ANY netrw handling of files. This is probably bad, we may want to consider a way to allow some of NetRW to function.
+    vim.g.loaded_netrw = 1 -- TODO(Mike) By disabling netrw, we prevent ANY netrw handling of files. This is probably bad, we may want to consider a way to allow some of NetRW to function.
     -- EG, this disables NetRW's local directory handling which is not amazing. 
     -- Alternatively, we build our own internal file handling...?
     vim.api.nvim_command('augroup Netman')
@@ -132,8 +132,8 @@ local write = function(path, is_buffer, execute_post_write_cmd)
     local continue = false
     if is_buffer then
         continue = _write_buffer(path)
-    else
-        continue = _write_file(path)
+    -- else
+    --     continue = _write_file(path)
     end
     if not continue then
         return
@@ -165,12 +165,17 @@ local create = function(path)
     print("Creating Path: " .. path)
 end
 
+local load_provider = function(provider)
+    remote_tools.load_provider(provider)
+end
+
 local export_functions = function()
     _G.Nmread   = read
     _G.Nmwrite  = write
     _G.Nmdelete = delete
     _G.Nmcreate = create
     _G.Nmunload   = unload
+    _G.NmloadProvider = load_provider
 end
 
 local setup = function(options)

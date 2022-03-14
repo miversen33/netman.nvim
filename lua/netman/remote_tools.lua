@@ -6,19 +6,10 @@ local notify = utils.notify
 
 local _providers = {}
 
-local init = function(options)
-    -- TODO(Mike): Probably want a way to roll the netman logs (in the event they are chungoy)
-    -- TODO(Mike): Add way to dynamically add providers _after_ init
-    local providers = options.providers
-    if vim.g.netman_remotetools_setup == 1 then
-        return
-    end
-    notify("Initializing Netman", vim.log.levels.DEBUG, true)
+local load_provider = function(provider_path, options)
     local provider_string = ''
-    if(providers) then
-        notify("Loading Providers", vim.log.levels.INFO, true)
-        for _, _provider_path in pairs(providers) do
-            local status, provider = pcall(require, _provider_path)
+    options = options or _cache_options
+    local status, provider = pcall(require, provider_path)
             if status then
                 notify('Initializing ' .. provider.name .. ' Provider', log.levels.DEBUG, true)
                 if provider.init then
@@ -33,7 +24,11 @@ local init = function(options)
                     end
                 end
             else
-                notify('Failed to initialize provider: ' .. _provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
+        notify('Failed to initialize provider: ' .. provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
+    end
+    return provider_string
+end
+
             end
         end
     end
@@ -141,5 +136,6 @@ return {
     get_remote_file    = get_remote_file,
     get_remote_files   = get_remote_files,
     save_remote_file   = save_remote_file,
+    load_provider      = load_provider,
     cleanup            = cleanup
 }
