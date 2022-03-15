@@ -146,7 +146,7 @@ local lock_file = function(file_name, buffer)
     local lock_info = is_file_locked(file_name)
     local current_pid = vim.fn.getpid()
     if lock_info then
-        notify("Found existing lock info for file --> " .. lock_info, vim.log.level.INFO, true)
+        notify("Found existing lock info for file --> " .. lock_info, vim.log.levels.INFO, true)
         local lock_buffer, lock_pid = lock_info:match('^(%d+):(%d+)$')
         notify("Unable to lock file: " .. file_name .. " to buffer " .. buffer .. " for pid " .. current_pid .. ". File is already locked to pid: " .. lock_pid .. ' for buffer: ' .. lock_buffer, vim.log.levels.ERROR)
         return false
