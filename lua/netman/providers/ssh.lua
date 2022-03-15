@@ -5,7 +5,6 @@
 -- [ ] Delete files remotely
 -- [ ] Delete directories remotely
 -- [ ] Handle SSH weirdness (needing passwords/passphrases will break this right now)
--- [ ] Stop breaking LSP integration
 
 local log = vim.log
 
@@ -45,7 +44,9 @@ local is_valid = function(uri)
     -- handled by _this_ provider
     local start_index, end_index
     for _, pattern in ipairs(protocol_patterns) do
-        start_index, end_index = uri:find(pattern)
+        start_index, end_index = uri:find(pattern) -- TODO(Mike): Should be able to compress this into one line
+        -- something like
+        -- if uri:find(pattern) then return true end
         if start_index then
             return true
         end
