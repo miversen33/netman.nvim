@@ -14,6 +14,8 @@ local cache_dir = vim.fn.stdpath('cache') .. '/netman/'
 local files_dir = cache_dir .. 'remote_files/'
 local locks_dir = cache_dir .. 'lock_files/'
 local data_dir  = vim.fn.stdpath('data')  .. '/netman/'
+local session_id = ''
+local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
 
 local notify = function(message, level, file_only, log_path)
     level = level or 0
@@ -27,7 +29,7 @@ local notify = function(message, level, file_only, log_path)
         vim.notify(message, level)
     end
     local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-    local log_message = '[' .. timestamp .. '] [Level:' .. level .. ']'
+    local log_message = '[' .. timestamp .. '] [SID: ' .. session_id .. '] [Level:' .. level .. ']'
     if level:len() == 4 then
         log_message = log_message .. ' '
     end
@@ -36,6 +38,34 @@ local notify = function(message, level, file_only, log_path)
     vim.fn.writefile({log_message}, log_path, 'a')
 end
 
+local generate_session_log = function(output_path)
+    output_path = vim.fn.resolve(vim.fn.expand(output_path))
+    local line = ''
+    local log_path = data_dir .. "logs.txt"
+    local logs = {}
+    local pulled_sid = ''
+    local log_file = io.input(log_path)
+    local keep_running = true
+    notify("Gathering Logs...", vim.log.levels.INFO)
+    while keep_running do
+        line = io.read('*line')
+        if not line then
+            keep_running = false
+        else
+           pulled_sid = line:match(validate_log_pattern)
+            if pulled_sid == session_id then
+                table.insert(logs, line)
+            end
+        end
+    end
+    local message = "Saving Logs"
+    notify(message, vim.log.levels.INFO)
+    table.insert(logs, line)
+    -- os.execute('touch ' .. output_path)
+    vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
+    vim.fn.writefile(logs, output_path)
+    notify("Saved logs to " .. output_path)
+end
 
 local generate_string = function(string_length)
     local return_string = ""
@@ -149,6 +179,8 @@ local setup = function(level_threshold)
     mkdir(data_dir,  'p') -- Creating the data dir
     mkdir(files_dir, 'p') -- Creating the temp files dir
     mkdir(locks_dir, 'p') -- Creating the locks files dir
+    session_id = generate_string(15)
+    notify("Generated Session ID: " .. session_id .. " for logging.", vim.log.levels.INFO, true)
 
     _is_setup = true
     if _level_threshold == 0 then
@@ -167,4 +199,5 @@ return {
     cache_dir        = cache_dir,
     data_dir         = data_dir,
     files_dir        = files_dir,
+    generate_session_log = generate_session_log
 }

@@ -169,13 +169,23 @@ local load_provider = function(provider)
     remote_tools.load_provider(provider)
 end
 
+local generate_session_logs = function(output_path)
+   local file_name = utils.generate_string(10)
+    output_path = output_path or "$HOME/" .. file_name
+    utils.generate_session_log(output_path)
+end
+
 local export_functions = function()
-    _G.Nmread   = read
-    _G.Nmwrite  = write
-    _G.Nmdelete = delete
-    _G.Nmcreate = create
-    _G.Nmunload   = unload
+    _G.Nmread         = read
+    _G.Nmwrite        = write
+    _G.Nmdelete       = delete
+    _G.Nmcreate       = create
+    _G.Nmunload       = unload
     _G.NmloadProvider = load_provider
+    _G.Nmlogs         = generate_session_logs
+    -- Pending merging of https://github.com/neovim/neovim/pull/16752 into main, we have to do janky workarounds
+    vim.api.nvim_command('command -nargs=1 NmloadProvider lua NmloadProvider(<f-args>)')
+    vim.api.nvim_command('command -nargs=? Nmlogs lua Nmlogs(<f-args>)')
 end
 
 local setup = function(options)
