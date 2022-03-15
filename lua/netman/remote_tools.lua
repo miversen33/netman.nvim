@@ -1,3 +1,6 @@
+-- TODO
+-- [ ] Stop breaking LSP integration
+
 local split  = vim.fn.split
 local log    = vim.log
 
@@ -107,7 +110,7 @@ local get_remote_file = function(path, details)
         notify("Error Opening Path: {ENMRT05}", log.levels.ERROR)
         return
     end
-    local unique_file_name = details.provider.get_unique_name(details)
+    local unique_file_name = details.provider.get_unique_name(details.remote_path, details)
     if unique_file_name == nil then
         unique_file_name = utils.generate_string(20)
         notify("It appears that " .. details.remote_path .. " doesn't exist. Generating dummy file and saving later", vim.log.levels.INFO, true)

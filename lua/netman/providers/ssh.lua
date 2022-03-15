@@ -73,7 +73,7 @@ local get_unique_name = function(path, remote_info)
 
     -- Potentially introduces a massive security vulnerability via the "remote_path" variable in
     -- remote_info
-    local command = 'ssh ' .. remote_info.auth_uri .. ' "echo \\$(hostid)-\\$(stat --printf=\'%i\' ' .. remote_info.remote_path .. ')"'
+    local command = 'ssh ' .. remote_info.auth_uri .. ' "echo \\$(hostid)-\\$(stat --printf=\'%i\' ' .. path .. ')"'
     local unique_name = ''
 
     local stdout_callback = function(job, output)
@@ -84,7 +84,7 @@ local get_unique_name = function(path, remote_info)
             elseif(line and not line:match('^(%s*)$')) then
                 notify("Received invalid output -> " .. line .. " <- for unique name command!", log.levels.WARN)
                 notify("Ran command: " .. command, log.levels.INFO, true)
-                notify("Error Getting Remote File Information: {ENM05} -- Failed to generate unique file name for file: " .. remote_info.remote_path, log.levels.TRACE)
+                notify("Error Getting Remote File Information: {ENM05} -- Failed to generate unique file name for file: " .. path, log.levels.TRACE)
                 unique_name = nil
                 return
             end
@@ -101,7 +101,7 @@ local get_unique_name = function(path, remote_info)
             end
         end
     end
-    notify("Generating Unique Name for file: " .. remote_info.remote_path, vim.log.levels.INFO, true)
+    notify("Generating Unique Name for file: " .. path, vim.log.levels.INFO, true)
     local job = vim.fn.jobstart(
         command
         ,{
@@ -113,7 +113,7 @@ local get_unique_name = function(path, remote_info)
         notify("Failed to generate unique name for file", log.levels.WARN, true)
         return unique_name
     end
-    notify("Generated Unique Name: " .. unique_name .. " for file " .. remote_info.remote_path, vim.log.levels.DEBUG, true)
+    notify("Generated Unique Name: " .. unique_name .. " for file " .. path, vim.log.levels.DEBUG, true)
     local hostid, fileid = unique_name:match('^([%d%a]+)-(%d+)$')
     if not hostid or not fileid then
         notify("Failed to validate unique name for file", log.levels.WARN, true)
