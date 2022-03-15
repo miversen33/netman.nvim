@@ -54,8 +54,24 @@ local is_valid = function(uri)
     return false
 end
 
-local get_unique_name = function(remote_info)
-    -- Potentially introduces a massive security vulnerability via the "remote_path" variable in 
+local get_unique_name = function(path, remote_info)
+    -- Required function that will be called anytime a new file is opened with this protocol. This should return
+    -- a "unique" recreatable name for a remote file. Ensure that the unique name is _not_ random
+    -- as this name will be used for locking the file locally. See below for an example of how this was
+    -- done with ssh
+
+    -- get_unique_name (called via netman.remote_tools) used when loading/locking a file
+    -- :param path (String):
+    --     The path to which we want a unique name generated for
+    -- :param remote_info (table):
+    --     A table containing the details as provided back from @see get_details
+    -- :return String:
+    --     Return either a string which is the unique name of the input file, or nil if it is not possible to
+    --     create a unique name.
+    --     Do not worry if the remote file does not exist, do not do any fancy error handling to compensate for this
+    --     Just return a unique name if its possible to create
+
+    -- Potentially introduces a massive security vulnerability via the "remote_path" variable in
     -- remote_info
     local command = 'ssh ' .. remote_info.auth_uri .. ' "echo \\$(hostid)-\\$(stat --printf=\'%i\' ' .. remote_info.remote_path .. ')"'
     local unique_name = ''
