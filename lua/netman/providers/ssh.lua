@@ -17,6 +17,7 @@ local protocol_patterns = { -- This is the list of patterns to apply to the buff
     'scp://*',
     -- '^ssh://'
 }
+local version = '0.1' -- Required variable that is used for logging/diagnostics
 
 local user_pattern = "^(.*)@"
 local host_pattern = "^([%a%c%d%s%-%.]*)"
@@ -132,8 +133,11 @@ local get_details = function(uri)
     --  remote_path, (as a string. Relative Path is acceptable)
     --  auth_uri, (a string authentication URI that can be used to authenticate via the listed protocol)
     --  local_file, (set this to nil, it will be set later)
+    --  local_file_name, (set this to nil, it will be set later)
+    --  provider, (set this to nil, it will be set later)
     --  protocol, (set this to your global (required) name value)
     --  buffer, (set this to nil, it will be set later)
+    --  is_dummy, (set this to nil, this is reserved for potential later use)
     --  -- OPTIONAL FIELDS
     --  user, (The user from the URI. This is optional)
     --  port, (The port from the URI. This is optional)
@@ -190,6 +194,9 @@ local get_details = function(uri)
     details.local_file = nil
     details.protocol = name
     details.buffer   = nil
+    details.provider = nil
+    details.local_file_name = nil
+    details.is_dummy = nil
     notify("Constructed Auth URI: " .. details.auth_uri, log.levels.DEBUG, true)
     return details
 end
@@ -316,6 +323,7 @@ end
 return {
     name              = name,              -- Required Variable
     protocol_patterns = protocol_patterns, -- Required Variable
+    version           = version,           -- Required Variable
     is_valid          = is_valid,          -- Required Function
     get_details       = get_details,       -- Required Function
     read_file         = read_file,         -- Required Function
