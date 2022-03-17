@@ -1,9 +1,6 @@
 -- TODO
 -- [ ] Stop breaking LSP integration
 
-local split  = vim.fn.split
-local log    = vim.log
-
 local utils = require('netman.utils')
 local notify = utils.notify
 
@@ -15,7 +12,7 @@ local load_provider = function(provider_path, options)
     options = options or _cache_options
     local status, provider = pcall(require, provider_path)
     if status then
-        notify('Initializing ' .. provider.name .. ' Provider', log.levels.DEBUG, true)
+        notify('Initializing Provider: ' .. provider.name .. ' --version: ' .. provider.version, vim.log.levels.DEBUG, true)
         if provider.init then
             provider.init(options)
         end
@@ -82,25 +79,25 @@ local get_remote_details = function(uri)
     for _, _provider in ipairs(_providers) do
         if _provider.is_valid(uri) then
             provider = _provider
-            notify("Selecting Provider: " .. provider.name .. " for URI: " .. uri, log.levels.INFO, true)
+            notify("Selecting Provider: " .. provider.name .. " for URI: " .. uri, vim.log.levels.INFO, true)
             break
         end
     end
     if provider == nil then
-        notify("Error parsing URI: {ENMRT01} -- Unable to establish provider for URI: " .. uri, log.levels.ERROR)
+        notify("Error parsing URI: {ENMRT01} -- Unable to establish provider for URI: " .. uri, vim.log.levels.ERROR)
         return {}
     end
     details = provider.get_details(uri, notify)
     -- Expects a minimum of "host" and "remote_path", "auth_uri"
     if not details.host or not details.remote_path or not details.auth_uri then
         if not details.host then
-            notify("Error parsing URI: {ENMRT02} -- Unable to parse host from URI: " .. uri, log.levels.ERROR)
+            notify("Error parsing URI: {ENMRT02} -- Unable to parse host from URI: " .. uri, vim.log.levels.ERROR)
         end
         if not details.remote_path then
-            notify("Error parsing URI: {ENMRT03} -- Unable to parse path from URI: " .. uri, log.levels.ERROR)
+            notify("Error parsing URI: {ENMRT03} -- Unable to parse path from URI: " .. uri,vim.log.levels.ERROR)
         end
         if not details.auth_uri then
-            notify("Error parsing URI: {ENMRT04} -- Unable to parse authentication uri from URI: " .. uri, log.levels.ERROR)
+            notify("Error parsing URI: {ENMRT04} -- Unable to parse authentication uri from URI: " .. uri,vim.log.levels.ERROR)
         end
         return {}
     end
@@ -123,7 +120,7 @@ end
 local get_remote_file = function(path, details)
     details = details or get_remote_details(path)
     if not details then
-        notify("Error Opening Path: {ENMRT05}", log.levels.ERROR)
+        notify("Error Opening Path: {ENMRT05}",vim.log.levels.ERROR)
         return
     end
     local unique_file_name = details.provider.get_unique_name(details.remote_path, details)
