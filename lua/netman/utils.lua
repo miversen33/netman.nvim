@@ -69,7 +69,7 @@ end
 
 local generate_string = function(string_length)
     local return_string = ""
-    for index = 1, string_length do
+    for _ = 1, string_length do
         return_string = return_string .. string.char(math.random(97,122))
     end
     return return_string
