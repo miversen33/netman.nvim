@@ -190,7 +190,6 @@ local export_functions = function()
 end
 
 local setup = function(options)
-    -- TODO(Mike): Input ability to handle ssh weirdness (like needing a password/passphrase) via neovim ui?
     if vim.g.loaded_netman then
         return
     end
