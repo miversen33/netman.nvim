@@ -2,6 +2,8 @@ local remote_tools = require('netman.remote_tools')
 local utils        = require('netman.utils')
 local notify       = utils.notify
 
+local version = "0.1"
+
 local default_options = {
     allow_netrw     = false,
     keymaps         = {}, -- TODO(Mike): Figure this out
