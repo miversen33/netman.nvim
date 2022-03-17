@@ -39,7 +39,7 @@ The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
         -- PENDING IMPLEMENTATION
     debug   = false,
         -- Passing this as true will enable significant more log output.
-        -- Note: Logs are output by default to `$HOME/.cache/nvim/netman/logs.txt`
+        -- Note: Logs are output by default to `$HOME/.local/nvim/netman/logs.txt`
         -- though this is likely to change to a better (more fitting) location.
     compress = false,
         -- Setting "compress" to true will prompt the underlying provider to also
