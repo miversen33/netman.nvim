@@ -143,7 +143,7 @@ local get_remote_file = function(path, details)
     end
     details.local_file_name = unique_file_name
     details.local_file  = utils.files_dir .. unique_file_name
-    details.provider.read_file(path, details)
+    details.provider.read_file(details)
     return details.local_file
 end
 

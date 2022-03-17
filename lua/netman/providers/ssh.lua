@@ -197,30 +197,37 @@ local get_details = function(uri)
     details.provider = nil
     details.local_file_name = nil
     details.is_dummy = nil
-    notify("Constructed Auth URI: " .. details.auth_uri, log.levels.DEBUG, true)
+    notify("Constructed Auth URI: " .. details.auth_uri,vim.log.levels.DEBUG, true)
     return details
 end
 
-local read_file = function(path, details)
+local read_file = function(details)
+    -- read_file is used to fetch and save a remote file locally
+    -- :param details(Table):
+    --     A Table representing the remote file details as returned via @see get_remote_details
+
     local compression = ''
     if(use_compression) then
         compression = '-C '
     end
-    notify("Connecting to host: " .. details.host, log.levels.INFO, true)
+    notify("Connecting to host: " .. details.host,vim.log.levels.INFO, true)
     local command = "scp " .. compression .. details.auth_uri .. ':' .. details.remote_path .. ' ' .. details.local_file
-    notify("Running Command: " .. command, log.levels.DEBUG, true)
-    notify("Pulling down file: '" .. details.remote_path .. "' and saving to '" .. details.local_file .. "'", log.levels.INFO, true)
-    local worked, exitcode, code = os.execute(command) -- TODO(Mike): Determine if this is "faster" than using vim.jobstart?
+    notify("Running Command: " .. command,vim.log.levels.DEBUG, true)
+    notify("Pulling down file: '" .. details.remote_path .. "' and saving to '" .. details.local_file .. "'",vim.log.levels.INFO, true)
+    local _, exitcode, code = os.execute(command) -- TODO(Mike): Determine if this is "faster" than using vim.jobstart?
     code = code or ""
     if exitcode then
-        notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. path .. "! Received exitcode: " .. exitcode .. "\n\tAdditional Details: " .. code, log.levels.ERROR)
+        notify("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. details.remote_path .. "! Received exitcode: " .. exitcode .. "\n\tAdditional Details: " .. code,vim.log.levels.ERROR)
     end
-    notify("Saved Remote File: " .. details.remote_path .. " to " .. details.local_file, log.levels.DEBUG, true)
+    notify("Saved Remote File: " .. details.remote_path .. " to " .. details.local_file,vim.log.levels.DEBUG, true)
 end
 
-local read_directory = function(path, details)
+local read_directory = function(details)
+    -- read_directory is used to fetch the contents of a remote directory
+    -- :param details(Table):
+    --     A Table representing the remote file details as returned via @see get_remote_details
+
     -- TODO(Mike): Add support for sorting the return info????
-    details = details or get_details(path)
     local remote_files = {
         dirs  = {
             hidden = {},
