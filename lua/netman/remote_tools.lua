@@ -1,5 +1,9 @@
 -- TODO
 -- [ ] Stop breaking LSP integration
+-- [ ] Update dynamic protocol provider handling
+-- [ ] We need a way to handle overriding protocol providers. I think the best way to handle this is to simply
+--         override core and then accept all providers after that in a first-come-first-serve queue
+-- [ ] Create way to shunt off unhandled protocols to netrw
 
 local utils = require('netman.utils')
 local notify = utils.notify
@@ -48,7 +52,6 @@ end
 
 local init = function(options)
     -- TODO(Mike): Probably want a way to roll the netman logs (in the event they are chungoy)
-    -- TODO(Mike): Add way to dynamically add providers _after_ init
     if vim.g.netman_remotetools_setup == 1 then
         return
     end
