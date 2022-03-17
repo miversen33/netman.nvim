@@ -23,7 +23,7 @@ The server must have [find](https://man7.org/linux/man-pages/man1/find.1.html) i
 Using Netman should be as simple as adding this line to your `init.lua`
 
 ```lua
-require('netman.nvim').setup({})
+require('netman').setup({})
 ```
 
 The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
@@ -74,3 +74,31 @@ Accessing files/directories over ssh can be done in below format
     - `/[//]`    : Forward slash (one) is considered a relative path to the `$USER` home directory. Note, this will work regardless of if `$USER` is specified or not. Providing `///` will act as a "Full Path" override
     - `$PATH`    : The path to a file/directory to interact with. If not provided, defaults to `/[//]` as described above (Optional)
 
+## Debugging
+
+When debugging your netman session, ensure that you have netman running in `DEBUG` mode. To do this, update your `setup` configuration to include `debug=true` in the input table. An example
+```lua
+require('netman').setup({'debug'=true})
+```
+
+By using the debug flag, significantly more information is output into the logs.
+When you encounter a bug that you wish to submit an issue for, 
+please refer to [How to fill out issue](https://github.com/miversen33/netman.nvim/issues/3). Netman is designed to make
+your life as the user easy. To help accomplish this, netman has a command built in
+specifically to dump session logs for you.
+```vim
+:Nmlogs
+```
+-- More details coming on how its implemented and how to use it.
+
+You can additionally provide an output path for the logs to be stored at
+```vim
+:Nmlogs /home/miversen33/WHY_YOU_BIG_DED.log
+```
+This will dump the session log out into the above listed `/home/miversen33/WHY_YOU_BIG_DED.log` file, which can then be retrieved and uploaded with your issue.
+
+NOTE: In order for the logs to be useful, it is required that `:Nmlogs` be ran from within
+the problem session as only the logs associated with the current session will be aggregated.
+
+The logfile for netman is stored in `$HOME/.local/nvim/netman/logs.txt` if you would prefer to 
+look through this in an attempt to troubleshoot issues
