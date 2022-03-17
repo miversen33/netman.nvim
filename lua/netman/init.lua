@@ -70,7 +70,7 @@ local read = function(path, execute_post_read_cmd)
     --     On successful read, this will return 1 of 2 things
     --     - Nothing
     --     - Table object of directory contents
-    --     
+    --
     --     In the event that we are reading a file, this will return nothing and instead
     --     create a new buffer for which the end user can view/modify the contents of a remote file
     --     If the path is a rmeote directory _AND_ you have not configured a browse_handler, this will return an non-modifiable buffer with the contents of the directory to browse. It is highly recommended that you use Netman as the backend to a file browser (such as [telescope-file-browser.nvim](https://github.com/nvim-telescope/telescope-file-browser.nvim))
