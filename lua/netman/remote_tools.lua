@@ -130,7 +130,7 @@ local get_remote_file = function(path, details)
         notify("Error Opening Path: {ENMRT05}",vim.log.levels.ERROR)
         return
     end
-    local unique_file_name = details.provider.get_unique_name(details.remote_path, details)
+    local unique_file_name = details.provider.get_unique_name(details)
     if unique_file_name == nil then
         unique_file_name = utils.generate_string(20)
         notify("It appears that " .. details.remote_path .. " doesn't exist. Generating dummy file and saving later", vim.log.levels.INFO, true)
@@ -152,21 +152,20 @@ local save_remote_file = function(details)
     if details.is_dummy then
         notify("Updating temporary file to be the newly pushed file", vim.log.levels.INFO, true)
         local unique_file_name = details.provider.get_unique_name(details)
-        if unique_file_name == nil then
-            return
+        if unique_file_name ~= nil then
+            utils.lock_file(unique_file_name, details.buffer)
+            -- NOTE(Mike): This may _potentially_ be the cause for a race condition
+            -- where you try to lock a file that didn't exist before and was
+            -- magically created remotely (and pulled down locally) before this
+            -- lock was created, thus causing out of sync issues between this buffer
+            -- and whatever buffer you have the updated version of this file on
+            -- Its highly unlikely this will ever happen and thus
+            -- I wont address this yet. Just a thing to keep in the back of your mind
+            utils.unlock_file(details.local_file_name)
+            details.local_file_name = unique_file_name
+            details.local_file = utils.files_dir .. unique_file_name
+            details.is_dummy = nil
         end
-        utils.lock_file(unique_file_name, details.buffer)
-        -- NOTE(Mike): This may _potentially_ be the cause for a race condition
-        -- where you try to lock a file that didn't exist before and was
-        -- magically created remotely (and pulled down locally) before this
-        -- lock was created, thus causing out of sync issues between this buffer
-        -- and whatever buffer you have the updated version of this file on
-        -- Its highly unlikely this will ever happen and thus
-        -- I wont address this yet. Just a thing to keep in the back of your mind
-        utils.unlock_file(details.local_file_name)
-        details.local_file_name = unique_file_name
-        details.local_file = utils.files_dir .. unique_file_name
-        details.is_dummy = nil
     end
 end
 
