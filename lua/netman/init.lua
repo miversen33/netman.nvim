@@ -172,9 +172,8 @@ local load_provider = function(provider)
 end
 
 local generate_session_logs = function(output_path)
-   local file_name = utils.generate_string(10)
-    output_path = output_path or "$HOME/" .. file_name
-    utils.generate_session_log(output_path)
+    output_path = output_path or "$HOME/" .. utils.generate_string(10)
+    utils.generate_session_log(output_path, remote_tools.get_providers_info(version))
 end
 
 local export_functions = function()

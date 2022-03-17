@@ -33,6 +33,22 @@ local load_provider = function(provider_path, options)
     return provider_string
 end
 
+local get_providers_info = function(system_version)
+    local neovim_details = vim.version()
+    local headers = {
+        '----------------------------------------------------',
+        "Neovim Version: " .. neovim_details.major .. "." .. neovim_details.minor,
+        "System: " .. vim.loop.os_uname().sysname,
+        "Netman Version: " .. system_version,
+        "Provider Details"
+    }
+    for _, provider in ipairs(_providers) do
+        table.insert(headers, "    " .. provider._provider_path .. " --protocol " .. provider.name .. " --version " .. provider.version)
+    end
+    table.insert(headers, '----------------------------------------------------')
+    return headers
+end
+
 local init = function(options)
     -- TODO(Mike): Probably want a way to roll the netman logs (in the event they are chungoy)
     -- TODO(Mike): Add way to dynamically add providers _after_ init

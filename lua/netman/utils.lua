@@ -38,14 +38,14 @@ local notify = function(message, level, file_only, log_path)
     vim.fn.writefile({log_message}, log_path, 'a')
 end
 
-local generate_session_log = function(output_path)
+local generate_session_log = function(output_path, logs)
+    logs = logs or {}
     output_path = vim.fn.resolve(vim.fn.expand(output_path))
-    local line = ''
     local log_path = data_dir .. "logs.txt"
-    local logs = {}
+    local line = ''
     local pulled_sid = ''
-    local log_file = io.input(log_path)
     local keep_running = true
+    local log_file = io.input(log_path)
     notify("Gathering Logs...", vim.log.levels.INFO)
     while keep_running do
         line = io.read('*line')
@@ -58,10 +58,10 @@ local generate_session_log = function(output_path)
             end
         end
     end
+    io.close(log_file)
     local message = "Saving Logs"
     notify(message, vim.log.levels.INFO)
     table.insert(logs, line)
-    -- os.execute('touch ' .. output_path)
     vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
     vim.fn.writefile(logs, output_path)
     notify("Saved logs to " .. output_path)
