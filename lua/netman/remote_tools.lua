@@ -31,6 +31,7 @@ local load_provider = function(provider_path, options)
                 provider_string = provider_string .. ',' .. pattern
             end
         end
+        provider._provider_path = provider_path
     else
         notify('Failed to initialize provider: ' .. provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
     end
