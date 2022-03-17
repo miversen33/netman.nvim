@@ -6,8 +6,7 @@
 -- [ ] Delete files remotely
 -- [ ] Delete directories remotely
 -- [ ] Handle SSH weirdness (needing passwords/passphrases will break this right now)
-
-local log = vim.log
+-- [ ] Cleanup errors
 
 local utils        = require('netman.utils')
 local notify       = utils.notify
@@ -90,9 +89,9 @@ local get_unique_name = function(path, remote_info)
             if(unique_name == '') then
                 unique_name = line
             elseif(line and not line:match('^(%s*)$')) then
-                notify("Received invalid output -> " .. line .. " <- for unique name command!", log.levels.WARN)
-                notify("Ran command: " .. command, log.levels.INFO, true)
-                notify("Error Getting Remote File Information: {ENM05} -- Failed to generate unique file name for file: " .. path, log.levels.TRACE)
+                notify("Received invalid output -> " .. line .. " <- for unique name command!",vim.log.levels.WARN)
+                notify("Ran command: " .. command,vim.log.levels.INFO, true)
+                notify("Error Getting Remote File Information: {ENM05} -- Failed to generate unique file name for file: " .. path,vim.log.levels.TRACE)
                 unique_name = nil
                 return
             end
@@ -102,7 +101,7 @@ local get_unique_name = function(path, remote_info)
         if unique_name == nil then return end
         for _, line in ipairs(output) do
             if unique_name ~= '' and line and not line:match('^(%s*)$')then
-                notify("Error Getting Remote File Information: {ENM06} -- Received Remote Error: " .. line, log.levels.WARN, true)
+                notify("Error Getting Remote File Information: {ENM06} -- Received Remote Error: " .. line,vim.log.levels.WARN, true)
                 -- TODO(Mike): Specifically check if the string `No such file or directory` is in the error. If this is a permission error we should let the user know, but if the file doesn't exist, we can just ignore this
                 unique_name = nil
                 return
@@ -118,13 +117,13 @@ local get_unique_name = function(path, remote_info)
         })
     vim.fn.jobwait({job})
     if unique_name == nil then
-        notify("Failed to generate unique name for file", log.levels.WARN, true)
+        notify("Failed to generate unique name for file",vim.log.levels.WARN, true)
         return unique_name
     end
     notify("Generated Unique Name: " .. unique_name .. " for file " .. path, vim.log.levels.DEBUG, true)
     local hostid, fileid = unique_name:match('^([%d%a]+)-(%d+)$')
     if not hostid or not fileid then
-        notify("Failed to validate unique name for file", log.levels.WARN, true)
+        notify("Failed to validate unique name for file",vim.log.levels.WARN, true)
         return nil
     end
     return unique_name
@@ -148,45 +147,46 @@ local get_details = function(uri)
     --  protocol, (set this to your global (required) name value)
     --  buffer, (set this to nil, it will be set later)
     --  is_dummy, (set this to nil, this is reserved for potential later use)
+
     --  -- OPTIONAL FIELDS
     --  user, (The user from the URI. This is optional)
     --  port, (The port from the URI. This is optional)
     -- }
-    notify("Parsing URI: " .. base_uri, log.levels.INFO, true)
     local user, port, base_uri
     base_uri = uri
+    notify("Parsing URI: " .. base_uri,vim.log.levels.INFO, true)
     local details = {
         host = nil,
         remote_path = nil
     }
     uri = uri:gsub('^(.*)://', '')
-    notify("Post protocol URI reduction: " .. uri, log.levels.DEBUG, true)
+    notify("Post protocol URI reduction: " .. uri,vim.log.levels.DEBUG, true)
     user = uri:match(user_pattern)
     if user ~= nil then
         details.user = user
-        notify("Matched User: " .. details.user, log.levels.DEBUG, true)
+        notify("Matched User: " .. details.user,vim.log.levels.DEBUG, true)
         uri = uri:gsub(user_pattern, '')
-        notify("Post user URI reduction: " .. uri, log.levels.DEBUG, true)
+        notify("Post user URI reduction: " .. uri,vim.log.levels.DEBUG, true)
     end
     details.host = uri:match(host_pattern)
     if not details.host then
-        notify("Error Parsing Host: {ENMSSH01} -- Unable to parse host from uri: " .. base_uri, log.levels.ERROR)
+        notify("Error Parsing Host: {ENMSSH01} -- Unable to parse host from uri: " .. base_uri,vim.log.levels.ERROR)
         return details
     end
     uri = uri:gsub(host_pattern, '')
-    notify("Post host uri reduction: " .. uri, log.levels.DEBUG, true)
+    notify("Post host uri reduction: " .. uri,vim.log.levels.DEBUG, true)
     port = uri:match(port_pattern)
     if port ~= nil then
         details.port = port
-        notify("Matched Port: " .. details.port, log.levels.DEBUG, true)
+        notify("Matched Port: " .. details.port,vim.log.levels.DEBUG, true)
         uri = uri:gsub(port_pattern, '')
-        notify("Post port URI reduction: " .. uri, log.levels.DEBUG, true)
+        notify("Post port URI reduction: " .. uri,vim.log.levels.DEBUG, true)
     end
     local path_head, path_body = uri:match(path_pattern)
     path_body = path_body or ""
-    notify("Path Head Match: " .. path_head .. " -- Path Body Match: " .. path_body, log.levels.DEBUG, true) 
+    notify("Path Head Match: " .. path_head .. " -- Path Body Match: " .. path_body,vim.log.levels.DEBUG, true) 
     if (path_head:len() ~= 1 and path_head:len() ~= 3) then
-        notify("Error Parsing Remote Path: {ENMSSH02} -- Unable to parse path from uri: " .. base_uri .. ' -- Path should begin with either / (Relative) or /// (Absolute) but path begins with ' .. path_head, log.levels.ERROR)
+        notify("Error Parsing Remote Path: {ENMSSH02} -- Unable to parse path from uri: " .. base_uri .. ' -- Path should begin with either / (Relative) or /// (Absolute) but path begins with ' .. path_head,vim.log.levels.ERROR)
         return details
     end
     if path_head:len() == 1 then
@@ -194,7 +194,7 @@ local get_details = function(uri)
     else
         details.remote_path = "/" .. path_body
     end
-    notify('Path Match: ' .. details.remote_path, log.levels.DEBUG, true)
+    notify('Path Match: ' .. details.remote_path,vim.log.levels.DEBUG, true)
     if details.user then
         details.auth_uri = details.user .. "@" .. details.host
     else
@@ -293,7 +293,7 @@ local read_directory = function(details)
     local stderr_callback = function(job, output)
         for _, line in ipairs(output) do
             if not line or line:len() == 0 then goto continue end
-            notify("Error Browsing Remote Directory: {ENM04} -- STDERR: " .. line, log.levels.ERROR)
+            notify("Error Browsing Remote Directory: {ENM04} -- STDERR: " .. line,vim.log.levels.ERROR)
             ::continue::
         end
     end
@@ -319,8 +319,8 @@ local write_file = function(details)
         compression = '-C '
     end
     local command = "scp " .. compression .. details.local_file .. ' ' .. details.auth_uri .. ':' .. details.remote_path
-    notify("Updating remote file: " .. details.remote_path, log.levels.INFO)
-    notify("    Running Command: " .. command, log.levels.DEBUG, true)
+    notify("Updating remote file: " .. details.remote_path,vim.log.levels.INFO)
+    notify("    Running Command: " .. command,vim.log.levels.DEBUG, true)
 
     local stdout_callback = function(job, output)
         for _, line in ipairs(output) do
@@ -339,7 +339,7 @@ local write_file = function(details)
             stdout_callback=stdout_callback,
             stderr_callback=stderr_callback
     })
-    notify("Saved Remote File: " .. details.remote_path .. " to " .. details.local_file, log.levels.DEBUG, true)
+    notify("Saved Remote File: " .. details.remote_path .. " to " .. details.local_file,vim.log.levels.DEBUG, true)
     -- TODO(Mike): Consider a performant way to handle sending large files across the network
 end
 
