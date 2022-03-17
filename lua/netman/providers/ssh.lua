@@ -1,6 +1,7 @@
 -- TODO
 -- [x] Pull and present remote directory contents in a standard format
 -- [x] Create files remotely
+-- [ ] Cleanup Documentation
 -- [ ] Create directories
 -- [ ] Delete files remotely
 -- [ ] Delete directories remotely
@@ -27,8 +28,9 @@ local use_compression = false
 local _ssh_inited = false
 
 local init = function(options)
-    -- Optional Function that will be called on reading in providers (if exists)
-    -- Use this to create global state if needed
+    -- init is the startup function for your provider. Note: This is an optional function and does not need to exist or have any contents
+    -- :param options(Table):
+    --     A table that contains all startup/default options provided by the netman initialization. View the current spec for this TODO(Mike): HERE
     if _ssh_inited then
         return
     end
@@ -40,9 +42,14 @@ local init = function(options)
 end
 
 local is_valid = function(uri)
-    -- Required Function that will be called anytime a remote file (of any kind)
-    -- is being opened. This will be used to tell us if the remote file can be
-    -- handled by _this_ provider
+    -- is_valid is used to determine if the provided uri is valid for this provider
+    -- :param uri(String):
+    --     A string representation of a remote location. This will will be the full remote URI ($PROTOCOL://[[$USERNAME@]$HOSTNAME[:$PORT]/[//][$PATH]).
+    --     EG: sftp://user@my-remote-host/file_located_in_user_home_directory.txt
+    --     OR: sftp://user@my-remote-host///tmp/file_located_not_in_user_home_directory.txt
+    -- :return Boolean:
+    --     Return a true if the provider _can_ handle this uri
+    --     Return a false if the provider can _not_ handle this uri
     local start_index, end_index
     for _, pattern in ipairs(protocol_patterns) do
         start_index, end_index = uri:find(pattern) -- TODO(Mike): Should be able to compress this into one line
@@ -124,9 +131,12 @@ local get_unique_name = function(path, remote_info)
 end
 
 local get_details = function(uri)
-    local user, port, base_uri
-    base_uri = uri
-    -- This should return a table with the following info
+    -- get_details is used to open a details about a remote file/directory
+    -- :param uri(String):
+    --     A string representation of a remote location. This will will be the full remote URI ($PROTOCOL://[[$USERNAME@]$HOSTNAME[:$PORT]/[//][$PATH]).
+    --     EG: sftp://user@my-remote-host/file_located_in_user_home_directory.txt
+    --     OR: sftp://user@my-remote-host///tmp/file_located_not_in_user_home_directory.txt
+    -- :return:
     -- {
     --  -- REQUIRED FIELDS
     --  host, (As an IP address)
@@ -143,6 +153,8 @@ local get_details = function(uri)
     --  port, (The port from the URI. This is optional)
     -- }
     notify("Parsing URI: " .. base_uri, log.levels.INFO, true)
+    local user, port, base_uri
+    base_uri = uri
     local details = {
         host = nil,
         remote_path = nil
@@ -298,6 +310,10 @@ local read_directory = function(details)
 end
 
 local write_file = function(details)
+    -- write_file is used to push a local file to a remote location
+    -- :param details(Table):
+    --     A Table representing the remote file details as returned via @see get_remote_details
+
     local compression = ''
     if(use_compression) then
         compression = '-C '
@@ -331,11 +347,12 @@ return {
     name              = name,              -- Required Variable
     protocol_patterns = protocol_patterns, -- Required Variable
     version           = version,           -- Required Variable
+
     is_valid          = is_valid,          -- Required Function
     get_details       = get_details,       -- Required Function
     read_file         = read_file,         -- Required Function
     read_directory    = read_directory,    -- Required Function
     write_file        = write_file,        -- Required Function
-    get_unique_name   =get_unique_name,    -- Required Function
+    get_unique_name   = get_unique_name,   -- Required Function
     init              = init,              -- Optional Function
 }
