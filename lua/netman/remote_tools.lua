@@ -12,6 +12,9 @@ local _providers = {}
 local _cache_options = nil
 
 local load_provider = function(provider_path, options)
+    -- TODO(Mike): This does not handle 
+    -- - DynamicProtocols after init (meaning that we dont update the AutoCommand to include those protocols
+    -- - Overriding Protocols (meaning that you can theoretically have multiple providers handling the same protocol and no-one would be any wiser. Unknown bugs inbound!)
     local provider_string = ''
     options = options or _cache_options
     local status, provider = pcall(require, provider_path)
