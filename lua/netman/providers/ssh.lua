@@ -347,12 +347,16 @@ return {
     name              = name,              -- Required Variable
     protocol_patterns = protocol_patterns, -- Required Variable
     version           = version,           -- Required Variable
-
+    -- State management/setup functions
     is_valid          = is_valid,          -- Required Function
     get_details       = get_details,       -- Required Function
+    get_unique_name   = get_unique_name,   -- Required Function
+    init              = init,              -- Optional Function
+    -- Remote Filesystem touching functions
     read_file         = read_file,         -- Required Function
     read_directory    = read_directory,    -- Required Function
     write_file        = write_file,        -- Required Function
-    get_unique_name   = get_unique_name,   -- Required Function
-    init              = init,              -- Optional Function
+    create_directory  = nil,
+    delete_file       = nil,
+    delete_directory  = nil
 }
