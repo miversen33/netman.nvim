@@ -181,5 +181,6 @@ return {
     get_remote_files   = get_remote_files,
     save_remote_file   = save_remote_file,
     load_provider      = load_provider,
-    cleanup            = cleanup
+    cleanup            = cleanup,
+    get_providers_info  = get_providers_info
 }
