@@ -184,9 +184,9 @@ local delete_remote_file = function(details, remote_file)
     end
 end
 
-local create_remote_directory = function(details)
-    details.provider.create_directory(details)
-    notify("Created remote directory " .. details.remote_path, vim.log.levels.INFO)
+local create_remote_directory = function(details, new_directory_name, permissions)
+    details.provider.create_directory(details, new_directory_name, permissions)
+    notify("Created remote directory " .. new_directory_name, vim.log.levels.INFO)
 end
 
 local cleanup = function(details)
