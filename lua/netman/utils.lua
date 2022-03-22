@@ -19,6 +19,7 @@ local session_id = ''
 local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
 
 local notify = function(message, level, file_only, log_path)
+    message = tostring(message)
     level = level or 0
     if level < _level_threshold then
         return
