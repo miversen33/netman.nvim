@@ -31,7 +31,7 @@ local override_netrw = function(protocols)
     -- protocols should be provided via the providers. Let remote_tools give you this list
     vim.api.nvim_command('autocmd FileReadCmd '  .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "file")')
     vim.api.nvim_command('autocmd BufReadCmd '   .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "buf")')
-    vim.api.nvim_command('autocmd FileWriteCmd ' .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 1, "file")')
+    vim.api.nvim_command('autocmd FileWriteCmd ' .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 0, "file")')
     vim.api.nvim_command('autocmd BufWriteCmd '  .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 1, "buf")')
     vim.api.nvim_command('autocmd BufUnload '    .. protocols .. ' lua Nmunload(vim.fn.expand("<afile>"), 1, "buf")')
     vim.api.nvim_command('augroup END')
