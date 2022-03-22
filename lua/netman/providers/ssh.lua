@@ -438,9 +438,7 @@ return {
     read_file         = read_file,         -- Required Function
     read_directory    = read_directory,    -- Required Function
     write_file        = write_file,        -- Required Function
-    create_directory  = nil,
     delete_file       = nil,
-    delete_directory  = nil
     create_directory  = create_directory,  -- Required Function
     delete_file       = delete_file,       -- Required Function
 }
