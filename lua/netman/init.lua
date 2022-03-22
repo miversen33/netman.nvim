@@ -145,8 +145,8 @@ local write = function(path, is_buffer, execute_post_write_cmd)
     local continue = false
     if is_buffer then
         continue = _write_buffer(path)
-    -- else
-    --     continue = _write_file(path)
+    else
+        continue = _write_buffer(path)
     end
     if not continue then
         return
