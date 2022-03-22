@@ -201,5 +201,6 @@ return {
     cache_dir            = cache_dir,
     data_dir             = data_dir,
     files_dir            = files_dir,
-    generate_session_log = generate_session_log
+    generate_session_log = generate_session_log,
+    log_levels           = log_levels,
 }
