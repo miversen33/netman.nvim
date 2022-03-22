@@ -10,6 +10,20 @@ local notify = utils.notify
 
 local _providers = {}
 local _cache_options = nil
+local _provider_required_attributes = {
+    'name',
+    'protocol_patterns',
+    'version',
+    'is_valid',
+    'get_details',
+    'get_unique_name',
+    'read_file',
+    'read_directory',
+    'write_file',
+    'create_directory',
+    'delete_file',
+    'delete_directory'
+}
 
 local load_provider = function(provider_path, options)
     -- TODO(Mike): This does not handle
@@ -17,8 +31,23 @@ local load_provider = function(provider_path, options)
     -- - Overriding Protocols (meaning that you can theoretically have multiple providers handling the same protocol and no-one would be any wiser. Unknown bugs inbound!)
     local provider_string = ''
     options = options or _cache_options
-    local status, provider = pcall(require, provider_path)
+    local status, provider = pcall(require, provider_path)    
     if status then
+        notify("Validating Provider: " .. provider_path, vim.log.levels.INFO, true)
+        local missing_attrs = nil
+        for _, required_attr in pairs(_provider_required_attributes) do
+            if not provider[required_attr] then
+                if missing_attrs then
+                    missing_attrs = missing_attrs .. ', ' .. required_attr
+                else
+                    missing_attrs = required_attr
+                end
+            end
+        end
+        if missing_attrs then
+            notify("Failed to initialize Provider: " .. provider_path .. " || Missing the following required attributes -> " .. missing_attrs, vim.log.levels.INFO, true)
+            goto continue
+        end
         notify('Initializing Provider: ' .. provider.name .. ' --version: ' .. provider.version, vim.log.levels.DEBUG, true)
         if provider.init then
             provider.init(options)
@@ -35,6 +64,7 @@ local load_provider = function(provider_path, options)
     else
         notify('Failed to initialize provider: ' .. provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
     end
+    ::continue::
     return provider_string
 end
 
