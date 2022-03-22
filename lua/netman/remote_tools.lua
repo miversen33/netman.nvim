@@ -169,16 +169,19 @@ local save_remote_file = function(details)
     end
 end
 
-local delete_remote_file = function(details)
+local delete_remote_file = function(details, remote_file)
+    local remote_file_details = details.provider.get_details(remote_file)
+    notify("Attempting to remove remote file: " .. remote_file, vim.log.levels.INFO, true)
     if details.is_dummy then
         return
     end
     if details.is_dir then
-        details.provider.delete_directory(details)
+        details.provider.delete_directory(remote_file_details, remote_file_details.remote_path)
+        notify("Removed remote directory " .. remote_file, vim.log.levels.WARN)
     else
-        details.provider.delete_file(details)
+        details.provider.delete_file(remote_file_details, remote_file)
+        notify("Removed remote file " .. remote_file, vim.log.levels.WARN)
     end
-    notify("Removed remote file " .. details.remote_path, vim.log.levels.WARN)
 end
 
 local create_remote_directory = function(details)
