@@ -171,7 +171,26 @@ local unload = function(path)
 end
 
 local delete = function(path)
-    print("Deleting Path: " .. path)
+    local remove_path = path
+    if not remove_path then
+        notify("No path provided, assuming its the current buffer", utils.log_levels.DEBUG, true)
+        remove_path = vim.fn.expand('%')
+    end
+    notify("Attempting to delete: " .. remove_path, utils.log_levels.INFO, true)
+    local buffer_id = vim.fn.bufnr(remove_path)
+    notify("Found matching buffer id: " .. buffer_id .. " for path: " .. remove_path, utils.log_levels.DEBUG, true)
+    local file_info = buffer_details_table["" .. buffer_id]
+    if file_info then
+        notify("Found existing remote details in cache, using that for delete", utils.log_levels.INFO, true)
+        remove_path = file_info.remote_path
+    else
+        file_info = remote_tools.get_remote_details(remove_path)
+    end
+    if not file_info then
+        notify("Failed to resolve remote uri: " .. remove_path, utils.log_levels.ERROR)
+        return
+    end
+    remote_tools.delete_remote_file(file_info, remove_path)
 end
 
 local create = function(path)
@@ -198,6 +217,7 @@ local export_functions = function()
     -- Pending merging of https://github.com/neovim/neovim/pull/16752 into main, we have to do janky workarounds
     vim.api.nvim_command('command -nargs=1 NmloadProvider lua NmloadProvider(<f-args>)')
     vim.api.nvim_command('command -nargs=? Nmlogs lua Nmlogs(<f-args>)')
+    vim.api.nvim_command('command -nargs=? Nmdelete lua Nmdelete(<f-args>)')
 end
 
 local setup = function(options)
