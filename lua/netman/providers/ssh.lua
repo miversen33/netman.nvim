@@ -425,6 +425,46 @@ local delete_file = function(details, file_name)
 
 end
 
+local delete_directory = function(details, directory)
+    -- delete_directory is used to delete a remote directory
+    -- :param details(Table):
+    --     A Table representating the remote file details as returned via @see get_remote_details
+    -- :param directory(String):
+    --     The string name (as full absolute path) of the directory to delete
+
+    local command = "ssh " .. details.auth_uri .. ' "rm -r ' .. directory .. '"'
+    local completed_successfully = true
+
+    notify("Removing remote directory " .. directory , utils.log_levels.INFO, true)
+    notify("    Command: " .. command, utils.log_levels.DEBUG, true)
+
+    local stdout_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("    STDOUT: " .. line, utils.log_levels.INFO, true)
+        end
+    end
+
+    local stderr_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("    STDERR: " .. line, utils.log_levels.WARN, true)
+        end
+        completed_successfully = false
+    end
+
+    vim.fn.jobwait({vim.fn.jobstart(command,
+        {
+            stdout_callback=stdout_callback,
+            stderr_callback=stderr_callback
+        })
+    })
+    if not completed_successfully then
+        notify("Failed to remove directory: " .. directory .. '! Check logs for more details', utils.log_levels.ERROR)
+    else
+        notify("Removed " .. directory .. " successfully", utils.log_levels.INFO, true)
+    end
+
+end
+
 return {
     name              = name,              -- Required Variable
     protocol_patterns = protocol_patterns, -- Required Variable
@@ -438,7 +478,7 @@ return {
     read_file         = read_file,         -- Required Function
     read_directory    = read_directory,    -- Required Function
     write_file        = write_file,        -- Required Function
-    delete_file       = nil,
     create_directory  = create_directory,  -- Required Function
     delete_file       = delete_file,       -- Required Function
+    delete_directory  = delete_directory,  -- Required Function
 }
