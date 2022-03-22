@@ -141,7 +141,6 @@ local _write_buffer = function(buffer_id)
 end
 
 local write = function(path, is_buffer, execute_post_write_cmd)
-    -- TODO(Mike): Determine if the provided path is a remote file or not?
     local continue = false
     if is_buffer then
         continue = _write_buffer(path)
