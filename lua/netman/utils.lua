@@ -1,4 +1,5 @@
 local mkdir   = vim.fn.mkdir
+local log_levels = vim.log.levels
 
 local level_table = {
     'TRACE',

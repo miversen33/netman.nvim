@@ -57,7 +57,7 @@ local browse = function(path, remote_info, display_results)
     for type, subtable in pairs(contents) do
         for subtype, array in pairs(subtable) do
             for _, info in ipairs(array) do
-                notify("Received: " .. type .. '|' .. subtype .. '|' .. info.full_path, vim.log.levels.INFO, true)
+                notify("Received: " .. type .. '|' .. subtype .. '|' .. info.full_path, utils.log_levels.INFO, true)
             end
         end
     end
@@ -101,7 +101,7 @@ local read = function(path, execute_post_read_cmd)
     --     }
     local remote_info = remote_tools.get_remote_details(path)
     if not remote_info.protocol then
-        notify("Unable to match any providers to " .. path, vim.log.levels.WARN, true)
+        notify("Unable to match any providers to " .. path, utils.log_levels.WARN, true)
         return
     end
     if remote_info.is_dir then
@@ -109,7 +109,7 @@ local read = function(path, execute_post_read_cmd)
     end
     local local_file = remote_tools.get_remote_file(path, remote_info)
     if not local_file then
-        notify("Failed to get remote file", vim.log.levels.ERROR)
+        notify("Failed to get remote file", utils.log_levels.ERROR)
         return
     end
 
@@ -130,7 +130,7 @@ local _write_buffer = function(buffer_id)
     local file_info = buffer_details_table["" .. buffer_id]
     local local_file = file_info.local_file
     local buffer = vim.fn.bufname(buffer_id)
-    notify("Saving buffer: " .. buffer .. " to " .. local_file, vim.log.levels.DEBUG, true)
+    notify("Found buffer name: " .. buffer, utils.log_levels.DEBUG, true)
     vim.fn.writefile(vim.fn.getbufline(buffer, 1, '$'), local_file)
     remote_tools.save_remote_file(file_info)
     -- TODO(Mike): Handle save errors
@@ -158,10 +158,10 @@ local write = function(path, is_buffer, execute_post_write_cmd)
 end
 
 local unload = function(path)
-    notify("Unloading file: " .. path, vim.log.levels.DEBUG, true)
+    notify("Unloading file: " .. path, utils.log_levels.DEBUG, true)
     local buffer_details = buffer_details_table["" .. vim.fn.bufnr(path)]
     if not buffer_details then
-        notify("Unable to find details related to buffer: " .. path, vim.log.levels.WARN, true)
+        notify("Unable to find details related to buffer: " .. path, utils.log_levels.WARN, true)
         return
     end
     remote_tools.cleanup(buffer_details)
@@ -220,7 +220,7 @@ local setup = function(options)
             else
                 for _, provider in pairs(value) do
                     if opts.providers[provider] == nil then
-                        notify("Received External Provider: " .. provider, vim.log.levels.DEBUG, true)
+                        notify("Received External Provider: " .. provider, utils.log_levels.DEBUG, true)
                         table.insert(opts.providers, provider)
                     end
                 end
