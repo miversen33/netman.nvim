@@ -208,6 +208,7 @@ end
 
 local export_functions = function()
     _G.Nmread         = read
+    _G.Nmbrowse       = browse
     _G.Nmwrite        = write
     _G.Nmdelete       = delete
     _G.Nmcreate       = create
@@ -265,4 +266,5 @@ return {
     write  = write,
     delete = delete,
     create = create,
+    browse = browse
 }
