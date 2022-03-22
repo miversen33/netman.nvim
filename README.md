@@ -58,8 +58,6 @@ The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
 ## Network Protocols Targeted
 - [ ] [SSH](#ssh) **CURRENT TARGET FOR IMPLEMENTATION**
 - [ ] Rsync
-- [ ] FTP
-- [ ] Webdav
 
 ### SSH
 
