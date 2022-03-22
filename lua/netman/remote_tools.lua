@@ -12,7 +12,7 @@ local _providers = {}
 local _cache_options = nil
 
 local load_provider = function(provider_path, options)
-    -- TODO(Mike): This does not handle 
+    -- TODO(Mike): This does not handle
     -- - DynamicProtocols after init (meaning that we dont update the AutoCommand to include those protocols
     -- - Overriding Protocols (meaning that you can theoretically have multiple providers handling the same protocol and no-one would be any wiser. Unknown bugs inbound!)
     local provider_string = ''
@@ -169,17 +169,36 @@ local save_remote_file = function(details)
     end
 end
 
+local delete_remote_file = function(details)
+    if details.is_dummy then
+        return
+    end
+    if details.is_dir then
+        details.provider.delete_directory(details)
+    else
+        details.provider.delete_file(details)
+    end
+    notify("Removed remote file " .. details.remote_path, vim.log.levels.WARN)
+end
+
+local create_remote_directory = function(details)
+    details.provider.create_directory(details)
+    notify("Created remote directory " .. details.remote_path, vim.log.levels.INFO)
+end
+
 local cleanup = function(details)
     utils.unlock_file(details.local_file_name)
 end
 
 return {
-    init               = init,
-    get_remote_details = get_remote_details,
-    get_remote_file    = get_remote_file,
-    get_remote_files   = get_remote_files,
-    save_remote_file   = save_remote_file,
-    load_provider      = load_provider,
-    cleanup            = cleanup,
-    get_providers_info  = get_providers_info
+    init                    = init,
+    get_remote_details      = get_remote_details,
+    get_remote_file         = get_remote_file,
+    get_remote_files        = get_remote_files,
+    save_remote_file        = save_remote_file,
+    create_remote_directory = create_remote_directory,
+    delete_remote_file      = delete_remote_file,
+    load_provider           = load_provider,
+    cleanup                 = cleanup,
+    get_providers_info      = get_providers_info
 }
