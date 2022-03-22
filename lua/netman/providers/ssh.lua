@@ -2,9 +2,9 @@
 -- [x] Pull and present remote directory contents in a standard format
 -- [x] Create files remotely
 -- [x] Cleanup Documentation
--- [ ] Create directories
--- [ ] Delete files remotely
--- [ ] Delete directories remotely
+-- [x] Create directories
+-- [x] Delete files remotely
+-- [x] Delete directories remotely
 -- [ ] Handle SSH weirdness (needing passwords/passphrases will break this right now)
 -- [ ] Cleanup errors
 
@@ -17,7 +17,7 @@ local protocol_patterns = { -- This is the list of patterns to apply to the buff
     'scp://*',
     -- '^ssh://'
 }
-local version = '0.1' -- Required variable that is used for logging/diagnostics
+local version = '0.9' -- Required variable that is used for logging/diagnostics
 
 local user_pattern = "^(.*)@"
 local host_pattern = "^([%a%c%d%s%-%.]*)"
