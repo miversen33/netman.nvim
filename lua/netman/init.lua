@@ -127,10 +127,13 @@ local read = function(path, execute_post_read_cmd)
 end
 
 local _write_buffer = function(buffer_id)
+    buffer_id = tonumber(buffer_id)
+    notify("Received write request for buffer id: " .. buffer_id, utils.log_levels.INFO, true)
     local file_info = buffer_details_table["" .. buffer_id]
     local local_file = file_info.local_file
     local buffer = vim.fn.bufname(buffer_id)
-    notify("Found buffer name: " .. buffer, utils.log_levels.DEBUG, true)
+    -- TODO(Mike): This is displaying the local file name and not the remote uri. Fix that
+    notify("Saving buffer: {id: " .. buffer_id .. ", name: " .. buffer .. "} to " .. local_file, utils.log_levels.DEBUG, true)
     vim.fn.writefile(vim.fn.getbufline(buffer, 1, '$'), local_file)
     remote_tools.save_remote_file(file_info)
     -- TODO(Mike): Handle save errors
