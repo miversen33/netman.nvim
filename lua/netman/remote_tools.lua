@@ -121,7 +121,7 @@ local get_remote_details = function(uri)
 end
 
 local get_remote_files = function(remote_info, path)
-    return remote_info.provider.read_directory(path, remote_info)
+    return remote_info.provider.read_directory(remote_info, path)
 end
 
 local get_remote_file = function(path, details)

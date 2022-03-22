@@ -38,7 +38,16 @@ local override_netrw = function(protocols)
 end
 
 local browse = function(path, remote_info, display_results)
-    display_results = display_results or false
+    -- Browse (called via :Nmbrowse(path)) is used to "browse" the contents of a directory
+    -- :param path(String):
+    --      Required
+    --      A string representation of the location to open. This should include the full remote URI ($PROTOCOL://[[$USERNAME@]$HOSTNAME[:$PORT]/[//][$PATH])
+    --      For more details, `:help Nmbrowse`
+    -- :param remote_info(Table):
+    --      A table representation of the provided path. If not provided, this is created and cached
+    --      For more details, see remote_tools.get_remote_details
+    -- :param display_results(Boolean):
+    --      A boolean indicating whether `browse` should handle displaying the results natively, or if the results should be returned to be consumed
     remote_info = remote_info or remote_tools.get_remote_details(path)
     local contents = remote_tools.get_remote_files(remote_info, path)
     if not display_results then
@@ -96,7 +105,7 @@ local read = function(path, execute_post_read_cmd)
         return
     end
     if remote_info.is_dir then
-        return browse(path, remote_info)
+        return browse(path, remote_info, true)
     end
     local local_file = remote_tools.get_remote_file(path, remote_info)
     if not local_file then
