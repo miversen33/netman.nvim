@@ -21,7 +21,6 @@ local override_netrw = function(protocols)
     if vim.g.loaded_netman then
         return
     end
-    vim.g.loaded_netman = 1
     vim.g.loaded_netrwPlugin = 1
     vim.g.loaded_netrw = 1 -- TODO(Mike) By disabling netrw, we prevent ANY netrw handling of files. This is probably bad, we may want to consider a way to allow some of NetRW to function.
     -- EG, this disables NetRW's local directory handling which is not amazing. 
@@ -225,6 +224,7 @@ local setup = function(options)
     if not opts.allow_netrw then
         override_netrw(protocols)
     end
+    vim.g.loaded_netman = 1
 end
 
 return {
