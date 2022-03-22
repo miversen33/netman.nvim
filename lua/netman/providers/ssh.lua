@@ -152,6 +152,8 @@ local get_details = function(uri)
     --  user, (The user from the URI. This is optional)
     --  port, (The port from the URI. This is optional)
     -- }
+    -- NOTES:
+    --     Consider having the provider cache the various URI resolutions for future use
     local user, port, base_uri
     base_uri = uri
     notify("Parsing URI: " .. base_uri,vim.log.levels.INFO, true)
