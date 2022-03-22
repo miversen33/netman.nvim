@@ -345,6 +345,46 @@ local write_file = function(details)
     -- TODO(Mike): Consider a performant way to handle sending large files across the network
 end
 
+local create_directory = function(details, new_directory_name, permissions)
+    -- create_directory is used to create a remote directory
+    -- :param details(Table):
+    --     A Table representating the remote file details as returned via @see get_remote_details
+    -- :param new_directory_name(String):
+    --     The string name (as full absolute path) of the directory to create
+
+    permissions = permissions or ""
+    local command = "ssh " .. details.auth_uri .. ' "mkdir ' .. new_directory_name .. '"'
+    local completed_successfully = true
+
+    notify("Creating remote directory " .. new_directory_name, utils.log_levels.INFO)
+    notify("    Command: " .. command, utils.log_levels.DEBUG, true)
+
+    local stdout_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("    STDOUT: " .. line, utils.log_levels.INFO, true)
+        end
+    end
+
+    local stderr_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("    STDERR: " .. line, utils.log_levels.WARN, true)
+        end
+        completed_successfully = false
+    end
+
+    vim.fn.jobwait({vim.fn.jobstart(command,
+        {
+            stdout_callback=stdout_callback,
+            stderr_callback=stderr_callback
+        })
+    })
+    if not completed_successfully then
+        notify("Failed to create directory: " .. new_directory_name .. '! Check logs for more details', utils.log_levels.ERROR)
+    else
+        notify("Created " .. new_directory_name .. " successfully", utils.log_levels.INFO)
+    end
+end
+
 return {
     name              = name,              -- Required Variable
     protocol_patterns = protocol_patterns, -- Required Variable
@@ -361,4 +401,5 @@ return {
     create_directory  = nil,
     delete_file       = nil,
     delete_directory  = nil
+    create_directory  = create_directory,  -- Required Function
 }
