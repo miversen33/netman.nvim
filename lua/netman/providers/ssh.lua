@@ -385,6 +385,46 @@ local create_directory = function(details, new_directory_name, permissions)
     end
 end
 
+local delete_file = function(details, file_name)
+    -- delete_file is used to delete a remote file
+    -- :param details(Table):
+    --     A Table representating the remote file details as returned via @see get_remote_details
+    -- :param file_name(String):
+    --     The string name (as full absolute path) of the file to delete
+
+    local command = "ssh " .. details.auth_uri .. ' "rm ' .. file_name .. '"'
+    local completed_successfully = true
+
+    notify("Removing remote file " .. file_name , utils.log_levels.INFO)
+    notify("    Command: " .. command, utils.log_levels.DEBUG, true)
+
+    local stdout_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("    STDOUT: " .. line, utils.log_levels.INFO, true)
+        end
+    end
+
+    local stderr_callback = function(job, output)
+        for _, line in ipairs(output) do
+            notify("    STDERR: " .. line, utils.log_levels.WARN, true)
+        end
+        completed_successfully = false
+    end
+
+    vim.fn.jobwait({vim.fn.jobstart(command,
+        {
+            stdout_callback=stdout_callback,
+            stderr_callback=stderr_callback
+        })
+    })
+    if not completed_successfully then
+        notify("Failed to remove file: " .. file_name .. '! Check logs for more details', utils.log_levels.ERROR)
+    else
+        notify("Removed " .. file_name .. " successfully", utils.log_levels.INFO, true)
+    end
+
+end
+
 return {
     name              = name,              -- Required Variable
     protocol_patterns = protocol_patterns, -- Required Variable
@@ -402,4 +442,5 @@ return {
     delete_file       = nil,
     delete_directory  = nil
     create_directory  = create_directory,  -- Required Function
+    delete_file       = delete_file,       -- Required Function
 }
