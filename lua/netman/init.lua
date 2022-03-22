@@ -23,7 +23,7 @@ local override_netrw = function(protocols)
     end
     vim.g.loaded_netrwPlugin = 1
     vim.g.loaded_netrw = 1 -- TODO(Mike) By disabling netrw, we prevent ANY netrw handling of files. This is probably bad, we may want to consider a way to allow some of NetRW to function.
-    -- EG, this disables NetRW's local directory handling which is not amazing. 
+    -- EG, this disables NetRW's local directory handling which is not amazing.
     -- Alternatively, we build our own internal file handling...?
     vim.api.nvim_command('augroup Netman')
     vim.api.nvim_command('autocmd!')

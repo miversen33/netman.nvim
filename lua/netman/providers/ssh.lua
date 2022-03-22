@@ -250,10 +250,10 @@ local read_directory = function(details)
         files = {
             hidden = {},
             visible = {},
-        }, 
+        },
         links = { -- TODO(Mike): Command right now does _not_ resolve links locations.
             hidden = {},
-            visible = {} 
+            visible = {}
         }
     }
     local stdout_callback = function(job, output)
@@ -335,7 +335,7 @@ local write_file = function(details)
             notify("STDERR: " .. line, utils.log_levels.WARN)
         end
     end
-    
+
     vim.fn.jobstart(command,
         {
             stdout_callback=stdout_callback,
