@@ -192,7 +192,7 @@ local get_details = function(uri)
         return details
     end
     if path_head:len() == 1 then
-        details.remote_path = '$HOME/' .. path_body
+        details.remote_path = "'$HOME/'" .. path_body
     else
         details.remote_path = "/" .. path_body
     end
