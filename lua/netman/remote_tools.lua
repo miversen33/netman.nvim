@@ -14,7 +14,6 @@ local _provider_required_attributes = {
     'name',
     'protocol_patterns',
     'version',
-    'is_valid',
     'get_details',
     'get_unique_name',
     'read_file',
@@ -25,15 +24,17 @@ local _provider_required_attributes = {
     'delete_directory'
 }
 
+local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
+
 local load_provider = function(provider_path, options)
     -- TODO(Mike): This does not handle
     -- - DynamicProtocols after init (meaning that we dont update the AutoCommand to include those protocols
     -- - Overriding Protocols (meaning that you can theoretically have multiple providers handling the same protocol and no-one would be any wiser. Unknown bugs inbound!)
     local provider_string = ''
     options = options or _cache_options
-    local status, provider = pcall(require, provider_path)    
+    local status, provider = pcall(require, provider_path)
     if status then
-        notify("Validating Provider: " .. provider_path, vim.log.levels.INFO, true)
+        utils.log.info("Validating Provider: " .. provider_path)
         local missing_attrs = nil
         for _, required_attr in pairs(_provider_required_attributes) do
             if not provider[required_attr] then
@@ -45,24 +46,30 @@ local load_provider = function(provider_path, options)
             end
         end
         if missing_attrs then
-            notify("Failed to initialize Provider: " .. provider_path .. " || Missing the following required attributes -> " .. missing_attrs, vim.log.levels.INFO, true)
+            utils.log.info("Failed to initialize Provider: " .. provider_path .. " || Missing the following required attributes -> " .. missing_attrs)
             goto continue
         end
-        notify('Initializing Provider: ' .. provider.name .. ' --version: ' .. provider.version, vim.log.levels.DEBUG, true)
+        utils.log.debug('Initializing Provider: ' .. provider.name .. ' --version: ' .. provider.version)
         if provider.init then
             provider.init(options)
         end
-        table.insert(_providers, provider)
         for _, pattern in pairs(provider.protocol_patterns) do
+            local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
+            utils.log.debug("Reducing " .. pattern .. " down to " .. new_pattern)
+            if _providers[new_pattern] then
+                utils.log.info("Provider " .. _providers[new_pattern]._provider_path .. " is being overridden by " .. provider_path)
+            end
+            _providers[new_pattern] = provider
+            new_pattern = new_pattern .. '://*'
             if provider_string == '' then
-                provider_string = pattern
+                provider_string = new_pattern
             else
-                provider_string = provider_string .. ',' .. pattern
+                provider_string = provider_string .. ',' .. new_pattern
             end
         end
         provider._provider_path = provider_path
     else
-        notify('Failed to initialize provider: ' .. provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider', vim.log.levels.WARN)
+        utils.notify.warn('Failed to initialize provider: ' .. provider_path .. '. This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider')
     end
     ::continue::
     return provider_string
@@ -77,8 +84,8 @@ local get_providers_info = function(system_version)
         "Netman Version: " .. system_version,
         "Provider Details"
     }
-    for _, provider in ipairs(_providers) do
-        table.insert(headers, "    " .. provider._provider_path .. " --protocol " .. provider.name .. " --version " .. provider.version)
+    for pattern, provider in pairs(_providers) do
+        table.insert(headers, "    " .. provider._provider_path .. " --pattern " .. pattern .. " --protocol " .. provider.name .. " --version " .. provider.version)
     end
     table.insert(headers, '----------------------------------------------------')
     return headers
@@ -91,10 +98,16 @@ local init = function(options)
     end
     local providers = options.providers
     _cache_options = options
-    notify("Initializing Netman", vim.log.levels.DEBUG, true)
+    utils.log.debug("Initializing Netman")
     local provider_string = ''
     if(providers) then
-        notify("Loading Providers", vim.log.levels.INFO, true)
+        utils.log.info("Loading Providers")
+        --  BUG(Mike): This will create issue when there are multiple providers that handle the same
+        --  thing but have slightly different provider patterns. EG
+        --  sftp -> core ssh
+        --  sftp:// -> some provider
+        --  Both of these will be entered and saved (instead of some provider overriding core ssh) and thus
+        --  we enter a race condition to find out who gets used first
         for _, _provider_path in pairs(providers) do
             local _provider_string = load_provider(_provider_path, options)
             if _provider_string:len() > 0 then
@@ -113,28 +126,29 @@ end
 
 local get_remote_details = function(uri)
     local provider, details = nil, nil
-    for _, _provider in ipairs(_providers) do
-        if _provider.is_valid(uri) then
+    for pattern, _provider in pairs(_providers) do
+        utils.log.debug("Comparing Pattern: " .. '^' .. pattern .. '://' .. " to uri: " .. uri) 
+        if uri:match('^' .. pattern .. "://") then
             provider = _provider
-            notify("Selecting Provider: " .. provider.name .. " for URI: " .. uri, vim.log.levels.INFO, true)
+            utils.log.info("Selecting Provider: " .. provider.name .. " for URI: " .. uri)
             break
         end
     end
     if provider == nil then
-        notify("Error parsing URI: {ENMRT01} -- Unable to establish provider for URI: " .. uri, vim.log.levels.ERROR)
+        utils.notify.error("Error parsing URI: {ENMRT01} -- Unable to establish provider for URI: " .. uri)
         return {}
     end
     details = provider.get_details(uri, notify)
     -- Expects a minimum of "host" and "remote_path", "auth_uri"
     if not details.host or not details.remote_path or not details.auth_uri then
         if not details.host then
-            notify("Error parsing URI: {ENMRT02} -- Unable to parse host from URI: " .. uri, vim.log.levels.ERROR)
+            utils.notify.error("Error parsing URI: {ENMRT02} -- Unable to parse host from URI: " .. uri)
         end
         if not details.remote_path then
-            notify("Error parsing URI: {ENMRT03} -- Unable to parse path from URI: " .. uri,vim.log.levels.ERROR)
+            utils.notify.error("Error parsing URI: {ENMRT03} -- Unable to parse path from URI: " .. uri)
         end
         if not details.auth_uri then
-            notify("Error parsing URI: {ENMRT04} -- Unable to parse authentication uri from URI: " .. uri,vim.log.levels.ERROR)
+            utils.notify.error("Error parsing URI: {ENMRT04} -- Unable to parse authentication uri from URI: " .. uri)
         end
         return {}
     end
@@ -144,9 +158,9 @@ local get_remote_details = function(uri)
         details.is_file = true
     end
     details.provider = provider
-    notify("Setting provider: " .. provider.name .. " for " .. details.remote_path, vim.log.levels.DEBUG, true)
+    utils.log.debug("Setting provider: " .. provider.name .. " for " .. details.remote_path)
     details.buffer = vim.fn.bufnr('%')
-    notify("Setting buffer number: " .. details.buffer .. " for " .. details.remote_path, vim.log.levels.DEBUG, true)
+    utils.log.debug("Setting buffer number: " .. details.buffer .. " for " .. details.remote_path)
     return details
 end
 
@@ -157,18 +171,18 @@ end
 local get_remote_file = function(path, details)
     details = details or get_remote_details(path)
     if not details then
-        notify("Error Opening Path: {ENMRT05}",vim.log.levels.ERROR)
+        utils.notify.error("Error Opening Path: {ENMRT05}")
         return
     end
     local unique_file_name = details.provider.get_unique_name(details)
     if unique_file_name == nil then
         unique_file_name = utils.generate_string(20)
-        notify("It appears that " .. details.remote_path .. " doesn't exist. Generating dummy file and saving later", vim.log.levels.INFO, true)
+        utils.log.info("It appears that " .. details.remote_path .. " doesn't exist. Generating dummy file and saving later")
         details.is_dummy = true
     end
     local lock_file = utils.lock_file(unique_file_name, details.buffer)
     if not lock_file then
-        notify("Failed to lock remote file: " .. details.remote_path, vim.log.levels.ERROR)
+        utils.notify.error("Failed to lock remote file: " .. details.remote_path)
         return nil
     end
     details.local_file_name = unique_file_name
@@ -180,7 +194,7 @@ end
 local save_remote_file = function(details)
     details.provider.write_file(details)
     if details.is_dummy then
-        notify("Updating temporary file to be the newly pushed file", vim.log.levels.INFO, true)
+        utils.log.info("Updating temporary file to be the newly pushed file")
         local unique_file_name = details.provider.get_unique_name(details)
         if unique_file_name ~= nil then
             utils.lock_file(unique_file_name, details.buffer)
@@ -201,22 +215,22 @@ end
 
 local delete_remote_file = function(details, remote_file)
     local remote_file_details = details.provider.get_details(remote_file)
-    notify("Attempting to remove remote file: " .. remote_file, vim.log.levels.INFO, true)
+    utils.log.info("Attempting to remove remote file: " .. remote_file)
     if details.is_dummy then
         return
     end
     if details.is_dir then
         details.provider.delete_directory(remote_file_details, remote_file_details.remote_path)
-        notify("Removed remote directory " .. remote_file, vim.log.levels.WARN)
+        utils.notify.warn("Removed remote directory " .. remote_file)
     else
         details.provider.delete_file(remote_file_details, remote_file)
-        notify("Removed remote file " .. remote_file, vim.log.levels.WARN)
+        utils.notify.warn("Removed remote file " .. remote_file)
     end
 end
 
 local create_remote_directory = function(details, new_directory_name, permissions)
     details.provider.create_directory(details, new_directory_name, permissions)
-    notify("Created remote directory " .. new_directory_name, vim.log.levels.INFO)
+    utils.log.info("Created remote directory " .. new_directory_name)
 end
 
 local cleanup = function(details)
