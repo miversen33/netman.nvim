@@ -15,8 +15,8 @@ Netman's target is to provide a wholely lua written replacement for [Netrw](http
 Your client (and server) will need whatever software is necessary to use the remote protocol of your chosing. This means that if you wish to connect to a remote file system via sftp/scp, your client and server must both have installed (and running) ssh. 
 The server must have [find](https://man7.org/linux/man-pages/man1/find.1.html) installed (this is usually preinstalled on most linux environments)
 
-- SSH (For file system management via sftp/scp)
 - find
+- [Required Protocols for Remote Providers](#core-providers)
 
 ## Usage
 
@@ -73,6 +73,8 @@ directory as a working directory and thus it will refuse to connect.
 ## Network Protocols Targeted
 - [ ] [SSH](#ssh) **CURRENT TARGET FOR IMPLEMENTATION**
 - [ ] Rsync
+
+## Core Providers
 
 ### SSH
 
