@@ -28,10 +28,9 @@ local override_netrw = function(protocols)
 
     vim.api.nvim_command('augroup Netman')
     vim.api.nvim_command('autocmd!')
+    vim.api.nvim_command('autocmd VimEnter sil! au! FileExplorer *')
     -- protocols should be provided via the providers. Let remote_tools give you this list
-    vim.api.nvim_command('autocmd FileReadCmd ' .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "file")')
-    -- vim.api.nvim_command('autocmd FileReadCmd '  .. protocols .. [[ exec "sil doautocmd FileReadPre ".expand('<amatch>').' | call Nmread("'.expand("<amatch>").'" "file")']])
-    -- vim.api.nvim_command('autocmd BufReadCmd '   .. protocols .. [[ exec "sil doautocmd BufReadPre ".expand('<amatch>').' | call Nmread("'.expand("<amatch>").'")']])
+    vim.api.nvim_command('autocmd FileReadCmd '  .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "file")')
     vim.api.nvim_command('autocmd BufReadCmd '   .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "buf")')
     vim.api.nvim_command('autocmd FileWriteCmd ' .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 0, "file")')
     vim.api.nvim_command('autocmd BufWriteCmd '  .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 1, "buf")')
@@ -63,40 +62,6 @@ local browse = function(path, remote_info, display_results)
             end
         end
     end
-end
-
-local read2 = function(path, execute_post_read_cmd)
-    local remote_info = remote_tools.get_remote_details(path)
-    if not remote_info.protocol then
-        utils.log.warn("Unable to match any providers to " .. path)
-        return
-    end
-    if remote_info.is_dir then
-        return browse(path, remote_info, true)
-    end
-    local local_file = remote_tools.get_remote_file(path, remote_info)
-    if not local_file then
-        utils.notify.error("Failed to get remote file")
-        return
-    end
-
-    -- So because of how the neovim LSP is, we are probably going to want to look into potentially loading to hidden buffers and pulling them up to the foreground after load
-    if execute_post_read_cmd == "buf" then
-        vim.api.nvim_command('exe "sil doau BufReadPre ' .. path .. '"')
-    else
-        vim.api.nvim_command('exe "sil doau FileReadPre ' .. path .. '"')
-    end
-    vim.api.nvim_command('keepjumps sil! 0')
-    vim.api.nvim_command('keepjumps execute "sil! read ++edit ' .. local_file .. '"')
-    vim.api.nvim_command('keepjumps sil! 0d')
-    vim.api.nvim_command('keepjumps sil! 0')
-    if execute_post_read_cmd == "buf" then
-        vim.api.nvim_command('execute "sil doautocmd BufReadPost ' .. path .. '"')
-    elseif execute_post_read_cmd == "file" then
-        vim.api.nvim_command('execute "sil doautocmd FileReadPost ' .. path .. '"')
-    end
-
-    buffer_details_table["" .. remote_info.buffer] = remote_info
 end
 
 local read = function(path, execute_post_read_cmd)
@@ -166,12 +131,6 @@ local read = function(path, execute_post_read_cmd)
     end
 
     buffer_details_table["" .. remote_info.buffer] = remote_info
-    utils.log.info("Checking LSP Settings!")
-    if not vim.lsp then
-        utils.notify.warn("Core LSP missing!")
-        return
-    end
-    local lsps = vim.lsp.get_active_clients()
 end
 
 local _write_buffer = function(buffer_id)
