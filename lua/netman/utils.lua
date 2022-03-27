@@ -1,13 +1,4 @@
 local mkdir   = vim.fn.mkdir
-local log_levels = vim.log.levels
-
-local level_table = {
-    'TRACE',
-    'DEBUG',
-    'INFO',
-    'WARN',
-    'ERROR'
-}
 
 local _level_threshold = 3
 local _is_setup = false
@@ -17,28 +8,16 @@ local locks_dir = cache_dir .. 'lock_files/'
 local data_dir  = vim.fn.stdpath('data')  .. '/netman/'
 local session_id = ''
 local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
+local log_timestamp_format = '%Y-%m-%d %H:%M:%S'
+local log_file = nil
 
-local notify = function(message, level, file_only, log_path)
-    message = tostring(message)
-    level = level or 0
-    if level < _level_threshold then
-        return
-    end
-    file_only = file_only or false
-    level = level_table[level + 1]
-    log_path = log_path or data_dir .. "logs.txt"
-    if not file_only then
-        vim.notify(message, level)
-    end
-    local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-    local log_message = '[' .. timestamp .. '] [SID: ' .. session_id .. '] [Level:' .. level .. ']'
-    if level:len() == 4 then
-        log_message = log_message .. ' '
-    end
-    log_message = log_message .. ' Netman'
-    log_message = log_message .. ' -- ' .. message
-    vim.fn.writefile({log_message}, log_path, 'a')
-end
+local log = {}
+local notify = {}
+
+log.levels = vim.deepcopy(vim.log.levels)
+notify.levels = vim.deepcopy(log.levels)
+
+local format_func = function(arg) return vim.inspect(arg, {newline='\n'}) end
 
 local generate_session_log = function(output_path, logs)
     logs = logs or {}
@@ -101,8 +80,8 @@ end
 
 local is_file_locked = function(file_name)
     local command = 'cat ' .. locks_dir .. file_name
-    notify('Checking if file: ' .. file_name .. ' is locked', vim.log.levels.DEBUG, true)
-    notify("Check Lock Command: " .. command, vim.log.levels.DEBUG, true)
+    log.debug('Checking if file: ' .. file_name .. ' is locked')
+    log.debug("Check Lock Command: " .. command)
     local lock_info = ''
     local stdout_callback = function(job, output)
         if not lock_info or lock_info:len() > 0 then return end
@@ -116,7 +95,7 @@ local is_file_locked = function(file_name)
         if not lock_info then return end
         for _, line in pairs(output) do
             if line and not line:match('^(%s*)$') then
-                notify("Received Lock file check error: " .. line, vim.log.levels.INFO, true)
+                log.info("Received Lock file check error: " .. line)
                 lock_info = nil
                 return
             end
@@ -137,7 +116,7 @@ local is_file_locked = function(file_name)
         local _, lock_pid = lock_info:match('^(%d+):(%d+)$')
         if not _verify_lock(lock_pid) then
             lock_info = nil
-            notify("Clearing out stale lockfile: " .. file_name, vim.log.levels.INFO, true)
+            log.info("Clearing out stale lockfile: " .. file_name)
             os.execute('rm ' .. locks_dir .. file_name)
         end
     end
@@ -148,9 +127,9 @@ local lock_file = function(file_name, buffer)
     local lock_info = is_file_locked(file_name)
     local current_pid = vim.fn.getpid()
     if lock_info then
-        notify("Found existing lock info for file --> " .. lock_info, vim.log.levels.INFO, true)
+        log.info("Found existing lock info for file --> " .. lock_info)
         local lock_buffer, lock_pid = lock_info:match('^(%d+):(%d+)$')
-        notify("Unable to lock file: " .. file_name .. " to buffer " .. buffer .. " for pid " .. current_pid .. ". File is already locked to pid: " .. lock_pid .. ' for buffer: ' .. lock_buffer, vim.log.levels.ERROR)
+        notify.error("Unable to lock file: " .. file_name .. " to buffer " .. buffer .. " for pid " .. current_pid .. ". File is already locked to pid: " .. lock_pid .. ' for buffer: ' .. lock_buffer)
         return false
     end
     os.execute('echo "' .. buffer .. ':' .. current_pid .. '" > ' .. locks_dir .. file_name)
@@ -161,9 +140,9 @@ local unlock_file = function(file_name)
     if not is_file_locked(file_name) then
         return
     end
-    notify("Removing lock file for " .. file_name, vim.log.levels.INFO, true)
+    log.info("Removing lock file for " .. file_name)
     os.execute('rm ' .. locks_dir .. file_name)
-    notify("Removing cached file for " .. file_name, vim.log.levels.INFO, true)
+    log.info("Removing cached file for " .. file_name)
     os.execute('rm ' .. files_dir .. file_name)
 end
 
@@ -181,18 +160,75 @@ local setup = function(level_threshold)
     mkdir(data_dir,  'p') -- Creating the data dir
     mkdir(files_dir, 'p') -- Creating the temp files dir
     mkdir(locks_dir, 'p') -- Creating the locks files dir
+    log_file = io.open(data_dir .. "logs.txt", "a+")
     session_id = generate_string(15)
-    notify("Generated Session ID: " .. session_id .. " for logging.", vim.log.levels.INFO, true)
 
     _is_setup = true
-    if _level_threshold == 0 then
-        notify("Netman Running in DEBUG mode!", vim.log.levels.INFO, true)
+end
+
+do
+    local initial_setup = false
+    if not _is_setup then
+        initial_setup = true
+        setup()
+    end
+    -- Yoinked the concepts in here from https://github.com/neovim/neovim/blob/master/runtime/lua/vim/lsp/log.lua
+    -- Thanks Neovim team <3
+
+    for level, levelnr in pairs(log.levels) do
+        log[level] = levelnr
+        notify[level] = levelnr
+
+        log[level:lower()] = function(...)
+            local argc = select("#", ...)
+            if argc == 0 then return true end
+
+            if levelnr < _level_threshold then return end
+
+            local info = debug.getinfo(2, "Sl")
+            local header = string.format('[%s] [SID: %s] [Level: %s] ', os.date(log_timestamp_format), session_id, level)
+            if level:len() == 4 then
+                header = header .. ' '
+            end
+            header = string.format(header .. ' -- %s:%s', info.short_src, info.currentline)
+            local parts = { header }
+            for i = 1, argc do
+                local arg = select(i, ...)
+                if arg == nil then
+                    table.insert(parts, "nil")
+                else
+                    table.insert(parts, format_func(arg))
+                end
+            end
+            log_file:write(table.concat(parts, '\t'), "\n")
+            log_file:flush()
+        end
+        notify[level:lower()] = function(...)
+            local argc = select("#", ...)
+            if argc == 0 then return true end
+
+            if levelnr < _level_threshold then return end
+            local parts = {}
+            for i = 1, argc do
+                local arg = select(i, ...)
+                if arg == nil then
+                    table.insert(parts, "nil")
+                else
+                    table.insert(parts, format_func(arg))
+                end
+            end
+            vim.notify(table.concat(parts, '\t'), level)
+            log[level:lower()](...)
+        end
+    end
+    if initial_setup then
+        log.info("Generated Session ID: " .. session_id .. " for logging.")
     end
 end
 
 return {
     notify               = notify,
-    setup                = setup,
+    log                  = log,
     adjust_log_level     = adjust_log_level,
     generate_string      = generate_string,
     lock_file            = lock_file,
@@ -202,5 +238,4 @@ return {
     data_dir             = data_dir,
     files_dir            = files_dir,
     generate_session_log = generate_session_log,
-    log_levels           = log_levels,
 }

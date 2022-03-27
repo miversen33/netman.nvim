@@ -25,11 +25,13 @@ local override_netrw = function(protocols)
     vim.g.loaded_netrw = 1 -- TODO(Mike) By disabling netrw, we prevent ANY netrw handling of files. This is probably bad, we may want to consider a way to allow some of NetRW to function.
     -- EG, this disables NetRW's local directory handling which is not amazing.
     -- Alternatively, we build our own internal file handling...?
+
     vim.api.nvim_command('augroup Netman')
     vim.api.nvim_command('autocmd!')
-    vim.api.nvim_command('autocmd VimEnter sil! au! FileExplorer *')
     -- protocols should be provided via the providers. Let remote_tools give you this list
-    vim.api.nvim_command('autocmd FileReadCmd '  .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "file")')
+    vim.api.nvim_command('autocmd FileReadCmd ' .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "file")')
+    -- vim.api.nvim_command('autocmd FileReadCmd '  .. protocols .. [[ exec "sil doautocmd FileReadPre ".expand('<amatch>').' | call Nmread("'.expand("<amatch>").'" "file")']])
+    -- vim.api.nvim_command('autocmd BufReadCmd '   .. protocols .. [[ exec "sil doautocmd BufReadPre ".expand('<amatch>').' | call Nmread("'.expand("<amatch>").'")']])
     vim.api.nvim_command('autocmd BufReadCmd '   .. protocols .. ' lua Nmread(vim.fn.expand("<amatch>"), "buf")')
     vim.api.nvim_command('autocmd FileWriteCmd ' .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 0, "file")')
     vim.api.nvim_command('autocmd BufWriteCmd '  .. protocols .. ' lua Nmwrite(vim.fn.expand("<abuf>"), 1, "buf")')
@@ -57,10 +59,44 @@ local browse = function(path, remote_info, display_results)
     for type, subtable in pairs(contents) do
         for subtype, array in pairs(subtable) do
             for _, info in ipairs(array) do
-                notify("Received: " .. type .. '|' .. subtype .. '|' .. info.full_path, utils.log_levels.INFO, true)
+                utils.log.info("Received: " .. type .. '|' .. subtype .. '|' .. info.full_path)
             end
         end
     end
+end
+
+local read2 = function(path, execute_post_read_cmd)
+    local remote_info = remote_tools.get_remote_details(path)
+    if not remote_info.protocol then
+        utils.log.warn("Unable to match any providers to " .. path)
+        return
+    end
+    if remote_info.is_dir then
+        return browse(path, remote_info, true)
+    end
+    local local_file = remote_tools.get_remote_file(path, remote_info)
+    if not local_file then
+        utils.notify.error("Failed to get remote file")
+        return
+    end
+
+    -- So because of how the neovim LSP is, we are probably going to want to look into potentially loading to hidden buffers and pulling them up to the foreground after load
+    if execute_post_read_cmd == "buf" then
+        vim.api.nvim_command('exe "sil doau BufReadPre ' .. path .. '"')
+    else
+        vim.api.nvim_command('exe "sil doau FileReadPre ' .. path .. '"')
+    end
+    vim.api.nvim_command('keepjumps sil! 0')
+    vim.api.nvim_command('keepjumps execute "sil! read ++edit ' .. local_file .. '"')
+    vim.api.nvim_command('keepjumps sil! 0d')
+    vim.api.nvim_command('keepjumps sil! 0')
+    if execute_post_read_cmd == "buf" then
+        vim.api.nvim_command('execute "sil doautocmd BufReadPost ' .. path .. '"')
+    elseif execute_post_read_cmd == "file" then
+        vim.api.nvim_command('execute "sil doautocmd FileReadPost ' .. path .. '"')
+    end
+
+    buffer_details_table["" .. remote_info.buffer] = remote_info
 end
 
 local read = function(path, execute_post_read_cmd)
@@ -101,7 +137,7 @@ local read = function(path, execute_post_read_cmd)
     --     }
     local remote_info = remote_tools.get_remote_details(path)
     if not remote_info.protocol then
-        notify("Unable to match any providers to " .. path, utils.log_levels.WARN, true)
+        utils.log.warn("Unable to match any providers to " .. path)
         return
     end
     if remote_info.is_dir then
@@ -109,10 +145,16 @@ local read = function(path, execute_post_read_cmd)
     end
     local local_file = remote_tools.get_remote_file(path, remote_info)
     if not local_file then
-        notify("Failed to get remote file", utils.log_levels.ERROR)
+        utils.notify.error("Failed to get remote file")
         return
     end
 
+    -- So because of how the neovim LSP is, we are probably going to want to look into potentially loading to hidden buffers and pulling them up to the foreground after load
+    if execute_post_read_cmd == "buf" then
+        vim.api.nvim_command('exe "sil doau BufReadPre ' .. path .. '"')
+    else
+        vim.api.nvim_command('exe "sil doau FileReadPre ' .. path .. '"')
+    end
     vim.api.nvim_command('keepjumps sil! 0')
     vim.api.nvim_command('keepjumps execute "sil! read ++edit ' .. local_file .. '"')
     vim.api.nvim_command('keepjumps sil! 0d')
@@ -124,16 +166,22 @@ local read = function(path, execute_post_read_cmd)
     end
 
     buffer_details_table["" .. remote_info.buffer] = remote_info
+    utils.log.info("Checking LSP Settings!")
+    if not vim.lsp then
+        utils.notify.warn("Core LSP missing!")
+        return
+    end
+    local lsps = vim.lsp.get_active_clients()
 end
 
 local _write_buffer = function(buffer_id)
     buffer_id = tonumber(buffer_id)
-    notify("Received write request for buffer id: " .. buffer_id, utils.log_levels.INFO, true)
+    utils.log.info("Received write request for buffer id: " .. buffer_id)
     local file_info = buffer_details_table["" .. buffer_id]
     local local_file = file_info.local_file
     local buffer = vim.fn.bufname(buffer_id)
     -- TODO(Mike): This is displaying the local file name and not the remote uri. Fix that
-    notify("Saving buffer: {id: " .. buffer_id .. ", name: " .. buffer .. "} to " .. local_file, utils.log_levels.DEBUG, true)
+    utils.log.debug("Saving buffer: {id: " .. buffer_id .. ", name: " .. buffer .. "} to " .. local_file)
     vim.fn.writefile(vim.fn.getbufline(buffer, 1, '$'), local_file)
     remote_tools.save_remote_file(file_info)
     -- TODO(Mike): Handle save errors
@@ -160,10 +208,10 @@ local write = function(path, is_buffer, execute_post_write_cmd)
 end
 
 local unload = function(path)
-    notify("Unloading file: " .. path, utils.log_levels.DEBUG, true)
+    utils.log.debug("Unloading file: " .. path)
     local buffer_details = buffer_details_table["" .. vim.fn.bufnr(path)]
     if not buffer_details then
-        notify("Unable to find details related to buffer: " .. path, utils.log_levels.WARN, true)
+        utils.log.warn("Unable to find details related to buffer: " .. path)
         return
     end
     remote_tools.cleanup(buffer_details)
@@ -172,21 +220,21 @@ end
 local delete = function(path)
     local remove_path = path
     if not remove_path then
-        notify("No path provided, assuming its the current buffer", utils.log_levels.DEBUG, true)
+        utils.log.debug("No path provided, assuming its the current buffer")
         remove_path = vim.fn.expand('%')
     end
-    notify("Attempting to delete: " .. remove_path, utils.log_levels.INFO, true)
+    utils.log.info("Attempting to delete: " .. remove_path)
     local buffer_id = vim.fn.bufnr(remove_path)
-    notify("Found matching buffer id: " .. buffer_id .. " for path: " .. remove_path, utils.log_levels.DEBUG, true)
+    utils.log.debug("Found matching buffer id: " .. buffer_id .. " for path: " .. remove_path)
     local file_info = buffer_details_table["" .. buffer_id]
     if file_info then
-        notify("Found existing remote details in cache, using that for delete", utils.log_levels.INFO, true)
+        utils.log.info("Found existing remote details in cache, using that for delete")
         remove_path = file_info.remote_path
     else
         file_info = remote_tools.get_remote_details(remove_path)
     end
     if not file_info then
-        notify("Failed to resolve remote uri: " .. remove_path, utils.log_levels.ERROR)
+        utils.notify.error("Failed to resolve remote uri: " .. remove_path)
         return
     end
     remote_tools.delete_remote_file(file_info, remove_path)
@@ -218,6 +266,7 @@ local export_functions = function()
     vim.api.nvim_command('command -nargs=1 NmloadProvider lua NmloadProvider(<f-args>)')
     vim.api.nvim_command('command -nargs=? Nmlogs lua Nmlogs(<f-args>)')
     vim.api.nvim_command('command -nargs=? Nmdelete lua Nmdelete(<f-args>)')
+    vim.api.nvim_command('command -nargs=+ Nmread lua Nmread(<f-args>)')
 end
 
 local setup = function(options)
@@ -230,12 +279,7 @@ local setup = function(options)
         opts[key] = value
     end
 
-    if default_options.debug or options.debug then
-        utils.setup(0)
-    else
-        utils.setup()
-    end
-
+    if default_options.debug or options.debug then utils.adjust_log_level(0) end
     if options then
         for key, value in pairs(options) do
             if(key ~= 'providers') then
@@ -243,7 +287,7 @@ local setup = function(options)
             else
                 for _, provider in pairs(value) do
                     if opts.providers[provider] == nil then
-                        notify("Received External Provider: " .. provider, utils.log_levels.DEBUG, true)
+                        utils.log.debug("Received External Provider: " .. provider)
                         table.insert(opts.providers, provider)
                     end
                 end
@@ -265,5 +309,6 @@ return {
     write  = write,
     delete = delete,
     create = create,
-    browse = browse
+    browse = browse,
+    util   = utils
 }
