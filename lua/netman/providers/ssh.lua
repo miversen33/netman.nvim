@@ -9,7 +9,6 @@
 -- [ ] Cleanup errors
 
 local utils        = require('netman.utils')
-local notify       = utils.notify
 
 local name = 'ssh' -- This is a required variable that should tell us what protocol is being used
 local protocol_patterns = { -- This is the list of patterns to apply to the buffer/file autocommands
@@ -38,27 +37,6 @@ local init = function(options)
     end
 
     _ssh_inited = true
-end
-
-local is_valid = function(uri)
-    -- is_valid is used to determine if the provided uri is valid for this provider
-    -- :param uri(String):
-    --     A string representation of a remote location. This will will be the full remote URI ($PROTOCOL://[[$USERNAME@]$HOSTNAME[:$PORT]/[//][$PATH]).
-    --     EG: sftp://user@my-remote-host/file_located_in_user_home_directory.txt
-    --     OR: sftp://user@my-remote-host///tmp/file_located_not_in_user_home_directory.txt
-    -- :return Boolean:
-    --     Return a true if the provider _can_ handle this uri
-    --     Return a false if the provider can _not_ handle this uri
-    local start_index, end_index
-    for _, pattern in ipairs(protocol_patterns) do
-        start_index, end_index = uri:find(pattern) -- TODO(Mike): Should be able to compress this into one line
-        -- something like
-        -- if uri:find(pattern) then return true end
-        if start_index then
-            return true
-        end
-    end
-    return false
 end
 
 local get_unique_name = function(remote_info)
@@ -470,7 +448,6 @@ return {
     protocol_patterns = protocol_patterns, -- Required Variable
     version           = version,           -- Required Variable
     -- State management/setup functions
-    is_valid          = is_valid,          -- Required Function
     get_details       = get_details,       -- Required Function
     get_unique_name   = get_unique_name,   -- Required Function
     init              = init,              -- Optional Function
