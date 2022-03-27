@@ -8,7 +8,7 @@ Netman's target is to provide a wholely lua written replacement for [Netrw](http
 
 - [ ] Remote File Management
 - [ ] Local File Management
-- [?] [Fully Functional with Neovim LSP](#lsp)
+- [x] [Fully Functional with Neovim LSP](#lsp)
 
 ## Dependencies
 
