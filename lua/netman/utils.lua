@@ -166,59 +166,55 @@ local setup = function(level_threshold)
     _is_setup = true
 end
 
+local _log = function(level, do_notify, ...)
+    -- Yoinked the concepts in here from https://github.com/neovim/neovim/blob/master/runtime/lua/vim/lsp/log.lua
+    -- Thanks Neovim team <3
+    local argc = select("#", ...)
+    if argc == 0 then return true end
+
+    local info = debug.getinfo(3, "Sl")
+    local header = string.format('[%s] [SID: %s] [Level: %s] ', os.date(log_timestamp_format), session_id, level)
+    if level:len() == 4 then
+        header = header .. ' '
+    end
+    header = string.format(header .. ' -- %s:%s', info.short_src, info.currentline)
+    local parts = { header }
+    local headerless_parts = {}
+    for i = 1, argc do
+        local arg = select(i, ...)
+        if arg == nil then
+            table.insert(parts, "nil")
+            table.insert(headerless_parts, "nil")
+        else
+            table.insert(parts, format_func(arg))
+            table.insert(headerless_parts, format_func(arg))
+        end
+    end
+    log_file:write(table.concat(parts, '\t'), "\n")
+    log_file:flush()
+    if do_notify then
+        vim.notify(table.concat(headerless_parts, '\t'), level)
+    end
+end
+
 do
     local initial_setup = false
     if not _is_setup then
         initial_setup = true
         setup()
     end
-    -- Yoinked the concepts in here from https://github.com/neovim/neovim/blob/master/runtime/lua/vim/lsp/log.lua
-    -- Thanks Neovim team <3
 
     for level, levelnr in pairs(log.levels) do
         log[level] = levelnr
         notify[level] = levelnr
 
         log[level:lower()] = function(...)
-            local argc = select("#", ...)
-            if argc == 0 then return true end
-
             if levelnr < _level_threshold then return end
-
-            local info = debug.getinfo(2, "Sl")
-            local header = string.format('[%s] [SID: %s] [Level: %s] ', os.date(log_timestamp_format), session_id, level)
-            if level:len() == 4 then
-                header = header .. ' '
-            end
-            header = string.format(header .. ' -- %s:%s', info.short_src, info.currentline)
-            local parts = { header }
-            for i = 1, argc do
-                local arg = select(i, ...)
-                if arg == nil then
-                    table.insert(parts, "nil")
-                else
-                    table.insert(parts, format_func(arg))
-                end
-            end
-            log_file:write(table.concat(parts, '\t'), "\n")
-            log_file:flush()
+            _log(level, false, ...)
         end
         notify[level:lower()] = function(...)
-            local argc = select("#", ...)
-            if argc == 0 then return true end
-
             if levelnr < _level_threshold then return end
-            local parts = {}
-            for i = 1, argc do
-                local arg = select(i, ...)
-                if arg == nil then
-                    table.insert(parts, "nil")
-                else
-                    table.insert(parts, format_func(arg))
-                end
-            end
-            vim.notify(table.concat(parts, '\t'), level)
-            log[level:lower()](...)
+            _log(level, true, ...)
         end
     end
     if initial_setup then

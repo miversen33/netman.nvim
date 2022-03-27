@@ -113,15 +113,23 @@ local read = function(path, execute_post_read_cmd)
         return
     end
 
+    utils.log.debug("Loading file " .. local_file .. " into buffer " .. remote_info.buffer)
     vim.api.nvim_command('keepjumps sil! 0')
     vim.api.nvim_command('keepjumps execute "sil! read ++edit ' .. local_file .. '"')
     vim.api.nvim_command('keepjumps sil! 0d')
     vim.api.nvim_command('keepjumps sil! 0')
+    local post_cmd = ''
+
     if execute_post_read_cmd == "buf" then
-        vim.api.nvim_command('execute "sil doautocmd BufReadPost ' .. path .. '"')
+        utils.log.info("Executing BufRead for path: " .. local_file)
+        post_cmd = 'execute "silent file ' .. local_file .. ' | doautocmd BufReadPost ' .. local_file .. '" | file ' .. path
     elseif execute_post_read_cmd == "file" then
-        vim.api.nvim_command('execute "sil doautocmd FileReadPost ' .. path .. '"')
+        utils.log.info("Executing FileRead for path: " .. local_file)
+        post_cmd = 'execute "silent file ' .. local_file .. ' | doautocmd FileReadPost ' .. local_file .. '" | file ' .. path
     end
+
+    utils.log.debug("Autocommand: " .. post_cmd)
+    vim.api.nvim_command(post_cmd)
 
     buffer_details_table["" .. remote_info.buffer] = remote_info
 end
