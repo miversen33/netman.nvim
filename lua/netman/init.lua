@@ -114,12 +114,6 @@ local read = function(path, execute_post_read_cmd)
         return
     end
 
-    -- So because of how the neovim LSP is, we are probably going to want to look into potentially loading to hidden buffers and pulling them up to the foreground after load
-    if execute_post_read_cmd == "buf" then
-        vim.api.nvim_command('exe "sil doau BufReadPre ' .. path .. '"')
-    else
-        vim.api.nvim_command('exe "sil doau FileReadPre ' .. path .. '"')
-    end
     vim.api.nvim_command('keepjumps sil! 0')
     vim.api.nvim_command('keepjumps execute "sil! read ++edit ' .. local_file .. '"')
     vim.api.nvim_command('keepjumps sil! 0d')
