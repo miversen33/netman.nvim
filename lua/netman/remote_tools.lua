@@ -1,5 +1,5 @@
 -- TODO
--- [ ] Stop breaking LSP integration
+-- [x] Stop breaking LSP integration
 -- [ ] Update dynamic protocol provider handling
 -- [ ] We need a way to handle overriding protocol providers. I think the best way to handle this is to simply
 --         override core and then accept all providers after that in a first-come-first-serve queue
