@@ -239,7 +239,7 @@ local setup = function(options)
         opts[key] = value
     end
 
-    if default_options.debug or options.debug then utils.adjust_log_level(0) end
+    if default_options.debug or (options and options.debug) then utils.adjust_log_level(0) end
     if options then
         for key, value in pairs(options) do
             if(key ~= 'providers') then
