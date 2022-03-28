@@ -27,7 +27,7 @@ local generate_session_log = function(output_path, logs)
     local pulled_sid = ''
     local keep_running = true
     local log_file = io.input(log_path)
-    notify("Gathering Logs...", vim.log.levels.INFO)
+    vim.notify("Gathering Logs...", vim.log.levels.INFO)
     while keep_running do
         line = io.read('*line')
         if not line then
@@ -41,11 +41,11 @@ local generate_session_log = function(output_path, logs)
     end
     io.close(log_file)
     local message = "Saving Logs"
-    notify(message, vim.log.levels.INFO)
+    vim.notify(message, vim.log.levels.INFO)
     table.insert(logs, line)
     vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
     vim.fn.writefile(logs, output_path)
-    notify("Saved logs to " .. output_path)
+    vim.notify("Saved logs to " .. output_path)
 end
 
 local generate_string = function(string_length)
