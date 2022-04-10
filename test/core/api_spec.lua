@@ -40,7 +40,8 @@ describe("Netman Core #netman-core", function()
         init_connection = function() end,
         init = function() return true end
     }
-    package.loaded[_G.mock_provider_path] =_G.mock_provider1
+    package.loaded[_G.mock_provider1.name] =_G.mock_provider1
+    package.loaded[_G.mock_provider2.name] =_G.mock_provider1
 
     describe("global variables", function()
         it("should contain an api.READ_TYPE.FILE variable", function()
@@ -202,7 +203,7 @@ describe("Netman Core #netman-core", function()
         end)
         it("should load the core providers", function()
             local s = spy.on(_G.api, 'load_provider')
-            _G.api:init({_G.mock_provider_path})
+            _G.api:init({_G.mock_provider1.name})
             assert.spy(s).was_called()
             _G.api.load_provider:revert()
         end)
@@ -254,7 +255,7 @@ describe("Netman Core #netman-core", function()
                 vim.api.nvim_command('augroup END')
             end)
             it("should not fail require check", function()
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider_path) end, "Error during load of provider!")
+                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Error during load of provider!")
                 assert.is_not_nil(_G.api._providers[_G.mock_provider1.protocol_patterns[1]], "Failed to load provider!")
             end)
             it("should add auto group to netman for the provider", function()
@@ -263,7 +264,7 @@ describe("Netman Core #netman-core", function()
                 local file_write_command = 'autocmd Netman FileWriteCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
                 local buf_write_command = 'autocmd Netman BufWriteCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
                 local buf_unload_command = 'autocmd Netman BufUnload ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider_path) end, "Failed to load provider!")
+                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Failed to load provider!")
                 assert.is_not_nil(vim.api.nvim_exec(file_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set FileReadCmd Autocommand!")
                 assert.is_not_nil(vim.api.nvim_exec(buf_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set BufReadCmd Autocommand!")
                 assert.is_not_nil(vim.api.nvim_exec(file_write_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set FileWriteCmd Autocommand!")
@@ -273,13 +274,13 @@ describe("Netman Core #netman-core", function()
             it("should not call init as there is none", function()
                 _G.cache_func = _G.mock_provider1.init
                 _G.mock_provider1.init = nil
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider_path) end, "Init was called even though it doesn't exist!")
+                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Init was called even though it doesn't exist!")
                 _G.mock_provider1.init = _G.cache_func
                 _G.cache_func = nil
             end)
             it("should call init as there is one", function()
                 local g = spy.on(_G.mock_provider1, 'init')
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider_path) end, "Failed to load provider!")
+                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Failed to load provider!")
                 assert.spy(g).was_called()
                 _G.mock_provider1.init:revert()
             end)
@@ -287,17 +288,17 @@ describe("Netman Core #netman-core", function()
         describe("invalid provider", function()
             before_each(function()
                 _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-                package.loaded[_G.mock_provider_path] = nil
+                package.loaded[_G.mock_provider1.name] = nil
             end)
             after_each(function()
-                package.loaded[_G.mock_provider_path] =_G.mock_provider1
+                package.loaded[_G.mock_provider1.name] =_G.mock_provider1
                 _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
             end)
             it("should fail require check", function()
-                assert.has_error(function() _G.api:load_provider(_G.mock_provider_path) end, "\"Failed to initialize provider: " .. _G.mock_provider_path .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider\"", "Failed to throw error for invalid provider!")
+                assert.has_error(function() _G.api:load_provider(_G.mock_provider1.name) end, "\"Failed to initialize provider: " .. _G.mock_provider1.name .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider\"", "Failed to throw error for invalid provider!")
             end)
             it("should not add auto group to netman for the provider", function()
-                assert.has_error(function() _G.api:load_provider(_G.mock_provider_path) end, "\"Failed to initialize provider: " .. _G.mock_provider_path .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider\"", "Failed to throw error for invalid provider!")
+                assert.has_error(function() _G.api:load_provider(_G.mock_provider1.name) end, "\"Failed to initialize provider: " .. _G.mock_provider1.name .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider\"", "Failed to throw error for invalid provider!")
                 local file_read_command = 'autocmd Netman FileReadCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
                 local buf_read_command = 'autocmd Netman BufReadCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
                 local file_write_command = 'autocmd Netman FileWriteCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
