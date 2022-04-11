@@ -56,29 +56,31 @@ describe("Netman Core #netman-core", function()
             _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = _G.mock_provider1
             _G.api._buffer_provider_cache["" .. 1] = nil
             _G.cache_func = _G.mock_provider1.read
+            _G.api._unclaimed_id_table = {}
         end)
         after_each(function()
             _G.mock_provider1.read = _G.cache_func
             _G.cache_func = nil
             _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
             _G.api._buffer_provider_cache["" .. 1] = nil
+            _G.api._unclaimed_id_table = {}
         end)
         it("should reach out to init provider as not in cache", function()
             local s = spy.on(_G.mock_provider1, "init_connection")
-            _G.api:read(_G.mock_uri1, 1)
+            _G.api:read(1, _G.mock_uri1)
             assert.spy(s).was_called()
             _G.mock_provider1.init_connection:revert()
         end)
         it("should attempt to read from mock provider", function()
             local s = spy.on(_G.mock_provider1, 'read')
-            _G.api:read(_G.mock_uri1, 1)
+            _G.api:read(1, _G.mock_uri1)
             assert.spy(s).was_called()
             _G.mock_provider1.read:revert()
         end)
         it("should not attempt to read from mock provider", function()
             _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
             local s = spy.on(_G.mock_provider1, 'read')
-            assert.has_error(function() _G.api:read(_G.mock_uri1, 1) end, '"Error parsing path: ' .. _G.mock_uri1 .. ' -- Unable to establish provider"', "Netman loaded provider somehow!")
+            assert.has_error(function() _G.api:read(1, _G.mock_uri1) end, '"Error parsing path: ' .. _G.mock_uri1 .. ' -- Unable to establish provider"', "Netman loaded provider somehow!")
             assert.spy(s).was_not_called()
             _G.mock_provider1.read:revert()
         end)
@@ -87,40 +89,44 @@ describe("Netman Core #netman-core", function()
             _G.mock_provider1.read = function()
                 return _G.dummy_file, _G.api.READ_TYPE.FILE
             end
-            assert.has_no.errors(function() _G.api:read(_G.mock_uri1, 1) end, "Failed to self correct string file return as table")
+            assert.has_no.errors(function() _G.api:read(1, _G.mock_uri1) end, "Failed to self correct string file return as table")
         end)
         it("should complain but attempt to fix return stream not being a table", function()
             local read_cache = _G.mock_provider1.read
             _G.mock_provider1.read = function()
                 return _G.dummy_file, _G.api.READ_TYPE.STREAM
             end
-            assert.has_no.errors(function() _G.api:read(_G.mock_uri1, 1) end, "Failed to self correct string stream return as table")
+            assert.has_no.errors(function() _G.api:read(1, _G.mock_uri1) end, "Failed to self correct string stream return as table")
             _G.mock_provider1.read = read_cache
             read_cache = nil
         end)
         it("return command should be for a file read type", function()
             _G.mock_provider1.read = function()
-                return {_G.dummy_file}, _G.api.READ_TYPE.FILE
+                return {{origin_path=_G.dummy_file, local_path=_G.dummy_file}}, _G.api.READ_TYPE.FILE
             end
-            assert.is_equal(_G.api:read(_G.mock_uri1, 1):match('^read %+%+edit'), 'read ++edit', "Failed to generate read to buffer command")
+            assert.is_equal(_G.api:read(1, _G.mock_uri1):match('^read %+%+edit'), 'read ++edit', "Failed to generate read to buffer command")
         end)
         it("return command should be for multiple files", function()
             _G.mock_provider1.read = function()
-                return {_G.dummy_file, _G.dummy_file}, _G.api.READ_TYPE.FILE
+                return {
+                    {origin_path=_G.dummy_file,local_path=_G.dummy_file}
+                    ,{origin_path=_G.dummy_file,local_path=_G.dummy_file}
+                }, _G.api.READ_TYPE.FILE
             end
-            local read_command = _G.api:read(_G.mock_uri1, 1)
+            _G.api._unclaimed_id_table[_G.dummy_file] = '1234'
+            local read_command = _G.api:read(1, _G.mock_uri1)
             assert.is_equal(read_command:match('^read %+%+edit'), 'read ++edit', "Failed to generate intial read to buffer command")
             assert.is_equal(read_command:match('edit %+%+edit'), 'edit ++edit', "Failed to generate subsequent edit to new buffer command")
-
         end)
         it("return command should be for a stream read type", function()
-            assert.is_equal(_G.api:read(_G.mock_uri1, 1):match('0append! '), '0append! ')
+            assert.is_equal(_G.api:read(1, _G.mock_uri1):match('0append! '), '0append! ')
         end)
         it("should create an append command (append!) followed by the input stream", function()
             assert.is_equal(_G.api._read_as_stream(_G.dummy_stream), "0append! " .. table.concat(_G.dummy_stream, '\n'), "Failed to create append command")
         end)
         it("should create a read command (read ++edit) followed by the local file", function()
-            assert.is_equal(_G.api._read_as_file({_G.dummy_file}), "read ++edit " .. _G.dummy_file, "Failed to create append command")
+
+            assert.is_equal(_G.api._read_as_file({{origin_path=_G.dummy_file,local_path=_G.dummy_file}}, true), "read ++edit " .. _G.dummy_file, "Failed to create append command")
         end)
         describe("_get_provider_for_path", function()
             after_each(function()
@@ -195,11 +201,15 @@ describe("Netman Core #netman-core", function()
         before_each(function()
             _G.cache_func = _G.api.init
             _G.api._initialized = false
+            -- TODO(Mike): Figure out how to clear this out without using vim
+            vim.api.nvim_command('comclear')
         end)
         after_each(function()
             _G.api.init = _G.cache_func
             _G.cache_func = nil
             _G.api._initialized = false
+            -- TODO(Mike): Figure out how to clear this out without using vim
+            vim.api.nvim_command('comclear')
         end)
         it("should load the core providers", function()
             local s = spy.on(_G.api, 'load_provider')
@@ -366,6 +376,35 @@ describe("Netman Core #netman-core", function()
             _G.api:unload(1)
             assert.spy(s1).was_called()
             assert.spy(s2).was_called()
+        end)
+    end)
+
+    describe("claim_buf_details", function()
+        local unclaimed_id = '1234'
+        before_each(function()
+            _G.api._unclaimed_provider_details = {}
+            _G.api._unclaimed_provider_details[unclaimed_id] = {
+                provider = _G.mock_provider1
+                ,protocol = _G.mock_provider1.protocol_patterns[1]
+                ,origin_path = _G.invalid_mock_uri
+            }
+            _G.api._buffer_provider_cache["" .. 1] = {}
+        end)
+        after_each(function()
+            _G.api._unclaimed_provider_details = {
+                
+            }
+            _G.api._buffer_provider_cache["" .. 1] = {}
+        end)
+        it("should remove claim id from unclaimed queue", function()
+            _G.api:_claim_buf_details(1, unclaimed_id)
+            assert.is_nil(_G.api._unclaimed_provider_details[unclaimed_id])
+            assert.is_not_nil(_G.api._buffer_provider_cache["1"])
+        end)
+        it("should not modify unclaimed queue for invalid claim id", function()
+            local invalid_unclaimed_id = "1234111"
+            _G.api:_claim_buf_details(1, invalid_unclaimed_id)
+            assert.is_not_nil(_G.api._unclaimed_provider_details[unclaimed_id])
         end)
     end)
 end)
