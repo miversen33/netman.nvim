@@ -22,6 +22,7 @@ describe("Netman Core #netman-core", function()
         name = 'mock_provider1',
         protocol_patterns = {'junk1'},
         version = '0.0',
+        _provider_path = _G.mock_provider_path .. "1",
         read = function() end,
         write = function() end,
         delete = function() end,
@@ -33,6 +34,7 @@ describe("Netman Core #netman-core", function()
         name = 'mock_provider2',
         protocol_patterns = {'junk2'},
         version = '0.0',
+        _provider_path = _G.mock_provider_path .. "2",
         read = function() end,
         write = function() end,
         delete = function() end,
@@ -269,11 +271,11 @@ describe("Netman Core #netman-core", function()
                 assert.is_not_nil(_G.api._providers[_G.mock_provider1.protocol_patterns[1]], "Failed to load provider!")
             end)
             it("should add auto group to netman for the provider", function()
-                local file_read_command = 'autocmd Netman FileReadCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_read_command = 'autocmd Netman BufReadCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local file_write_command = 'autocmd Netman FileWriteCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_write_command = 'autocmd Netman BufWriteCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_unload_command = 'autocmd Netman BufUnload ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
+                local file_read_command = 'autocmd Netman FileReadCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
+                local buf_read_command = 'autocmd Netman BufReadCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
+                local file_write_command = 'autocmd Netman FileWriteCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
+                local buf_write_command = 'autocmd Netman BufWriteCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
+                local buf_unload_command = 'autocmd Netman BufUnload ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
                 assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Failed to load provider!")
                 assert.is_not_nil(vim.api.nvim_exec(file_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set FileReadCmd Autocommand!")
                 assert.is_not_nil(vim.api.nvim_exec(buf_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set BufReadCmd Autocommand!")
