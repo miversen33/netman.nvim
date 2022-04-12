@@ -2,6 +2,10 @@ local mock = require('luassert.mock')
 local stub = require('luassert.stub')
 local spy = require('luassert.spy')
 
+-- TODO(Mike): Figure out how to Mock "vim." functions
+-- so that we can use vanilla busted without needing
+-- neovim for basic implementation unit testing
+
 describe("Netman Core #netman-core", function()
     -- I am not super fond of this, but it is how the busted framework
     -- says to handle unit testing of internal methods
