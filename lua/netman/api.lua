@@ -140,6 +140,72 @@ function M:_get_buffer_cache_object(buffer_index, path)
     end
 end
 
+function M:_validate_lock(file_name, buffer_index)
+    buffer_index = "" .. buffer_index
+    local standard_error = 'Unable to validate lock. Please check logs with :Nmlogs'
+    local command = 'cat ' .. utils.locks_dir .. file_name
+    log.info('Checking if file: ' .. file_name .. ' is locked')
+    log.debug("Check Lock Command: " .. command)
+    local command_options = {}
+    command_options[netman_options.utils.command.IGNORE_WHITESPACE_ERROR_LINES]  = true
+    command_options[netman_options.utils.command.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[netman_options.utils.command.STDERR_JOIN] = ''
+    local command_output = utils.run_shell_command(command, command_options)
+    if command_output.stderr:len() > 0 and command_output.stderr == 'cat: ' .. utils.locks_dir .. file_name .. ': No such file or directory' then
+        return ''
+    end
+    if command_output.stderr:len() > 0 then
+        log.warn("Lock Validation for " .. file_name .. " failed. Error: ", command_output.stderr)
+        return standard_error
+    end
+    if command_output.stdout[2] then
+        log.warn("Lock validation for " .. file_name .. " failed. Invalid lock contents: ", command_output.stdout)
+        return standard_error
+    end
+    local pid, lock_buffer = command_output.stdout[1]:match('^(%d+):(%d+)$')
+    if not pid then
+        log.warn("Lock validation for " .. file_name .. " failed. Invalid lock contents: " .. pid)
+        return standard_error
+    end
+    if not utils.is_process_alive(pid) then
+        log.warn("Clearing out stale lockfile: " .. file_name)
+        os.execute('rm ' .. utils.locks_dir .. file_name)
+    end
+    if pid ~= vim.fn.getpid() or lock_buffer ~= buffer_index then
+        log.warn("Lock is owned by another process/buffer. Locking Pid: " .. pid .. " Locking Buffer: " .. lock_buffer .. " | Current Pid: " .. vim.fn.getpid() .. " Current Buffer: " .. buffer_index)
+        return standard_error
+    end
+    return ''
+end
+
+function M:lock_file(buffer_index, uri)
+    local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
+    local lock_error_string = M:_validate_lock(buffer_object.unique_name, buffer_index)
+    if lock_error_string ~= '' then
+        log.warn("Received Error while checking if we can lock: " .. lock_error_string)
+        return lock_error_string
+    end
+    log.info("Locking " .. uri)
+    local command = 'echo "' .. buffer_index .. ':' .. vim.fn.getpid() .. '" > ' .. utils.locks_dir .. buffer_object.unique_name
+    log.debug("Lock command: " .. command)
+    utils.run_shell_command(command)
+    return ''
+end
+
+function M:unlock_file(buffer_index, uri)
+    local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
+    local lock_error_string = M:_validate_lock(buffer_object.unique_name, buffer_index)
+    if lock_error_string ~= '' then
+        log.warn("Received error while checking if we can unlock: " .. lock_error_string)
+        return lock_error_string
+    end
+    log.info("Unlocking " .. uri)
+    local command = 'rm ' .. utils.locks_dir .. buffer_object.unique_name
+    log.debug("Unlock command: " .. command)
+    utils.run_shell_command(command)
+    return ''
+end
+
 function M:_claim_buf_details(buffer_index, details_id)
     local unclaimed_object = M._unclaimed_provider_details[details_id]
     log.debug("Claiming " .. details_id .. " and associating it with index: " .. buffer_index)
