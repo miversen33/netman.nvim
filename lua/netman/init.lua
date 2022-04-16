@@ -62,7 +62,7 @@ end
 
 function M:init()
     log.debug("Init called! Should it run? " .. tostring(M._setup_commands))
-    if not M._setup_commands and not vim.g.loaded_netman then
+    if not M._setup_commands then
         log.debug("Setting Commands")
         local commands = {
              'command -nargs=1 NmloadProvider lua require("netman.api"):load_provider(<f-args>)'
@@ -78,7 +78,7 @@ function M:init()
         end
     end
     M._setup_commands = true
-    vim.g.loaded_netman = 1
+    -- vim.g.loaded_netman = 1
     vim.g.loaded_netrwPlugin = 1
     vim.g.loaded_netrw = 1 -- TODO(Mike) By disabling netrw, we prevent ANY netrw handling of files. This is probably bad, we may want to consider a way to allow some of NetRW to function.
 end
