@@ -1,3 +1,5 @@
+local netman_options = require("netman.options")
+
 local mkdir   = vim.fn.mkdir
 
 local _level_threshold = 3
@@ -98,6 +100,56 @@ local setup = function(level_threshold)
     _is_setup = true
 end
 
+local run_shell_command = function(command, options)
+    options = options or {}
+    local stdout = {}
+    local stderr = {}
+    local gather_stdout_output = function(output)
+        for _, line in ipairs(output) do
+            if line then
+                if not
+                    (
+                        options[netman_options.utils.command.IGNORE_WHITESPACE_OUTPUT_LINES]
+                        and line:match('^(%s*)$')
+                    )
+                    then table.insert(stderr, line)
+                end
+            end
+        end
+    end
+
+    local gather_stderr_output = function(output)
+        for _, line in ipairs(output) do
+            if line then
+                if not
+                    (
+                        options[netman_options.utils.command.IGNORE_WHITESPACE_ERROR_LINES]
+                        and line:match('^(%s*)$')
+                    )
+                    then table.insert(stderr, line)
+                end
+            end
+        end
+    end
+    vim.fn.jobwait({
+        vim.fn.jobstart(
+            command,
+            {
+                on_stdout = function(_, output) gather_stdout_output(output) end
+                ,on_stderr = function(_, output) gather_stderr_output(output) end
+            }
+        )
+    })
+    if options[netman_options.utils.command.STDOUT_JOIN] then
+        stdout = table.concat(stdout, options[netman_options.utils.command.STDOUT_JOIN])
+    end
+    if options[netman_options.utils.command.STDERR_JOIN] then
+        stderr = table.concat(stderr, options[netman_options
+        .utils.command.STDERR_JOIN])
+    end
+    return {stdout=stdout, stderr=stderr}
+end
+
 local _log = function(level, do_notify, ...)
     -- Yoinked the concepts in here from https://github.com/neovim/neovim/blob/master/runtime/lua/vim/lsp/log.lua
     -- Thanks Neovim team <3
@@ -178,12 +230,12 @@ return {
     log                  = log,
     adjust_log_level     = adjust_log_level,
     generate_string      = generate_string,
-    lock_file            = lock_file,
-    unlock_file          = unlock_file,
-    is_file_locked       = is_file_locked,
+    is_process_alive     = is_process_alive,
     cache_dir            = cache_dir,
     data_dir             = data_dir,
     files_dir            = files_dir,
+    locks_dir            = locks_dir,
     generate_session_log = generate_session_log,
-    copy_table           = copy_table
+    copy_table           = copy_table,
+    run_shell_command    = run_shell_command
 }
