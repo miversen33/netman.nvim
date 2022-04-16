@@ -100,31 +100,18 @@ describe("Netman Core #netman-core", function()
         end)
         it("return command should be for a file read type", function()
             _G.mock_provider1.read = function()
-                return {{origin_path=_G.dummy_file, local_path=_G.dummy_file}}, _G.api.READ_TYPE.FILE
+                return {origin_path=_G.dummy_file, local_path=_G.dummy_file}, _G.api.READ_TYPE.FILE
             end
             assert.is_equal(_G.api:read(1, _G.mock_uri1):match('^read %+%+edit'), 'read ++edit', "Failed to generate read to buffer command")
         end)
-        it("return command should be for multiple files", function()
-            _G.mock_provider1.read = function()
-                return {
-                    {origin_path=_G.dummy_file,local_path=_G.dummy_file}
-                    ,{origin_path=_G.dummy_file,local_path=_G.dummy_file}
-                }, _G.api.READ_TYPE.FILE
-            end
-            _G.api._unclaimed_id_table[_G.dummy_file] = '1234'
-            local read_command = _G.api:read(1, _G.mock_uri1)
-            assert.is_equal(read_command:match('^read %+%+edit'), 'read ++edit', "Failed to generate intial read to buffer command")
-            assert.is_equal(read_command:match('edit %+%+edit'), 'edit ++edit', "Failed to generate subsequent edit to new buffer command")
-        end)
-        it("return command should be for a stream read type", function()
+       it("return command should be for a stream read type", function()
             assert.is_equal(_G.api:read(1, _G.mock_uri1):match('0append! '), '0append! ')
         end)
         it("should create an append command (append!) followed by the input stream", function()
             assert.is_equal(_G.api._read_as_stream(_G.dummy_stream), "0append! " .. table.concat(_G.dummy_stream, '\n'), "Failed to create append command")
         end)
         it("should create a read command (read ++edit) followed by the local file", function()
-
-            assert.is_equal(_G.api._read_as_file({{origin_path=_G.dummy_file,local_path=_G.dummy_file}}, true), "read ++edit " .. _G.dummy_file, "Failed to create append command")
+            assert.is_equal(_G.api._read_as_file({origin_path=_G.dummy_file,local_path=_G.dummy_file}):match("^read %+%+edit"), "read ++edit", "Failed to create append command")
         end)
         describe("_get_provider_for_path", function()
             after_each(function()
