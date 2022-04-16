@@ -31,7 +31,6 @@ describe("Netman Core #netman-core", function()
         write = function() end,
         delete = function() end,
         parse_uri = function() end,
-        init_connection = function() end,
         init = function() return true end
     }
     _G.mock_provider2 = {
@@ -43,7 +42,6 @@ describe("Netman Core #netman-core", function()
         write = function() end,
         delete = function() end,
         parse_uri = function() end,
-        init_connection = function() end,
         init = function() return true end
     }
     package.loaded[_G.mock_provider1.name] =_G.mock_provider1
@@ -70,12 +68,6 @@ describe("Netman Core #netman-core", function()
             _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
             _G.api._buffer_provider_cache["" .. 1] = nil
             _G.api._unclaimed_id_table = {}
-        end)
-        it("should reach out to init provider as not in cache", function()
-            local s = spy.on(_G.mock_provider1, "init_connection")
-            _G.api:read(1, _G.mock_uri1)
-            assert.spy(s).was_called()
-            _G.mock_provider1.init_connection:revert()
         end)
         it("should attempt to read from mock provider", function()
             local s = spy.on(_G.mock_provider1, 'read')
@@ -174,12 +166,6 @@ describe("Netman Core #netman-core", function()
             _G.mock_provider1.write:revert()
         end)
         pending("should not attempt to write to mock uri")
-        it("should init mock provider for buffer not associated with mock provider", function()
-            local s = spy.on(_G.mock_provider1, 'init_connection')
-            _G.api:write(1, _G.mock_uri1)
-            assert.spy(s).was_called()
-            _G.mock_provider1.init_connection:revert()
-        end)
     end)
 
     describe("delete", function()
