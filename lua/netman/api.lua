@@ -185,7 +185,7 @@ end
 --- @return nil
 function M:write(buffer_index, write_path)
     log.debug("Saving contents of index: " .. buffer_index .. " to " .. write_path)
-    local provider_details = _get_buffer_cache_object(buffer_index, write_path)
+    local provider_details = M:_get_buffer_cache_object(buffer_index, write_path)
     log.debug("Pulled details object ", provider_details)
     log.info("Calling provider: " .. provider_details.provider._provider_path .. ":" .. provider_details.provider.version .. " to handle write")
     -- This should be done asynchronously
@@ -227,7 +227,7 @@ function M:read(buffer_index, path)
         notify.error('No path provided!')
         return nil
     end
-    local provider_details = _get_buffer_cache_object(buffer_index, path)
+    local provider_details = M:_get_buffer_cache_object(buffer_index, path)
     local read_data, read_type = provider_details.provider:read(path, provider_details.provider_cache)
     if read_type == nil then
         log.info("Setting read type to api.READ_TYPE.STREAM")
