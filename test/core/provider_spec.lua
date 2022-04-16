@@ -43,12 +43,6 @@ describe("Netman providers #netman-providers", function()
                 end)
                 pending()
             end)
-            describe("init_connection", function()
-                it("should have a init_connection function", function()
-                    assert.is_not_nil(provider.init_connection, provider_path .. " is missing init_connection!")
-                end)
-                pending()
-            end)
             if provider.init then
                 pending("test init function")
             end
