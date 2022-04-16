@@ -465,6 +465,10 @@ function M:unload(buffer_index)
            goto continue
        end
        called_providers[provider.name] = provider
+       if provider_details.type == M.READ_TYPE.FILE then
+            M:unlock_file(buffer_index, provider_details.origin_path)
+            if provider_details.local_path then utils.run_shell_command('rm ' .. provider_details.local_path) end
+       end
        log.info("Processing unload of " .. provider._provider_path .. ":" .. provider.version)
        if provider.close_connection ~= nil then
             log.debug("Closing connection with " .. provider._provider_path .. ":" .. provider.version)
