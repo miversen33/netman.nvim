@@ -238,6 +238,7 @@ local _parse_uri = function(uri)
         details.type = TYPES.FILE
         details.return_type = api.READ_TYPE.FILE
         details.unique_name = utils.generate_string(11)
+        details.local_file  = utils.files_dir .. details.unique_name
     end
     log.debug("Path Match: " .. details.remote_path)
     if details.user and not details.user:match('%s') and details.user:len() > 1 then
