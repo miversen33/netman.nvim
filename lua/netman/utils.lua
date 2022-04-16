@@ -56,13 +56,13 @@ local generate_string = function(string_length)
     return return_string
 end
 
-local _verify_lock = function(pid)
-    local valid_lock = true
+local is_process_alive = function(pid)
+    local alive = true
     local stdout_callback = function(job, output)
         for _, line in pairs(output) do
-            if not valid_lock then return end
+            if not alive then return end
             if line and not line:match('^(%s*)$') then
-                valid_lock = false
+                alive = false
             end
         end
     end
@@ -75,75 +75,7 @@ local _verify_lock = function(pid)
             }
         )
     })
-    return valid_lock
-end
-
-local is_file_locked = function(file_name)
-    local command = 'cat ' .. locks_dir .. file_name
-    log.debug('Checking if file: ' .. file_name .. ' is locked')
-    log.debug("Check Lock Command: " .. command)
-    local lock_info = ''
-    local stdout_callback = function(job, output)
-        if not lock_info or lock_info:len() > 0 then return end
-        for _, line in pairs(output) do
-            if line and not line:match('^(%s*)$') then
-                lock_info = line
-            end
-        end
-    end
-    local stderr_callback = function(job, output)
-        if not lock_info then return end
-        for _, line in pairs(output) do
-            if line and not line:match('^(%s*)$') then
-                log.info("Received Lock file check error: " .. line)
-                lock_info = nil
-                return
-            end
-        end
-    end
-    vim.fn.jobwait({
-        vim.fn.jobstart(
-            command,
-            {
-                on_stdout = stdout_callback,
-                on_stderr = stderr_callback
-            }
-        )
-    })
-    if lock_info == '' then
-        lock_info = nil
-    elseif lock_info then
-        local _, lock_pid = lock_info:match('^(%d+):(%d+)$')
-        if not _verify_lock(lock_pid) then
-            lock_info = nil
-            log.info("Clearing out stale lockfile: " .. file_name)
-            os.execute('rm ' .. locks_dir .. file_name)
-        end
-    end
-    return lock_info
-end
-
-local lock_file = function(file_name, buffer)
-    local lock_info = is_file_locked(file_name)
-    local current_pid = vim.fn.getpid()
-    if lock_info then
-        log.info("Found existing lock info for file --> " .. lock_info)
-        local lock_buffer, lock_pid = lock_info:match('^(%d+):(%d+)$')
-        notify.error("Unable to lock file: " .. file_name .. " to buffer " .. buffer .. " for pid " .. current_pid .. ". File is already locked to pid: " .. lock_pid .. ' for buffer: ' .. lock_buffer)
-        return false
-    end
-    os.execute('echo "' .. buffer .. ':' .. current_pid .. '" > ' .. locks_dir .. file_name)
-    return true
-end
-
-local unlock_file = function(file_name)
-    if not is_file_locked(file_name) then
-        return
-    end
-    log.info("Removing lock file for " .. file_name)
-    os.execute('rm ' .. locks_dir .. file_name)
-    log.info("Removing cached file for " .. file_name)
-    os.execute('rm ' .. files_dir .. file_name)
+    return alive
 end
 
 local adjust_log_level = function(new_level_threshold)
