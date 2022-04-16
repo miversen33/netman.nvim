@@ -76,7 +76,6 @@ local _read_as_stream = function(stream)
 end
 
 local _read_as_file = function(file)
-    -- TODO(Mike): Should still handle lock files for the files as they are pulled
     local origin_path = file.origin_path
     local local_path  = file.local_path
     local unclaimed_id = M._unclaimed_id_table[origin_path]
@@ -100,8 +99,6 @@ local _cache_provider = function(provider, protocol, path)
         -- ,buffer         = buffer_index
     }
     M._unclaimed_provider_details[id] = bp_cache_object
-    M._unclaimed_provider_details[id].buffer = nil
-    M._unclaimed_provider_details[id].provider_cache = {}
     M._unclaimed_id_table[path] = id
     log.debug("Cached provider: " .. provider._provider_path .. ":" .. provider.version .. " for id: " .. id)
     return id, M._unclaimed_provider_details[id]
