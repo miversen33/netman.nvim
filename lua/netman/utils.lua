@@ -27,7 +27,7 @@ local generate_session_log = function(output_path, logs)
     local pulled_sid = ''
     local keep_running = true
     local log_file = io.input(log_path)
-    notify("Gathering Logs...", vim.log.levels.INFO)
+    vim.notify("Gathering Logs...", vim.log.levels.INFO)
     while keep_running do
         line = io.read('*line')
         if not line then
@@ -41,11 +41,11 @@ local generate_session_log = function(output_path, logs)
     end
     io.close(log_file)
     local message = "Saving Logs"
-    notify(message, vim.log.levels.INFO)
+    vim.notify(message, vim.log.levels.INFO)
     table.insert(logs, line)
     vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
     vim.fn.writefile(logs, output_path)
-    notify("Saved logs to " .. output_path)
+    vim.notify("Saved logs to " .. output_path)
 end
 
 local generate_string = function(string_length)
@@ -195,6 +195,25 @@ local _log = function(level, do_notify, ...)
     if do_notify then
         vim.notify(table.concat(headerless_parts, '\t'), level)
     end
+    if level == 'ERROR' then
+        error(table.concat(headerless_parts, '\t'), 2)
+    end
+end
+
+function copy_table(in_table, deep)
+    deep = deep or false
+    local _copy_table = {}
+    if type(in_table) ~= 'table' then
+        return in_table
+    end
+    for k, v in pairs(in_table) do 
+        if deep then
+            _copy_table[k] = copy_table(v)
+        else
+            _copy_table[k] = v
+        end
+    end
+    return _copy_table
 end
 
 do
@@ -234,4 +253,5 @@ return {
     data_dir             = data_dir,
     files_dir            = files_dir,
     generate_session_log = generate_session_log,
+    copy_table           = copy_table
 }
