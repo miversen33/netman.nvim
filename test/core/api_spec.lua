@@ -486,6 +486,7 @@ describe("Netman Core #netman-core", function()
             _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
                 provider = _G.mock_provider1
                 ,origin_path = _G.mock_uri
+                ,type = _G.api.READ_TYPE.FILE
             }
             _G.api:unload(1)
             assert.spy(s).was_called()
