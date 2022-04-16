@@ -247,10 +247,14 @@ function M:read(buffer_index, path)
         log.debug("grumble grumble, kids these days not following spec...")
         read_data = {read_data}
     end
+    provider_details.type = read_type
     if read_type == M.READ_TYPE.STREAM then
         log.debug("Getting stream command for path: " .. path)
         return _read_as_stream(read_data)
     elseif read_type == M.READ_TYPE.FILE then
+        provider_details.unique_name = read_data.unique_name or read_data.local_path
+        provider_details.local_path = read_data.local_path
+        log.debug("Setting unique name for path: " .. path .. " to " .. provider_details.unique_name)
         log.debug("Getting file command for path: " .. path)
         return _read_as_file(read_data)
     end
