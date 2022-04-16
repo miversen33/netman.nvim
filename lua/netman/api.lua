@@ -76,10 +76,6 @@ end
 
 local _read_as_file = function(file)
     -- TODO(Mike): Should still handle lock files for the files as they are pulled
-    -- local command = ''
-    -- local cmd = ' +lua require("netman.api"):_claim_buf_details(vim.fn.bufnr(), "'
-
-    -- for _, f in ipairs(file) do
     local origin_path = file.origin_path
     local local_path  = file.local_path
     local unclaimed_id = M._unclaimed_id_table[origin_path]
@@ -88,13 +84,7 @@ local _read_as_file = function(file)
         claim_command = ' | lua require("netman.api"):_claim_buf_details(vim.fn.bufnr(), "' .. M._unclaimed_id_table[origin_path] .. '")' 
     end
     log.debug("Processing details: ", {origin_path=origin_path, local_path=local_path, unclaimed_id=unclaimed_id})
-        -- local _cmd = ''
-        -- if _ > 1 then
-            -- command = command .. ' | '
-        -- _cmd = cmd .. M._unclaimed_id_table[origin_path] .. '")'
-        -- end
     local command = 'read ++edit ' .. local_path .. ' | set nomodified | filetype detect' .. claim_command
-    -- end
     log.debug("Generated read file command: " .. command)
     return command
 end
