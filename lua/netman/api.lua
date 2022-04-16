@@ -108,7 +108,7 @@ local _cache_provider = function(provider, protocol, path)
 end
 
 --- TODO(Mike): Document me
-local _get_buffer_cache_object = function(buffer_index, path)
+function M:_get_buffer_cache_object(buffer_index, path)
     log.debug("_get_buffer_cache_object ", {buffer_index=buffer_index, path=path})
     if buffer_index then
         buffer_index = "" .. buffer_index
@@ -456,12 +456,9 @@ end
 -- http://olivinelabs.com/busted/#private
 ---@diagnostic disable-next-line: undefined-global
 if _UNIT_TESTING then
-    M._read_as_stream = _read_as_stream
-    M._read_as_file = _read_as_file
-    M._get_provider_for_path = _get_provider_for_path
-    M._get_buffer_cache_object = _get_buffer_cache_object
-
-    M._utils = utils
+    M._read_as_stream          = _read_as_stream
+    M._read_as_file            = _read_as_file
+    M._get_provider_for_path   = _get_provider_for_path
 end
 
 M:init()
