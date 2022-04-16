@@ -95,8 +95,11 @@ local _cache_provider = function(provider, protocol, path)
     local bp_cache_object = {
         provider        = provider
         ,protocol       = protocol
+        ,local_path     = nil
         ,origin_path    = path
-        -- ,buffer         = buffer_index
+        ,unique_name    = ''
+        ,buffer         = nil
+        ,provider_cache = {}
     }
     M._unclaimed_provider_details[id] = bp_cache_object
     M._unclaimed_id_table[path] = id
