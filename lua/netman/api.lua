@@ -1,4 +1,5 @@
 local utils = require('netman.utils')
+local netman_options = require('netman.options')
 local log = utils.log
 local notify = utils.notify
 
