@@ -490,6 +490,8 @@ function M:dump_info(output_path)
         ,"System: " .. vim.loop.os_uname().sysname
         ,"Netman Version: " .. M.version
         ,""
+        ,"Api Contents: " .. vim.inspect(M, {newline="\\n", indent="\\t"})
+        ,">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
         ,"Running Provider Details"
     }
     for pattern, provider in pairs(M._providers) do
@@ -510,6 +512,8 @@ function M:dump_info(output_path)
         )
     end
     table.insert(headers, '----------------------------------------------------')
+    table.insert(headers, 'Logs:')
+    table.insert(headers, '')
     utils.generate_session_log(output_path, headers)
 end
 
