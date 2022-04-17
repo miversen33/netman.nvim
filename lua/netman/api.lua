@@ -417,7 +417,6 @@ function M:load_provider(provider_path)
             goto continue
         end
         M._providers[new_pattern] = provider
-        -- TODO(Mike): These will fail without being implemented
         local au_commands = {
              'autocmd Netman FileReadCmd '  .. new_pattern .. '://* lua require("netman"):read(vim.fn.expand("<amatch>"))'
             ,'autocmd Netman BufReadCmd '   .. new_pattern .. '://* lua require("netman"):read(vim.fn.expand("<amatch>"))'
