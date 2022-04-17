@@ -140,6 +140,19 @@ function M:_get_buffer_cache_object(buffer_index, path)
     end
 end
 
+--- _validate_lock should be called before any attempt to unlock or lock a lock
+--- This will check to see if the lock exists, and if it does, it handles
+--- stale cleanup of old locks, as well as checking if the lock is valid and
+--- _not_ ours
+--- @param lock string
+---     The string path representation of the lock
+--- @param buffer_index string
+---     The integer associated with the buffer in question
+--- @return string, boolean
+---     @string
+---         The error that was generated during validation
+---     @boolean
+---         Existence of the lock
 function M:_validate_lock(lock, buffer_index)
     buffer_index = "" .. buffer_index
     local cur_pid = "" .. vim.fn.getpid()
@@ -179,6 +192,15 @@ function M:_validate_lock(lock, buffer_index)
     return '', true
 end
 
+--- Lock file should be called when a file has been loaded into the buffer. This will
+--- set a lock within netman which is associated with the buffer index.
+--- This is _only_ needed when netman has provided a file to be opened.
+--- @param buffer_index integer
+---     The index associated with the buffer being saved
+--- @param uri string
+---     The string path of the uri to unlock
+--- @return string
+---     The error that was returned on validation check or an empty string
 function M:lock_file(buffer_index, uri)
     local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
     local lock_error_string, _ = M:_validate_lock(buffer_object.unique_name, buffer_index) -- Here we dont care about if the lock
@@ -194,6 +216,16 @@ function M:lock_file(buffer_index, uri)
     return ''
 end
 
+--- Unlock file should be called when a file has been unloaded from the buffer. This will
+--- remove the netman lock associated with it. This is _only_ needed when netman has provided
+--- a file to be opened. There is no need to unlock a stream (hence unlock file) and unlock
+--- attempts on invalid locks will silently fail (so as to not break anything)
+--- @param buffer_index integer
+---     The index associated with the buffer being saved
+--- @param uri string
+---     The string path of the uri to unlock
+--- @return string
+---     The error that was returned on validation check or an empty string
 function M:unlock_file(buffer_index, uri)
     local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
     local lock_error_string, exists = M:_validate_lock(buffer_object.unique_name, buffer_index)
