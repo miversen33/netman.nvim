@@ -8,7 +8,7 @@ Netman's target is to provide a wholely lua written replacement for [Netrw](http
 
 - [ ] Remote File Management
 - [ ] Local File Management
-- [x] [Fully Functional with Neovim LSP](#lsp)
+- [ ] [Fully Functional with Neovim LSP](#lsp)
 
 ## Dependencies
 
@@ -25,7 +25,7 @@ Using Netman should be as simple as adding this line to your `init.lua`
 ```lua
 require('netman').setup({})
 ```
-
+<!-- TODO: Update this -->
 The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
 ```lua
 {
