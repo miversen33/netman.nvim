@@ -169,13 +169,13 @@ describe("Netman Core #netman-core", function()
         end)
         it("should return empty string on valid lock interaction", function()
             require("netman.utils").run_shell_command = function()
-                return {stdout = {'1:1'}, stderr = ''}
+                return {stdout = {'2:1'}, stderr = ''}
             end
             require("netman.utils").is_process_alive = function()
                 return false
             end
             vim.fn.getpid = function() return "1" end
-            assert.is_equal(_G.api:_validate_lock(dummy_file, 1), '', "Failed to properly validate lock")
+            assert.is_equal(_G.api:_validate_lock(dummy_file, 2), '', "Failed to properly validate lock")
         end)
         it("should return empty string on non existent lock interaction", function()
             require("netman.utils").run_shell_command = function()
