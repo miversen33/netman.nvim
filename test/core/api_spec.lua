@@ -133,6 +133,122 @@ describe("Netman Core #netman-core", function()
         end)
     end)
 
+    describe("_validate_lock", function()
+        before_each(function()
+            _G.cache_func1 = vim.fn.getpid
+            _G.cache_func2 = require("netman.utils").is_process_alive
+            _G.cache_func3 = require("netman.utils").run_shell_command
+            vim.fn.getpid = function() return 1 end
+        end)
+
+        after_each(function()
+            vim.fn.getpid = _G.cache_func1
+            require("netman.utils").is_process_alive = _G.cache_func2
+            require("netman.utils").run_shell_command = _G.cache_func3
+            _G.cache_func1 = nil
+            _G.cache_func2 = nil
+            _G.cache_func3 = nil
+        end)
+        it("should return error string on invalid lock interaction", function()
+            require("netman.utils").run_shell_command = function()
+                return {stdout = {}, stderr = 'someline 1\nsomeline2'}
+            end
+            assert.is_equal(_G.api:_validate_lock(dummy_file, 1), "Unable to validate lock. Please check logs with :Nmlogs", "Failed to generate proper error on lock")
+        end)
+        it("should return error string on invalid lock contents (invalid lock detail)", function()
+            require("netman.utils").run_shell_command = function()
+                return {stdout = {'someline 1', 'someline2'}, stderr = ''}
+            end
+            assert.is_equal(_G.api:_validate_lock(dummy_file, 1), "Unable to validate lock. Please check logs with :Nmlogs", "Failed to generate proper error on lock")
+        end)
+        it("should return error string on invalid lock contents (invalid lock length)", function()
+            require("netman.utils").run_shell_command = function()
+                return {stdout = {'someline 1', 'someline2'}, stderr = ''}
+            end
+            assert.is_equal(_G.api:_validate_lock(dummy_file, 1), "Unable to validate lock. Please check logs with :Nmlogs", "Failed to generate proper error on lock")
+        end)
+        it("should return empty string on valid lock interaction", function()
+            require("netman.utils").run_shell_command = function()
+                return {stdout = {'2:1'}, stderr = ''}
+            end
+            require("netman.utils").is_process_alive = function()
+                return false
+            end
+            vim.fn.getpid = function() return "1" end
+            assert.is_equal(_G.api:_validate_lock(dummy_file, 2), '', "Failed to properly validate lock")
+        end)
+        it("should return empty string on non existent lock interaction", function()
+            require("netman.utils").run_shell_command = function()
+                return {stdout = {}, stderr = 'cat: ' .. require('netman.utils').locks_dir .. _G.dummy_file .. ': No such file or directory'}
+            end
+            assert.is_equal(_G.api:_validate_lock(dummy_file, 1), '', "Failed to properly validate lock")
+        end)
+    end)
+
+    describe("lock", function()
+        before_each(function()
+            _G.cache_func1 = _G.api._validate_lock
+            _G.cache_func3 = _G.api._get_buffer_cache_object
+            _G.cache_func2 = require("netman.utils").run_shell_command
+            require("netman.utils").run_shell_command = function() end
+            _G.api._get_buffer_cache_object = function() return {unique_name = _G.dummy_file} end
+        end)
+        after_each(function()
+            _G.api._validate_lock = _G.cache_func1
+            _G.api._get_buffer_cache_object = _G.cache_func3
+            require("netman.utils").run_shell_command = _G.cache_func2
+            _G.cache_func1 = nil
+            _G.cache_func2 = nil
+            _G.cache_func3 = nil
+        end)
+        it("should lock", function()
+            _G.api._validate_lock = function() return '' end
+            local s = spy.on(require("netman.utils"), 'run_shell_command')
+            assert(_G.api:lock_file(1, 'somefile'), "Failed to lock file!")
+            assert.spy(s).was_called()
+            require("netman.utils").run_shell_command:revert()
+        end)
+        it("should not lock", function()
+            _G.api._validate_lock = function() return 'error' end
+            local s = spy.on(require("netman.utils"), 'run_shell_command')
+            assert(_G.api:lock_file(1, 'somefile'), "Failed to lock file!")
+            assert.spy(s).was_not_called()
+            require("netman.utils").run_shell_command:revert()
+        end)
+        pending("should prompt for lock overtake")
+    end)
+
+    describe("unlock", function()
+        before_each(function()
+            _G.cache_func1 = _G.api._validate_lock
+            _G.cache_func3 = _G.api._get_buffer_cache_object
+            _G.cache_func2 = require("netman.utils").run_shell_command
+            require("netman.utils").run_shell_command = function() end
+            _G.api._get_buffer_cache_object = function() return {unique_name = _G.dummy_file} end
+        end)
+        after_each(function()
+            _G.api._validate_lock = _G.cache_func1
+            _G.api._get_buffer_cache_object = _G.cache_func3
+            require("netman.utils").run_shell_command = _G.cache_func2
+            _G.cache_func1 = nil
+            _G.cache_func2 = nil
+            _G.cache_func3 = nil
+        end)
+        it("should unlock", function()
+            _G.api._validate_lock = function() return '' end
+            local s = spy.on(require("netman.utils"), 'run_shell_command')
+            assert(_G.api:unlock_file(1, 'somefile'), "Failed to unlock file!")
+            assert.spy(s).was_called()
+            require("netman.utils").run_shell_command:revert()
+        end)
+        it("should not unlock", function()
+            _G.api._validate_lock = function() return 'error' end
+            local s = spy.on(require("netman.utils"), 'run_shell_command')
+            assert(_G.api:unlock_file(1, 'somefile'), "Failed to unlock file!")
+            assert.spy(s).was_not_called()
+            require("netman.utils").run_shell_command:revert()
+        end)
+    end)
 
     describe("write", function()
         before_each(function()
@@ -218,19 +334,19 @@ describe("Netman Core #netman-core", function()
             _G.cache_buf = nil
         end)
         it("should throw error on missing path", function()
-            assert.has_error(function() _G.api._get_buffer_cache_object(1) end, '"No path was provided with index: 1!"', "Failed to throw expected missing path error!")
+            assert.has_error(function() _G.api:_get_buffer_cache_object(1) end, '"No path was provided with index: 1!"', "Failed to throw expected missing path error!")
         end)
         it("should throw error about invalid path", function()
-            assert.has_error(function() _G.api._get_buffer_cache_object(1, 'useless_file') end, '"Unable to parse path: useless_file to get protocol!"', "Failed to throw expected invalid path error!")
+            assert.has_error(function() _G.api:_get_buffer_cache_object(1, 'useless_file') end, '"Unable to parse path: useless_file to get protocol!"', "Failed to throw expected invalid path error!")
         end)
         it("should throw error on missing provider for path", function()
-            assert.has_error(function() _G.api._get_buffer_cache_object(1, "junk3://somefile") end, '"Error parsing path: junk3://somefile -- Unable to establish provider"', "Failed to throw expected missing provider error!")
+            assert.has_error(function() _G.api:_get_buffer_cache_object(1, "junk3://somefile") end, '"Error parsing path: junk3://somefile -- Unable to establish provider"', "Failed to throw expected missing provider error!")
         end)
         it("should return mock_provider1 for uri junk1:// on index 1", function()
-            assert.is_equal(_G.api._get_buffer_cache_object(1, _G.mock_uri1).provider.name, _G.mock_provider1.name, "Failed to return mock_provider1!")
+            assert.is_equal(_G.api:_get_buffer_cache_object(1, _G.mock_uri1).provider.name, _G.mock_provider1.name, "Failed to return mock_provider1!")
         end)
         it("should return mock_provider2 for uri junk2:// on index 1", function()
-            assert.is_equal(_G.api._get_buffer_cache_object(1, _G.mock_uri2).provider.name, _G.mock_provider2.name, "Failed to return mock_provider2!")
+            assert.is_equal(_G.api:_get_buffer_cache_object(1, _G.mock_uri2).provider.name, _G.mock_provider2.name, "Failed to return mock_provider2!")
         end)
     end)
     
@@ -309,9 +425,13 @@ describe("Netman Core #netman-core", function()
     describe("unload", function()
         before_each(function()
             _G.api._buffer_provider_cache["" .. 1] = nil
+            _G.cache_func1 = _G.api.unlock_file
+            _G.api.unlock_file = function() end
         end)
         after_each(function()
             _G.api._buffer_provider_cache["" .. 1] = nil
+            _G.api.unlock_file = _G.cache_func1
+            _G.cache_func1 = nil
         end)
         it("should not unload either provider", function()
             local s1 = spy.on(_G.mock_provider1, 'close_connection')
@@ -326,6 +446,7 @@ describe("Netman Core #netman-core", function()
             _G.api._buffer_provider_cache["" .. 1] = {}
             _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
                 provider = _G.mock_provider1
+                ,origin_path = _G.mock_uri
             }
             _G.api:unload(1)
             assert.spy(s1).was_called()
@@ -337,6 +458,7 @@ describe("Netman Core #netman-core", function()
             _G.api._buffer_provider_cache["" .. 1] = {}
             _G.api._buffer_provider_cache["" .. 1][_G.mock_provider2.protocol_patterns[1]] = {
                 provider = _G.mock_provider2
+                ,origin_path = _G.mock_uri
             }
             _G.api:unload(1)
             assert.spy(s1).was_not_called()
@@ -348,13 +470,26 @@ describe("Netman Core #netman-core", function()
             _G.api._buffer_provider_cache["" .. 1] = {}
             _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
                 provider = _G.mock_provider1
+                ,origin_path = _G.mock_uri
             }
             _G.api._buffer_provider_cache["" .. 1][_G.mock_provider2.protocol_patterns[1]] = {
                 provider = _G.mock_provider2
+                ,origin_path = _G.mock_uri
             }
             _G.api:unload(1)
             assert.spy(s1).was_called()
             assert.spy(s2).was_called()
+        end)
+        it("should unlock file on unload", function()
+            local s = spy.on(_G.api, 'unlock_file')
+            _G.api._buffer_provider_cache["" .. 1] = {}
+            _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
+                provider = _G.mock_provider1
+                ,origin_path = _G.mock_uri
+                ,type = _G.api.READ_TYPE.FILE
+            }
+            _G.api:unload(1)
+            assert.spy(s).was_called()
         end)
     end)
 

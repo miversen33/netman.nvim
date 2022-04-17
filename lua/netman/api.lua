@@ -1,4 +1,5 @@
 local utils = require('netman.utils')
+local netman_options = require('netman.options')
 local log = utils.log
 local notify = utils.notify
 
@@ -75,13 +76,12 @@ local _read_as_stream = function(stream)
 end
 
 local _read_as_file = function(file)
-    -- TODO(Mike): Should still handle lock files for the files as they are pulled
     local origin_path = file.origin_path
     local local_path  = file.local_path
     local unclaimed_id = M._unclaimed_id_table[origin_path]
     local claim_command = ''
     if unclaimed_id then
-        claim_command = ' | lua require("netman.api"):_claim_buf_details(vim.fn.bufnr(), "' .. M._unclaimed_id_table[origin_path] .. '")' 
+        claim_command = ' | lua require("netman.api"):_claim_buf_details(vim.fn.bufnr(), "' .. M._unclaimed_id_table[origin_path] .. '")'
     end
     log.debug("Processing details: ", {origin_path=origin_path, local_path=local_path, unclaimed_id=unclaimed_id})
     local command = 'read ++edit ' .. local_path .. ' | set nomodified | filetype detect' .. claim_command
@@ -95,19 +95,20 @@ local _cache_provider = function(provider, protocol, path)
     local bp_cache_object = {
         provider        = provider
         ,protocol       = protocol
+        ,local_path     = nil
         ,origin_path    = path
-        -- ,buffer         = buffer_index
+        ,unique_name    = ''
+        ,buffer         = nil
+        ,provider_cache = {}
     }
     M._unclaimed_provider_details[id] = bp_cache_object
-    M._unclaimed_provider_details[id].buffer = nil
-    M._unclaimed_provider_details[id].provider_cache = {}
     M._unclaimed_id_table[path] = id
     log.debug("Cached provider: " .. provider._provider_path .. ":" .. provider.version .. " for id: " .. id)
     return id, M._unclaimed_provider_details[id]
 end
 
 --- TODO(Mike): Document me
-local _get_buffer_cache_object = function(buffer_index, path)
+function M:_get_buffer_cache_object(buffer_index, path)
     log.debug("_get_buffer_cache_object ", {buffer_index=buffer_index, path=path})
     if buffer_index then
         buffer_index = "" .. buffer_index
@@ -137,6 +138,73 @@ local _get_buffer_cache_object = function(buffer_index, path)
     else
         return M._buffer_provider_cache[buffer_index][protocol]
     end
+end
+
+function M:_validate_lock(file_name, buffer_index)
+    buffer_index = "" .. buffer_index
+    local cur_pid = "" .. vim.fn.getpid()
+    local standard_error = 'Unable to validate lock. Please check logs with :Nmlogs'
+    local command = 'cat ' .. utils.locks_dir .. file_name
+    log.info('Checking if file: ' .. file_name .. ' is locked')
+    log.debug("Check Lock Command: " .. command)
+    local command_options = {}
+    command_options[netman_options.utils.command.IGNORE_WHITESPACE_ERROR_LINES]  = true
+    command_options[netman_options.utils.command.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[netman_options.utils.command.STDERR_JOIN] = ''
+    local command_output = utils.run_shell_command(command, command_options)
+    if command_output.stderr:len() > 0 and command_output.stderr == 'cat: ' .. utils.locks_dir .. file_name .. ': No such file or directory' then
+        return ''
+    end
+    if command_output.stderr:len() > 0 then
+        log.warn("Lock Validation for " .. file_name .. " failed. Error: ", command_output.stderr)
+        return standard_error
+    end
+    if command_output.stdout[2] then
+        log.warn("Lock validation for " .. file_name .. " failed. Invalid lock contents: ", command_output.stdout)
+        return standard_error
+    end
+    local lock_buffer, pid = command_output.stdout[1]:match('^(%d+):(%d+)$')
+    if not pid then
+        log.warn("Lock validation for " .. file_name .. " failed. Invalid lock contents: " .. pid)
+        return standard_error
+    end
+    if not utils.is_process_alive(pid) then
+        log.warn("Clearing out stale lockfile: " .. file_name)
+        os.execute('rm ' .. utils.locks_dir .. file_name)
+    end
+    if pid ~= cur_pid or lock_buffer ~= buffer_index then
+        log.warn("Lock is owned by another process/buffer. Locking Pid: " .. pid .. " Locking Buffer: " .. lock_buffer .. " | Current Pid: " .. vim.fn.getpid() .. " Current Buffer: " .. buffer_index)
+        return standard_error
+    end
+    return ''
+end
+
+function M:lock_file(buffer_index, uri)
+    local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
+    local lock_error_string = M:_validate_lock(buffer_object.unique_name, buffer_index)
+    if lock_error_string ~= '' then
+        log.warn("Received Error while checking if we can lock: " .. lock_error_string)
+        return lock_error_string
+    end
+    log.info("Locking " .. uri)
+    local command = 'echo "' .. buffer_index .. ':' .. vim.fn.getpid() .. '" > ' .. utils.locks_dir .. buffer_object.unique_name
+    log.debug("Lock command: " .. command)
+    utils.run_shell_command(command)
+    return ''
+end
+
+function M:unlock_file(buffer_index, uri)
+    local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
+    local lock_error_string = M:_validate_lock(buffer_object.unique_name, buffer_index)
+    if lock_error_string ~= '' then
+        log.warn("Received error while checking if we can unlock: " .. lock_error_string)
+        return lock_error_string
+    end
+    log.info("Unlocking " .. uri)
+    local command = 'rm ' .. utils.locks_dir .. buffer_object.unique_name
+    log.debug("Unlock command: " .. command)
+    utils.run_shell_command(command)
+    return ''
 end
 
 function M:_claim_buf_details(buffer_index, details_id)
@@ -184,7 +252,7 @@ end
 --- @return nil
 function M:write(buffer_index, write_path)
     log.debug("Saving contents of index: " .. buffer_index .. " to " .. write_path)
-    local provider_details = _get_buffer_cache_object(buffer_index, write_path)
+    local provider_details = M:_get_buffer_cache_object(buffer_index, write_path)
     log.debug("Pulled details object ", provider_details)
     log.info("Calling provider: " .. provider_details.provider._provider_path .. ":" .. provider_details.provider.version .. " to handle write")
     -- This should be done asynchronously
@@ -226,7 +294,7 @@ function M:read(buffer_index, path)
         notify.error('No path provided!')
         return nil
     end
-    local provider_details = _get_buffer_cache_object(buffer_index, path)
+    local provider_details = M:_get_buffer_cache_object(buffer_index, path)
     local read_data, read_type = provider_details.provider:read(path, provider_details.provider_cache)
     if read_type == nil then
         log.info("Setting read type to api.READ_TYPE.STREAM")
@@ -246,10 +314,14 @@ function M:read(buffer_index, path)
         log.debug("grumble grumble, kids these days not following spec...")
         read_data = {read_data}
     end
+    provider_details.type = read_type
     if read_type == M.READ_TYPE.STREAM then
         log.debug("Getting stream command for path: " .. path)
         return _read_as_stream(read_data)
     elseif read_type == M.READ_TYPE.FILE then
+        provider_details.unique_name = read_data.unique_name or read_data.local_path
+        provider_details.local_path = read_data.local_path
+        log.debug("Setting unique name for path: " .. path .. " to " .. provider_details.unique_name)
         log.debug("Getting file command for path: " .. path)
         return _read_as_file(read_data)
     end
@@ -394,6 +466,10 @@ function M:unload(buffer_index)
            goto continue
        end
        called_providers[provider.name] = provider
+       if provider_details.type == M.READ_TYPE.FILE then
+            M:unlock_file(buffer_index, provider_details.origin_path)
+            if provider_details.local_path then utils.run_shell_command('rm ' .. provider_details.local_path) end
+       end
        log.info("Processing unload of " .. provider._provider_path .. ":" .. provider.version)
        if provider.close_connection ~= nil then
             log.debug("Closing connection with " .. provider._provider_path .. ":" .. provider.version)
@@ -455,12 +531,9 @@ end
 -- http://olivinelabs.com/busted/#private
 ---@diagnostic disable-next-line: undefined-global
 if _UNIT_TESTING then
-    M._read_as_stream = _read_as_stream
-    M._read_as_file = _read_as_file
-    M._get_provider_for_path = _get_provider_for_path
-    M._get_buffer_cache_object = _get_buffer_cache_object
-
-    M._utils = utils
+    M._read_as_stream          = _read_as_stream
+    M._read_as_file            = _read_as_file
+    M._get_provider_for_path   = _get_provider_for_path
 end
 
 M:init()
