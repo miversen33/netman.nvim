@@ -228,7 +228,7 @@ describe("Netman Core #netman-core", function()
             _G.cache_func3 = nil
         end)
         it("should unlock", function()
-            _G.api._validate_lock = function() return '' end
+            _G.api._validate_lock = function() return '', true end
             local s = spy.on(require("netman.utils"), 'run_shell_command')
             assert(_G.api:unlock_file(1, 'somefile'), "Failed to unlock file!")
             assert.spy(s).was_called()
