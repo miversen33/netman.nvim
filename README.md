@@ -23,10 +23,15 @@ The server must have [find](https://man7.org/linux/man-pages/man1/find.1.html) i
 Using Netman should be as simple as adding this line to your `init.lua`
 
 ```lua
-require('netman').setup({})
+require('netman')
+```
+
+You can customize netman for yourself via the `:config` method
+```lua 
+require('netman'):config({})
 ```
 <!-- TODO: Update this -->
-The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
+The definition for the table in `config` is as follows (**NOT IMPLEMENTED YET!**)
 ```lua
 {
     allow_netrw = false, 
@@ -54,21 +59,6 @@ The definition for the table in `setup` is as follows (**NOT IMPLEMENTED YET!**)
     },
 }
 ```
-
-### LSP
-
-Currently netman works with the internal neovim LSP, however it is dependent on 2 settings in your lsp configurations.
-Those being
-- single_file_support
-- root_dir
-
-You will want to ensure that any lsps you want to be compatible with netman have `single_file_support` set to `true`
-**NOTE: Yes this means that your files will only work in `single_file_support` mode and you will not have the ability to**
-**get "full" lsp support on your remote file system. There is unfortuantely no way to work around that at this time**
-
-You will also want to ensure that your `root_dir` setting includes `vim.loop.cwd()`, or you run the risk of the lsp itself not registering your
-directory as a working directory and thus it will refuse to connect.
-**NOTE: Some LSPs have this already set, some don't. You will want to ensure you include this with your `root_dir` settings**
 
 ## Network Protocols Targeted
 - [ ] [SSH](#ssh) **CURRENT TARGET FOR IMPLEMENTATION**
