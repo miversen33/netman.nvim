@@ -6,4 +6,4 @@ services:
       dockerfile: Dockerfile
     image: neovim-6.1:latest
     volumes: 
-      - ../.././:/root/.local/share/nvim/site/pack/plugins/opt/netman.nvim/
+      - ../../.././:/root/.local/share/nvim/site/pack/plugins/opt/netman.nvim/

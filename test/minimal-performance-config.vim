@@ -1,2 +1,3 @@
-packadd! netman.nvim
+packadd netman.nvim
+runtime! lua/netman/init.lua
 au VimEnter * quit
