@@ -1,3 +1,5 @@
+local netman_options = require("netman.options")
+
 local mkdir   = vim.fn.mkdir
 
 local _level_threshold = 3
@@ -56,13 +58,13 @@ local generate_string = function(string_length)
     return return_string
 end
 
-local _verify_lock = function(pid)
-    local valid_lock = true
+local is_process_alive = function(pid)
+    local alive = true
     local stdout_callback = function(job, output)
         for _, line in pairs(output) do
-            if not valid_lock then return end
+            if not alive then return end
             if line and not line:match('^(%s*)$') then
-                valid_lock = false
+                alive = false
             end
         end
     end
@@ -75,75 +77,7 @@ local _verify_lock = function(pid)
             }
         )
     })
-    return valid_lock
-end
-
-local is_file_locked = function(file_name)
-    local command = 'cat ' .. locks_dir .. file_name
-    log.debug('Checking if file: ' .. file_name .. ' is locked')
-    log.debug("Check Lock Command: " .. command)
-    local lock_info = ''
-    local stdout_callback = function(job, output)
-        if not lock_info or lock_info:len() > 0 then return end
-        for _, line in pairs(output) do
-            if line and not line:match('^(%s*)$') then
-                lock_info = line
-            end
-        end
-    end
-    local stderr_callback = function(job, output)
-        if not lock_info then return end
-        for _, line in pairs(output) do
-            if line and not line:match('^(%s*)$') then
-                log.info("Received Lock file check error: " .. line)
-                lock_info = nil
-                return
-            end
-        end
-    end
-    vim.fn.jobwait({
-        vim.fn.jobstart(
-            command,
-            {
-                on_stdout = stdout_callback,
-                on_stderr = stderr_callback
-            }
-        )
-    })
-    if lock_info == '' then
-        lock_info = nil
-    elseif lock_info then
-        local _, lock_pid = lock_info:match('^(%d+):(%d+)$')
-        if not _verify_lock(lock_pid) then
-            lock_info = nil
-            log.info("Clearing out stale lockfile: " .. file_name)
-            os.execute('rm ' .. locks_dir .. file_name)
-        end
-    end
-    return lock_info
-end
-
-local lock_file = function(file_name, buffer)
-    local lock_info = is_file_locked(file_name)
-    local current_pid = vim.fn.getpid()
-    if lock_info then
-        log.info("Found existing lock info for file --> " .. lock_info)
-        local lock_buffer, lock_pid = lock_info:match('^(%d+):(%d+)$')
-        notify.error("Unable to lock file: " .. file_name .. " to buffer " .. buffer .. " for pid " .. current_pid .. ". File is already locked to pid: " .. lock_pid .. ' for buffer: ' .. lock_buffer)
-        return false
-    end
-    os.execute('echo "' .. buffer .. ':' .. current_pid .. '" > ' .. locks_dir .. file_name)
-    return true
-end
-
-local unlock_file = function(file_name)
-    if not is_file_locked(file_name) then
-        return
-    end
-    log.info("Removing lock file for " .. file_name)
-    os.execute('rm ' .. locks_dir .. file_name)
-    log.info("Removing cached file for " .. file_name)
-    os.execute('rm ' .. files_dir .. file_name)
+    return alive
 end
 
 local adjust_log_level = function(new_level_threshold)
@@ -164,6 +98,56 @@ local setup = function(level_threshold)
     session_id = generate_string(15)
 
     _is_setup = true
+end
+
+local run_shell_command = function(command, options)
+    options = options or {}
+    local stdout = {}
+    local stderr = {}
+    local gather_stdout_output = function(output)
+        for _, line in ipairs(output) do
+            if line then
+                if not
+                    (
+                        options[netman_options.utils.command.IGNORE_WHITESPACE_OUTPUT_LINES]
+                        and line:match('^(%s*)$')
+                    )
+                    then table.insert(stdout, line)
+                end
+            end
+        end
+    end
+
+    local gather_stderr_output = function(output)
+        for _, line in ipairs(output) do
+            if line then
+                if not
+                    (
+                        options[netman_options.utils.command.IGNORE_WHITESPACE_ERROR_LINES]
+                        and line:match('^(%s*)$')
+                    )
+                    then table.insert(stderr, line)
+                end
+            end
+        end
+    end
+    vim.fn.jobwait({
+        vim.fn.jobstart(
+            command,
+            {
+                on_stdout = function(_, output) gather_stdout_output(output) end
+                ,on_stderr = function(_, output) gather_stderr_output(output) end
+            }
+        )
+    })
+    if options[netman_options.utils.command.STDOUT_JOIN] then
+        stdout = table.concat(stdout, options[netman_options.utils.command.STDOUT_JOIN])
+    end
+    if options[netman_options.utils.command.STDERR_JOIN] then
+        stderr = table.concat(stderr, options[netman_options
+        .utils.command.STDERR_JOIN])
+    end
+    return {stdout=stdout, stderr=stderr}
 end
 
 local _log = function(level, do_notify, ...)
@@ -246,12 +230,12 @@ return {
     log                  = log,
     adjust_log_level     = adjust_log_level,
     generate_string      = generate_string,
-    lock_file            = lock_file,
-    unlock_file          = unlock_file,
-    is_file_locked       = is_file_locked,
+    is_process_alive     = is_process_alive,
     cache_dir            = cache_dir,
     data_dir             = data_dir,
     files_dir            = files_dir,
+    locks_dir            = locks_dir,
     generate_session_log = generate_session_log,
-    copy_table           = copy_table
+    copy_table           = copy_table,
+    run_shell_command    = run_shell_command
 }
