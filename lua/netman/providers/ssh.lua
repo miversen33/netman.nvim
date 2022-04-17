@@ -1,4 +1,5 @@
 local utils  = require("netman.utils")
+local netman_options = require("netman.options")
 local log    = utils.log
 local notify = utils.notify
 
@@ -192,7 +193,6 @@ local _read_directory = function(uri_details)
 end
 
 local _parse_uri = function(uri)
-    local api    = require('netman.api')
     local details = {
         base_uri     = uri
         ,host        = nil
@@ -233,10 +233,10 @@ local _parse_uri = function(uri)
     end
     if details.remote_path:sub(-1) == '/' then
         details.type = TYPES.DIRECTORY
-        details.return_type = api.READ_TYPE.STREAM
+        details.return_type = netman_options.api.READ_TYPE.STREAM
     else
         details.type = TYPES.FILE
-        details.return_type = api.READ_TYPE.FILE
+        details.return_type = netman_options.api.READ_TYPE.FILE
         details.unique_name = utils.generate_string(11)
         details.local_file  = utils.files_dir .. details.unique_name
     end

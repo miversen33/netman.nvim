@@ -7,4 +7,10 @@ return {
             ,STDERR_JOIN = "STDERR_JOIN"
         }
     }
+    ,api = {
+        READ_TYPE = {
+            FILE = "FILE"
+            ,STREAM = "STREAM"
+        }
+    }
 }

@@ -22,10 +22,6 @@ M.version = "0.1"
 M._augroup_defined = false
 M._initialized = false
 M._setup_commands = false
-M.READ_TYPE = {
-    FILE   = 'FILE'
-    ,STREAM = 'STREAM'
-}
 M._buffer_provider_cache = {
     -- Tables that are added to this table should contain the following
     -- key,value pairs
@@ -335,9 +331,9 @@ function M:read(buffer_index, path)
     if read_type == nil then
         log.info("Setting read type to api.READ_TYPE.STREAM")
         log.debug("back in my day we didn't have optional return values...")
-        read_type = M.READ_TYPE.STREAM
+        read_type = netman_options.api.READ_TYPE.STREAM
     end
-    if M.READ_TYPE[read_type] == nil then
+    if netman_options.api.READ_TYPE[read_type] == nil then
         notify.error("Unable to figure out how to display: " .. path .. '!')
         log.warn("Received invalid read type: " .. read_type .. ". This should be either api.READ_TYPE.STREAM or api.READ_TYPE.FILE!")
         return nil
@@ -351,10 +347,10 @@ function M:read(buffer_index, path)
         read_data = {read_data}
     end
     provider_details.type = read_type
-    if read_type == M.READ_TYPE.STREAM then
+    if read_type == netman_options.api.READ_TYPE.STREAM then
         log.debug("Getting stream command for path: " .. path)
         return _read_as_stream(read_data)
-    elseif read_type == M.READ_TYPE.FILE then
+    elseif read_type == netman_options.api.READ_TYPE.FILE then
         provider_details.unique_name = read_data.unique_name or read_data.local_path
         provider_details.local_path = read_data.local_path
         log.debug("Setting unique name for path: " .. path .. " to " .. provider_details.unique_name)
@@ -501,7 +497,7 @@ function M:unload(buffer_index)
            goto continue
        end
        called_providers[provider.name] = provider
-       if provider_details.type == M.READ_TYPE.FILE then
+       if provider_details.type == netman_options.api.READ_TYPE.FILE then
             M:unlock_file(buffer_index, provider_details.origin_path)
             if provider_details.local_path then utils.run_shell_command('rm ' .. provider_details.local_path) end
        end

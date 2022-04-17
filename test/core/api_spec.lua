@@ -1,6 +1,7 @@
 local mock = require('luassert.mock')
 local stub = require('luassert.stub')
 local spy = require('luassert.spy')
+local netman_options = require("netman.options")
 
 -- TODO(Mike): Figure out how to Mock "vim." functions
 -- so that we can use vanilla busted without needing
@@ -47,14 +48,6 @@ describe("Netman Core #netman-core", function()
     package.loaded[_G.mock_provider1.name] =_G.mock_provider1
     package.loaded[_G.mock_provider2.name] =_G.mock_provider1
 
-    describe("global variables", function()
-        it("should contain an api.READ_TYPE.FILE variable", function()
-            assert.is_not_nil(_G.api.READ_TYPE.FILE, "API Missing READ_TYPE.FILE")
-        end)
-        it("should contain an api.READ_TYPE.STREAM variable", function()
-            assert.is_not_nil(_G.api.READ_TYPE.STREAM, "API Missing READ_TYPE.STREAM")
-        end)
-    end)
     describe("read", function()
         before_each(function()
             _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = _G.mock_provider1
@@ -100,7 +93,7 @@ describe("Netman Core #netman-core", function()
         end)
         it("return command should be for a file read type", function()
             _G.mock_provider1.read = function()
-                return {origin_path=_G.dummy_file, local_path=_G.dummy_file}, _G.api.READ_TYPE.FILE
+                return {origin_path=_G.dummy_file, local_path=_G.dummy_file}, netman_options.api.READ_TYPE.FILE
             end
             assert.is_equal(_G.api:read(1, _G.mock_uri1):match('^read %+%+edit'), 'read ++edit', "Failed to generate read to buffer command")
         end)
@@ -486,7 +479,7 @@ describe("Netman Core #netman-core", function()
             _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
                 provider = _G.mock_provider1
                 ,origin_path = _G.mock_uri
-                ,type = _G.api.READ_TYPE.FILE
+                ,type = netman_options.api.READ_TYPE.FILE
             }
             _G.api:unload(1)
             assert.spy(s).was_called()
