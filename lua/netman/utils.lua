@@ -112,7 +112,7 @@ local run_shell_command = function(command, options)
                         options[netman_options.utils.command.IGNORE_WHITESPACE_OUTPUT_LINES]
                         and line:match('^(%s*)$')
                     )
-                    then table.insert(stderr, line)
+                    then table.insert(stdout, line)
                 end
             end
         end
