@@ -142,6 +142,7 @@ end
 
 function M:_validate_lock(file_name, buffer_index)
     buffer_index = "" .. buffer_index
+    local cur_pid = "" .. vim.fn.getpid()
     local standard_error = 'Unable to validate lock. Please check logs with :Nmlogs'
     local command = 'cat ' .. utils.locks_dir .. file_name
     log.info('Checking if file: ' .. file_name .. ' is locked')
@@ -162,7 +163,7 @@ function M:_validate_lock(file_name, buffer_index)
         log.warn("Lock validation for " .. file_name .. " failed. Invalid lock contents: ", command_output.stdout)
         return standard_error
     end
-    local pid, lock_buffer = command_output.stdout[1]:match('^(%d+):(%d+)$')
+    local lock_buffer, pid = command_output.stdout[1]:match('^(%d+):(%d+)$')
     if not pid then
         log.warn("Lock validation for " .. file_name .. " failed. Invalid lock contents: " .. pid)
         return standard_error
@@ -171,7 +172,7 @@ function M:_validate_lock(file_name, buffer_index)
         log.warn("Clearing out stale lockfile: " .. file_name)
         os.execute('rm ' .. utils.locks_dir .. file_name)
     end
-    if pid ~= vim.fn.getpid() or lock_buffer ~= buffer_index then
+    if pid ~= cur_pid or lock_buffer ~= buffer_index then
         log.warn("Lock is owned by another process/buffer. Locking Pid: " .. pid .. " Locking Buffer: " .. lock_buffer .. " | Current Pid: " .. vim.fn.getpid() .. " Current Buffer: " .. buffer_index)
         return standard_error
     end
