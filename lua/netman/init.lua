@@ -67,7 +67,7 @@ function M:init()
         log.debug("Setting Commands")
         local commands = {
              'command -nargs=1 NmloadProvider lua require("netman.api"):load_provider(<f-args>)'
-            ,'command -nargs=? Nmlogs         lua require("netman.api").dump_info(<f-args>)'
+            ,'command -nargs=? Nmlogs         lua require("netman.api"):dump_info(<f-args>)'
             ,'command -nargs=1 Nmdelete       lua require("netman"):delete(<f-args>)'
             ,'command -nargs=+ Nmread         lua require("netman"):read("file", <f-args>)'
             ,'command          Nmwrite        lua require("netman"):write("buf", vim.fn.bufnr())'
