@@ -1,0 +1,9 @@
+version: "3.7"
+services:
+  neovim-6.1:
+    build:
+      context: ./neovim-6.1
+      dockerfile: Dockerfile
+    image: neovim-6.1:latest
+    volumes: 
+      - ../../.././:/root/.local/share/nvim/site/pack/plugins/opt/netman.nvim/
