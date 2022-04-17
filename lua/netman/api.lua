@@ -152,8 +152,7 @@ function M:_validate_lock(file_name, buffer_index)
     command_options[netman_options.utils.command.IGNORE_WHITESPACE_OUTPUT_LINES] = true
     command_options[netman_options.utils.command.STDERR_JOIN] = ''
     local command_output = utils.run_shell_command(command, command_options)
-    if command_output.stderr:len() > 0 and command_output.stderr == 'cat: ' .. utils.locks_dir .. file_name .. ': No such file or directory' then
-        return ''
+        return '', false
     end
     if command_output.stderr:len() > 0 then
         log.warn("Lock Validation for " .. file_name .. " failed. Error: ", command_output.stderr)
@@ -174,14 +173,15 @@ function M:_validate_lock(file_name, buffer_index)
     end
     if pid ~= cur_pid or lock_buffer ~= buffer_index then
         log.warn("Lock is owned by another process/buffer. Locking Pid: " .. pid .. " Locking Buffer: " .. lock_buffer .. " | Current Pid: " .. vim.fn.getpid() .. " Current Buffer: " .. buffer_index)
-        return standard_error
+        return standard_error, true
     end
-    return ''
+    return '', true
 end
 
 function M:lock_file(buffer_index, uri)
     local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
-    local lock_error_string = M:_validate_lock(buffer_object.unique_name, buffer_index)
+    local lock_error_string, _ = M:_validate_lock(buffer_object.unique_name, buffer_index) -- Here we dont care about if the lock
+    -- exists if its ours
     if lock_error_string ~= '' then
         log.warn("Received Error while checking if we can lock: " .. lock_error_string)
         return lock_error_string
@@ -195,10 +195,13 @@ end
 
 function M:unlock_file(buffer_index, uri)
     local buffer_object = M:_get_buffer_cache_object(buffer_index, uri)
-    local lock_error_string = M:_validate_lock(buffer_object.unique_name, buffer_index)
+    local lock_error_string, exists = M:_validate_lock(buffer_object.unique_name, buffer_index)
     if lock_error_string ~= '' then
         log.warn("Received error while checking if we can unlock: " .. lock_error_string)
         return lock_error_string
+    end
+    if not exists then
+        return ''
     end
     log.info("Unlocking " .. uri)
     local command = 'rm ' .. utils.locks_dir .. buffer_object.unique_name
