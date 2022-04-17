@@ -26,6 +26,7 @@ function M:read(...)
         vim.api.nvim_command('keepjumps sil! setlocal ul=-1 | ' .. command)
         vim.api.nvim_command('keepjumps sil! 0d')
         vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
+        api:lock_file(vim.fn.bufnr('%'), file)
         ::continue::
     end
 end
