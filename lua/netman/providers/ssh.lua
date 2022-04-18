@@ -9,9 +9,15 @@ local port_pattern     = '^:([%d]+)'
 local path_pattern     = '^([/]+)(.*)$'
 local protocol_pattern = '^(.*)://'
 
-local TYPES = {
-    DIRECTORY = 'directory'
-    ,FILE     = 'file'
+local directory_patterns = {
+    name         = 'name="([%w/\\%._%- ~]*)",'
+    ,fullname    = 'fullname="([%w/\\%._%- ~]*)",'
+    ,inode       = 'inode=(%d*),'
+    ,type        = 'type="([%w]*)",'
+    ,symlink     = 'symlink="([%w/\\%._%- ~]*)",'
+    ,permissions = 'permissions="([%d]*)",'
+    ,size        = 'size=(%d*),'
+    ,ownership   = 'ownership="([%w:]*)"'
 }
 
 local M = {}
@@ -117,79 +123,55 @@ local _read_file = function(uri_details)
 end
 
 local _read_directory = function(uri_details)
-    -- _read_directory is used to fetch the contents of a remote directory
-    -- :param details(Table):
-    --     A Table representing the remote file details as returned via @see get_remote_details
+    local remote_files = {}
+    local parent = nil
+    local remote_command = 'ssh ' .. uri_details.auth_uri .. ' "find -L ' .. uri_details.remote_path .. [[ -nowarn -depth -maxdepth 1 -printf '{name = \"%f\", fullname=\"%p\", inode=%i, type=\"%Y\", symlink=\"%l\", permissions=\"%m\", size=%s, ownership=\"%u:%g\"}\n'"]]
+    local command_options = {}
+    command_options[netman_options.utils.command.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[netman_options.utils.command.STDERR_JOIN] = ''
+    local command_output = utils.run_shell_command(remote_command, command_options)
+    local stderr = command_output.stderr
+    local stdout = command_output.stdout
+    if stderr ~= '' then
+        log.warn("Received Error: " .. stderr)
+        return nil
+    end
+    local cache_line = ''
+    local size = 0
+    for _, line in ipairs(stdout) do
+        if cache_line ~= '' then
+            line = cache_line .. line
+            cache_line = ''
+        end
+        if line:sub(-1) ~= '}' then
+            cache_line = line
+            goto continue
+        end
+        local _parsed_info = {}
+        for pattern_name, pattern in pairs(directory_patterns) do
+            _parsed_info[pattern_name] = line:match(pattern)
+        end
+        if _parsed_info.type == 'f' then
+            _parsed_info.type = netman_options.api.ATTRIBUTES.FILE 
+        end
+        if _parsed_info.type == 'd' then
+            _parsed_info.type = netman_options.api.ATTRIBUTES.DIRECTORY
+            _parsed_info.fullname = _parsed_info.fullname .. '/'
+        end
 
-    -- TODO(Mike): Add support for sorting the return info????
-    local remote_files = {
-        dirs  = {
-            hidden = {},
-            visible = {}
-        },
-        files = {
-            hidden = {},
-            visible = {},
-        },
-        links = { -- TODO(Mike): Command right now does _not_ resolve links locations.
-            hidden = {},
-            visible = {}
-        }
-    }
-    local stdout_callback = function(job, output)
-        for _, line in ipairs(output) do
-            local _,_, type = line:find('^(%a)')
-            line = line:gsub('^(%a)|', "")
-            local _,_, is_empty = line:find('^[%s]*$')
-            if not line or line:len() == 0 or is_empty then goto continue end
-            local is_hidden,_ = line:find('^%.')
-            local store_table = nil
-            if type == 'd' then
-                if is_hidden then
-                    store_table = remote_files.dirs.hidden
-                else
-                    store_table = remote_files.dirs.visible
-                end
-            elseif type == 'f' then
-                if is_hidden then
-                    store_table = remote_files.files.hidden
-                else
-                    store_table = remote_files.files.visible
-                end
-            elseif type == 'N' then
-                if is_hidden then
-                    store_table = remote_files.links.hidden
-                else
-                    store_table = remote_files.links.visible
-                end
-            end
-            if store_table then
-                table.insert(store_table, {
-                    relative_path = line,
-                    full_path = uri_details.remote_path .. line
-                })
-            end
+        _parsed_info.uri = uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. _parsed_info.fullname
+        table.insert(remote_files, _parsed_info)
+        size = size + 1
         ::continue::
-        end
     end
-    local stderr_callback = function(job, output)
-        for _, line in ipairs(output) do
-            if not line or line:len() == 0 then goto continue end
-            utils.notify.error("Error Browsing Remote Directory: {ENM04} -- STDERR: " .. line)
-            ::continue::
-        end
-    end
-    -- NOTE: This should instead return the unique name for _every_ item it finds instead of just the file on read
-    local command = 'ssh ' .. uri_details.auth_uri .. ' "find ' .. uri_details.remote_path .. ' -maxdepth 1 -printf \'%Y|%P\n\' | gzip -c" | gzip -d -c'
+    parent = remote_files[size]
+    parent.uri = parent.uri .. '../'
+    log.debug("Parent: ", parent)
 
-    local job = vim.fn.jobstart(
-        command
-        ,{
-            on_stdout = stdout_callback,
-            on_stderr = stderr_callback,
-        })
-    vim.fn.jobwait({job})
-    return remote_files
+    return {
+        remote_files = remote_files
+        ,parent = parent
+    }
 end
 
 local _parse_uri = function(uri)
@@ -227,15 +209,15 @@ local _parse_uri = function(uri)
         return {}
     end
     if path_head:len() == 1 then
-        details.remote_path = "'$HOME/'" .. path_body
+        details.remote_path = "$HOME/" .. path_body
     else
         details.remote_path = "/" .. path_body
     end
     if details.remote_path:sub(-1) == '/' then
-        details.type = TYPES.DIRECTORY
-        details.return_type = netman_options.api.READ_TYPE.STREAM
+        details.type = netman_options.api.ATTRIBUTES.DIRECTORY
+        details.return_type = netman_options.api.READ_TYPE.EXPLORE
     else
-        details.type = TYPES.FILE
+        details.type = netman_options.api.ATTRIBUTES.FILE
         details.return_type = netman_options.api.READ_TYPE.FILE
         details.unique_name = utils.generate_string(11)
         details.local_file  = utils.files_dir .. details.unique_name
@@ -267,7 +249,7 @@ end
 
 function M:write(buffer_index, uri, cache)
     cache = _validate_cache(uri, cache)
-    if cache.type == TYPES.DIRECTORY then
+    if cache.type == netman_options.api.ATTRIBUTES.DIRECTORY then
         return _create_directory(uri, cache)
     else
         return _write_file(buffer_index, uri, cache)
@@ -276,7 +258,7 @@ end
 
 function M:read(uri, cache)
     cache = _validate_cache(uri, cache)
-    if cache.type == TYPES.DIRECTORY then
+    if cache.type == netman_options.api.ATTRIBUTES.DIRECTORY then
         return _read_directory(cache), cache.return_type
     else
         return _read_file(cache), cache.return_type
