@@ -101,7 +101,23 @@ local _read_as_explore = function(explore_details)
         notify.error("No explorer loaded!")
         return
     end
-    return M.explorer:explore(explore_details)
+    local sanitized_explore_details = {}
+    for _, details in ipairs(explore_details.remote_files) do
+        for _, field in ipairs(netman_options.explorer.FIELDS) do
+            if details[field] == nil then
+                log.warn("Explore Details Missing Required Field: " .. field)
+            end
+        end
+        for key, _ in ipairs(details) do
+            if  netman_options.explorer.FIELDS[key] == nil
+            and netman_options.explorer.METADATA[key] == nil then
+                log.info("Stripping out " .. key .. " from explore details as it does not conform with netman.options.explorer.FIELDS or netman.options.explorer.METADATA")
+                details[key] = nil
+            end
+        end
+        table.insert(sanitized_explore_details, details)
+    end
+    return M.explorer:explore(explore_details.parent, sanitized_explore_details)
 end
 
 local _cache_provider = function(provider, protocol, path)
@@ -358,7 +374,8 @@ function M:read(buffer_index, path)
         return nil
     end
     if read_data == nil then
-        log.warn("Received nothing to display to the user, this seems wrong but I just do what I'm told...")
+        log.info("Received nothing to display to the user, this seems wrong but I just do what I'm told...")
+        return
     end
     if type(read_data) ~= 'table' then
         log.warn("Data returned is not in a table. Attempting to make it a table")

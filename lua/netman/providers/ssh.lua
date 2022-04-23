@@ -8,17 +8,18 @@ local host_pattern     = "^([%a%c%d%s%-%.]*)"
 local port_pattern     = '^:([%d]+)'
 local path_pattern     = '^([/]+)(.*)$'
 local protocol_pattern = '^(.*)://'
+local file_name_pattern = '(.*)'
 
-local directory_patterns = {
-    name         = 'name="([%w/\\%._%- ~]*)",'
-    ,fullname    = 'fullname="([%w/\\%._%- ~]*)",'
-    ,inode       = 'inode=(%d*),'
-    ,type        = 'type="([%w]*)",'
-    ,symlink     = 'symlink="([%w/\\%._%- ~]*)",'
-    ,permissions = 'permissions="([%d]*)",'
-    ,size        = 'size=(%d*),'
-    ,ownership   = 'ownership="([%w:]*)"'
-}
+local directory_patterns = {}
+directory_patterns[netman_options.explorer.METADATA.NAME]        = '^,name=' .. file_name_pattern .. '$'
+directory_patterns[netman_options.explorer.METADATA.FULLNAME]    = '^,fullname=' .. file_name_pattern .. '$'
+directory_patterns[netman_options.explorer.METADATA.INODE]       = '^,inode=(%d*)$'
+directory_patterns['_type']                                      = '^,type=([%w]*)$'
+directory_patterns[netman_options.explorer.METADATA.PERMISSIONS] = '^,permissions="([%d]*)"$'
+directory_patterns[netman_options.explorer.METADATA.SIZE]        = '^,size=(%d*)$'
+directory_patterns[netman_options.explorer.METADATA.PARENT]      = '^,parent=' .. file_name_pattern .. '$'
+directory_patterns[netman_options.explorer.METADATA.OWNER_USER]  = '^,owner_user=([%w]*)'
+directory_patterns[netman_options.explorer.METADATA.OWNER_GROUP] = '^,owner_group=([%w]*)'
 
 local M = {}
 
@@ -125,7 +126,11 @@ end
 local _read_directory = function(uri_details)
     local remote_files = {}
     local parent = nil
-    local remote_command = 'ssh ' .. uri_details.auth_uri .. ' "find -L ' .. uri_details.remote_path .. [[ -nowarn -depth -maxdepth 1 -printf '{name = \"%f\", fullname=\"%p\", inode=%i, type=\"%Y\", symlink=\"%l\", permissions=\"%m\", size=%s, ownership=\"%u:%g\"}\n'"]]
+    local remote_command =
+        'ssh ' .. uri_details.auth_uri ..
+        ' "find -L ' .. utils.escape_shell_command(uri_details.remote_path) .. ' -nowarn -depth -maxdepth 1 -printf' .. [[ ',{\n,name=%f\n,fullname=%p\n,lastmod_sec=%T@\n,lastmod_ts=%Tc\n,inode=%i\n,type=%Y\n,symlink=%l\n,permissions=%m\n,size=%s\n,owner_user=%u\n,owner_group=%g\n,parent=%h/\n,}\n'"]]
+
+    log.info("Remote Command: " .. remote_command)
     local command_options = {}
     command_options[netman_options.utils.command.IGNORE_WHITESPACE_ERROR_LINES] = true
     command_options[netman_options.utils.command.STDERR_JOIN] = ''
@@ -136,38 +141,57 @@ local _read_directory = function(uri_details)
         log.warn("Received Error: " .. stderr)
         return nil
     end
-    local cache_line = ''
+    local _object = {}
     local size = 0
+    local cache_line = ''
     for _, line in ipairs(stdout) do
-        if cache_line ~= '' then
+        if line == '' then
+            goto continue
+        end
+        if line:sub(1,1) == ',' then
+            cache_line = line
+        else
             line = cache_line .. line
             cache_line = ''
         end
-        if line:sub(-1) ~= '}' then
-            cache_line = line
+        if line == ',{' then
+            _object = {}
             goto continue
         end
-        local _parsed_info = {}
-        for pattern_name, pattern in pairs(directory_patterns) do
-            _parsed_info[pattern_name] = line:match(pattern)
-        end
-        if _parsed_info.type == 'f' then
-            _parsed_info.type = netman_options.api.ATTRIBUTES.FILE 
-        end
-        if _parsed_info.type == 'd' then
-            _parsed_info.type = netman_options.api.ATTRIBUTES.DIRECTORY
-            _parsed_info.fullname = _parsed_info.fullname .. '/'
-        end
+        if line == ',}' then
+            _object[netman_options.explorer.FIELDS.URI] = uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. _object[netman_options.explorer.METADATA.FULLNAME]
+            if _object._type == 'f' then
+                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = "DESTINATION"
+                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = netman_options.explorer.METADATA.DESTINATION
+            elseif _object._type == 'd' then
+                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = "LINK"
+                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = netman_options.explorer.METADATA.LINK
+                _object[netman_options.explorer.METADATA.FULLNAME] =
+                  _object[netman_options.explorer.METADATA.FULLNAME] .. '/'
 
-        _parsed_info.uri = uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. _parsed_info.fullname
-        table.insert(remote_files, _parsed_info)
-        size = size + 1
+                _object[netman_options.explorer.FIELDS.NAME] =
+                  _object[netman_options.explorer.METADATA.NAME] .. '/'
+
+                _object[netman_options.explorer.FIELDS.URI] =  _object[netman_options.explorer.FIELDS.URI] .. '/'
+            end
+            table.insert(remote_files, _object)
+            size = size + 1
+            goto continue
+        end
+        for key, pattern in pairs(directory_patterns) do
+            local value = line:match(pattern)
+            if value then
+                _object[key] = value
+                goto continue
+            end
+        end
         ::continue::
     end
-    parent = remote_files[size]
-    parent.uri = parent.uri .. '../'
-    log.debug("Parent: ", parent)
-
+    table.insert(remote_files, 1, remote_files[size])
+    remote_files[size + 1] = nil
+    parent = 1
+    remote_files[parent][netman_options.explorer.FIELDS.URI] =  uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. remote_files[parent][netman_options.explorer.METADATA.PARENT]
+    remote_files[parent][netman_options.explorer.FIELDS.NAME] = '../'
     return {
         remote_files = remote_files
         ,parent = parent

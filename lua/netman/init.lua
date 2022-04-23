@@ -21,11 +21,16 @@ function M:read(...)
             log.warn("No command returned for read of " .. file)
             goto continue
         end
+        if vim.fn.bufexists(file) == 0 then
+            vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, false))
+            vim.api.nvim_command('file ' .. file)
+        end
         local undo_levels = vim.api.nvim_get_option('undolevels')
         vim.api.nvim_command('keepjumps sil! 0')
         vim.api.nvim_command('keepjumps sil! setlocal ul=-1 | ' .. command)
         vim.api.nvim_command('keepjumps sil! 0d')
         vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
+        vim.api.nvim_command('sil! set nomodified')
         api:lock_file(vim.fn.bufnr('%'), file)
         ::continue::
     end

@@ -1,10 +1,13 @@
 return {
     utils = {
         command = {
-             IGNORE_WHITESPACE_ERROR_LINES  = 'IGNORE_WHITESPACE_ERROR_LINES'
-            ,IGNORE_WHITESPACE_OUTPUT_LINES = 'IGNORE_WHITESPACE_OUTPUT_LINES'
+             IGNORE_WHITESPACE_ERROR_LINES  = 
+                'IGNORE_WHITESPACE_ERROR_LINES'
+            ,IGNORE_WHITESPACE_OUTPUT_LINES = 
+                'IGNORE_WHITESPACE_OUTPUT_LINES'
             ,STDOUT_JOIN = "STDOUT_JOIN"
             ,STDERR_JOIN = "STDERR_JOIN"
+            ,SHELL_ESCAPE = "SHELL_ESCAPE"
         }
     }
     ,api = {
@@ -23,16 +26,28 @@ return {
         EXPLORE = 'EXPLORE'
     }
     ,explorer = {
-        REQUIRED = {
-            ATTR = 'ATTR'
-            ,NAME = 'NAME'
-            ,UNIQUE_NAME = 'UNIQUE_PATH'
+        METADATA = {
+            PERMISSIONS = "PERMISSIONS"
+            ,OWNER_USER = "OWNER_USER"
+            ,OWNER_GROUP = "OWNER_GROUP"
+            ,SIZE_LABEL = "SIZE_LABEL"
+            ,SIZE = "SIZE"
+            ,GROUP = "GROUP"
+            ,PARENT = "PARENT"
+            ,FIELD_TYPE = "FIELD_TYPE"
+            ,TYPE = "TYPE"
+            ,INODE = "INODE"
+            ,LASTACCESS = "LAST_ACCESS"
+            ,FULLNAME = "FULLNAME"
+            ,URI = "URI"
+            ,NAME = "NAME"
+            ,LINK = "LINK"
+            ,DESTINATION = "DESTINATION"
         }
-        ,OPTIONAL = {
-            FULL_PATH = 'FULL_PATH'
-            ,OWNERSHIP = 'OWNERSHIP'
-            ,PERMISSION = 'PERMISSION'
-            ,TYPE = 'TYPE'
+        ,FIELDS = {
+            FIELD_TYPE = "FIELD_TYPE"
+            ,NAME = "NAME"
+            ,URI = "URI"
         }
     }
 }

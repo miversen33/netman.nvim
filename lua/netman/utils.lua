@@ -10,6 +10,7 @@ local locks_dir = cache_dir .. 'lock_files/'
 local data_dir  = vim.fn.stdpath('data')  .. '/netman/'
 local session_id = ''
 local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
+local shell_escape_pattern = "([\\(%s@!\"\'\\)])"
 local log_timestamp_format = '%Y-%m-%d %H:%M:%S'
 local log_file = nil
 
@@ -100,8 +101,16 @@ local setup = function(level_threshold)
     _is_setup = true
 end
 
+local escape_shell_command = function(command, escape_string)
+    escape_string = escape_string or '\\'
+    return command:gsub(shell_escape_pattern, escape_string .. '%1')
+end
+
 local run_shell_command = function(command, options)
     options = options or {}
+    if options.SHELL_ESCAPE then
+        command = escape_shell_command(command)
+    end
     local stdout = {}
     local stderr = {}
     local gather_stdout_output = function(output)
@@ -131,6 +140,7 @@ local run_shell_command = function(command, options)
             end
         end
     end
+
     vim.fn.jobwait({
         vim.fn.jobstart(
             command,
@@ -237,5 +247,6 @@ return {
     locks_dir            = locks_dir,
     generate_session_log = generate_session_log,
     copy_table           = copy_table,
-    run_shell_command    = run_shell_command
+    run_shell_command    = run_shell_command,
+    escape_shell_command = escape_shell_command
 }

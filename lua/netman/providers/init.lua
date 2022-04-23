@@ -1,6 +1,6 @@
 local _providers = {
     "netman.providers.ssh"
-    ,"netman.providers.explorer"
+    ,"netman.providers.explore_shim"
 }
 
 return _providers
