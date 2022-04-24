@@ -7,7 +7,7 @@
 While netman was originally targetted at replacing [Netrw](http://www.drchip.org/astronaut/vim/index.html#NETRW) with a lua drop in, it has grown to different aspirations. Below is the current list of goals for Netman
 
 - [ ] Remote File Management
-- [ ] Extensible Framework to Integrate Remote Filesystems with Existing File Managers
+- [ ] [Extensible Framework to Integrate Remote Filesystems with Existing File Managers](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/providers/explore_shim.lua)
 - [ ] [Fully Functional with Neovim LSP](#lsp)
 
 ## Dependencies
