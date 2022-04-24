@@ -62,15 +62,6 @@ function M:close_uri(uri)
     vim.api.nvim_buf_delete(bufnr, {force=false})
 end
 
-function M:config(options)
-    options = options or {}
-    if options.debug then
-        -- utils.adjust_log_level(1)
-        log.debug("Setting Netman in debug mode!")
-    end
-    log.debug("Setup Called!")
-end
-
 function M:init()
     if not M._setup_commands then
         log.debug("Setting Commands")
