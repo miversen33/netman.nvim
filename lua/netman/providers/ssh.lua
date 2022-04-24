@@ -98,17 +98,16 @@ local _read_file = function(uri_details)
     --     A Table representing the remote file details as returned via @see get_remote_details
 
     local compression = ''
+    local port = uri_details.port
+    if port ~= '' then
+        port = ' -P ' .. port .. ' '
+    end
     -- if(use_compression) then
     --     compression = '-C '
     -- end
-    utils.log.info("Connecting to host: " .. uri_details.host)
-    local command = "scp " .. compression .. uri_details.auth_uri .. ':' .. uri_details.remote_path .. ' ' .. uri_details.local_file
-    utils.log.debug("Running Command: " .. command)
-    utils.log.info("Pulling down file: '" .. uri_details.remote_path .. "' and saving to '" .. uri_details.local_file .. "'")
-    local _, exitcode, code = os.execute(command) -- TODO(Mike): Determine if this is "faster" than using vim.jobstart?
-    code = code or ""
-    if exitcode then
-        utils.notify.error("Error Retrieving Remote File: {ENM03} -- Failed to pull down " .. uri_details.remote_path .. "! Received exitcode: " .. exitcode .. "\n\tAdditional Details: " .. code)
+    local path = uri_details.remote_path or ""
+    if path == "" then
+        log.warn("Invalid Path Received from URI: " .. uri_details.base_uri)
     end
     utils.log.debug("Saved Remote File: " .. uri_details.remote_path .. " to " .. uri_details.local_file)
     return {
