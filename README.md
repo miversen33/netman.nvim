@@ -4,7 +4,7 @@
 
 ## Goals
 
-Netman's target is to provide a wholely lua written replacement for [Netrw](http://www.drchip.org/astronaut/vim/index.html#NETRW) that acts as a "drop in" replacement for how one would interact with Netrw.
+While netman was originally targetted at replacing [Netrw](http://www.drchip.org/astronaut/vim/index.html#NETRW) with a lua drop in, it has grown to different aspirations. Below is the current list of goals for Netman
 
 - [ ] Remote File Management
 - [ ] Extensible Framework to Integrate Remote Filesystems with Existing File Managers
@@ -34,12 +34,6 @@ require('netman'):config({})
 The definition for the table in `config` is as follows (**NOT IMPLEMENTED YET!**)
 ```lua
 {
-    allow_netrw = false, 
-        -- By default, Netman will remove Netrw and act in its place. 
-        -- You can set this flag to `true` to allow Netman to operate 
-        -- behind Netrw. This is especially useful if you plan on 
-        -- using Netman as a "provider" for other services, as opposed
-        -- to using Netman as a standin for Netrw
     keymaps = {},
         -- PENDING IMPLEMENTATION
     debug   = false,
