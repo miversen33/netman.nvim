@@ -113,3 +113,5 @@ the problem session as only the logs associated with the current session will be
 
 The logfile for netman is stored in `$HOME/.local/nvim/netman/logs.txt` if you would prefer to 
 look through this in an attempt to troubleshoot issues
+
+**NOTE: This does _not_ scrub sensitive content, so it is wise to ensure there are no passwords or the like in this log before uploading it**
