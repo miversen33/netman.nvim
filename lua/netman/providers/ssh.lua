@@ -204,7 +204,6 @@ end
 
 local _parse_uri = function(uri)
     local details = {
-
         base_uri     = uri
         ,protocol    = nil
         ,host        = nil
@@ -214,6 +213,7 @@ local _parse_uri = function(uri)
         ,auth_uri    = nil
         ,type        = nil
         ,return_type = nil
+        ,parent      = nil
     }
     log.info("Parsing URI: " .. uri)
     details.protocol = uri:match(protocol_pattern)
@@ -258,6 +258,19 @@ local _parse_uri = function(uri)
     else
         details.auth_uri = details.host
     end
+    local parent = ''
+    local cur_path = ''
+    -- This is literal 💩 but I dont know a better way of handling this since path globs are awful...
+    for i=1, #details.remote_path do
+        local char = details.remote_path:sub(i,i)
+        cur_path = cur_path .. char
+        if char == '/' then
+            parent = parent .. cur_path
+            cur_path = ''
+        end
+    end
+    details.parent = parent
+    log.debug("Found Parent: " .. details.parent)
     -- if details.port and not details.port:match('^([%s]*)$') and details.user:len() > 1 then
     --     details.auth_uri = details.auth_uri
     -- end
