@@ -97,14 +97,31 @@ describe("Netman Core #netman-core", function()
             end
             assert.is_equal(_G.api:read(1, _G.mock_uri1):match('^read %+%+edit'), 'read ++edit', "Failed to generate read to buffer command")
         end)
-       it("return command should be for a stream read type", function()
-            assert.is_equal(_G.api:read(1, _G.mock_uri1):match('0append! '), '0append! ')
+       it("read should return nil and accept nil read type", function()
+            assert.is_nil(_G.api:read(1, _G.mock_uri1), "Read Command didn't return nil on nil read type!")
         end)
         it("should create an append command (append!) followed by the input stream", function()
             assert.is_equal(_G.api._read_as_stream(_G.dummy_stream), "0append! " .. table.concat(_G.dummy_stream, '\n'), "Failed to create append command")
         end)
         it("should create a read command (read ++edit) followed by the local file", function()
             assert.is_equal(_G.api._read_as_file({origin_path=_G.dummy_file,local_path=_G.dummy_file}):match("^read %+%+edit"), "read ++edit", "Failed to create append command")
+        end)
+        it("should remove invalid entries from _read_as_explore", function()
+            local invalid_key1 = "INVALID_KEY1"
+            local invalid_key2 = "INVALID_KEY2"
+            local valid_key1 = netman_options.explorer.METADATA.NAME
+            local required_key1 = netman_options.explorer.FIELDS.FIELD_TYPE
+            local invalid_object = {}
+            invalid_object[invalid_key1]  = "something cool1"
+            invalid_object[invalid_key2]  = "something cool2"
+            invalid_object[valid_key1]    = "valid key1"
+            invalid_object[required_key1] = "required key1"
+            local valid_object = {}
+            valid_object[valid_key1]    = "valid key1"
+            valid_object[required_key1] = "required key1"
+            local sanitized_details = _G.api._read_as_explore({parent=1, remote_files = invalid_object})
+            assert.is_true(table.concat(sanitized_details.details) == table.concat(valid_object), "Failed to return correct formatted explore object")
+            assert.is_equal(sanitized_details.parent, 1, "Failed to return inputted parent!")
         end)
         describe("_get_provider_for_path", function()
             after_each(function()

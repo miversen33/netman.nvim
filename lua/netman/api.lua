@@ -97,10 +97,6 @@ local _read_as_file = function(file)
 end
 
 local _read_as_explore = function(explore_details)
-    if not M.explorer then
-        notify.error("No explorer loaded!")
-        return
-    end
     local sanitized_explore_details = {}
     for _, details in ipairs(explore_details.remote_files) do
         for _, field in ipairs(netman_options.explorer.FIELDS) do
@@ -117,7 +113,10 @@ local _read_as_explore = function(explore_details)
         end
         table.insert(sanitized_explore_details, details)
     end
-    return M.explorer:explore(explore_details.parent, sanitized_explore_details)
+    return {
+        parent=explore_details.parent,
+        details=explore_details
+    }
 end
 
 local _cache_provider = function(provider, protocol, path)
@@ -393,15 +392,19 @@ function M:read(buffer_index, path)
         log.debug("Getting file command for path: " .. path)
         return _read_as_file(read_data)
     elseif read_type == netman_options.api.READ_TYPE.EXPLORE then
+        if not M.explorer then
+            log.error("No tree explorer loaded!")
+            return
+        end
         log.debug("Calling explorer to handle path: " .. path)
-        return _read_as_explore(read_data)
+        return M.explorer:explore(_read_as_explore(read_data))
     end
     log.warn("Mismatched read_type. How on earth did you end up here???")
     log.debug("Ya I don't know what you want me to do here chief...")
     return nil
 end
 
---- Load Explorer is used to set the current remote explorer to whatever package 
+--- Load Explorer is used to set the current remote explorer to whatever package
 --- is associated with `explorer_path`.
 --- @param explorer_path string
 ---     The string path to the explorer to use
@@ -683,6 +686,7 @@ end
 if _UNIT_TESTING then
     M._read_as_stream          = _read_as_stream
     M._read_as_file            = _read_as_file
+    M._read_as_explore         = _read_as_explore
     M._get_provider_for_path   = _get_provider_for_path
 end
 
