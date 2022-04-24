@@ -3,8 +3,7 @@ local stub = require('luassert.stub')
 local spy = require('luassert.spy')
 
 describe("Netman init #netman-init", function()
-
-    require("netman.utils").adjust_log_level(1)
+    vim.g.netman_log_level = 1
 
     _G.api = {
         read = function() end,

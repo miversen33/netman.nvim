@@ -81,12 +81,15 @@ Current Limitations:
 
 ## Debugging
 
-When debugging your netman session, ensure that you have netman running in `DEBUG` mode. To do this, update your `setup` configuration to include `debug=true` in the input table. An example
+When debugging your netman session, ensure that you are running in `DEBUG` mode. This can be done by simply setting
 ```lua
-require('netman'):init({'debug'=true})
+vim.g.netman_debug = true
 ```
+in your `init.lua` configuration file.
+**NOTE: It is recommended that you place this line somewhere before you import plugins as `Netman` automatically sets itself up on import of itself or `api`. Any logging during initialization is lost if the appropriate level is not set before that**
 
-By using the debug flag, significantly more information is output into the logs.
+**NOTE: Debug mode a significantly volume of logs, ensure you only have it on when its needed**
+
 When you encounter a bug that you wish to submit an issue for, 
 please refer to [How to fill out issue](https://github.com/miversen33/netman.nvim/issues/3). Netman is designed to make
 your life as the user easy. To help accomplish this, netman has a command built in
@@ -100,7 +103,8 @@ You can additionally provide an output path for the logs to be stored at
 ```vim
 :Nmlogs /home/miversen33/WHY_YOU_BIG_DED.log
 ```
-This will dump the session log out into the above listed `/home/miversen33/WHY_YOU_BIG_DED.log` file, which can then be retrieved and uploaded with your issue.
+This will dump the session log out into the above listed `/home/miversen33/WHY_YOU_BIG_DED.log` file, which can then be retrieved and uploaded with your issue. Additionally, the generated log will be opened up in a new `NetmanLogs` filetype buffer, formatted and available for viewing. This should prove
+helpful for developers as they work through integration with Netman.
 
 NOTE: In order for the logs to be useful, it is required that `:Nmlogs` be ran from within
 the problem session as only the logs associated with the current session will be aggregated.

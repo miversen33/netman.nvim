@@ -1,7 +1,7 @@
 local providers = require("netman.providers")
 local explore_pattern = require("netman.options").protocol.EXPLORE
 
-require("netman.utils").adjust_log_level(1)
+vim.g.netman_log_level = 1
 
 describe("Netman providers #netman-providers", function()
     for _, provider_path in ipairs(providers) do

@@ -4,7 +4,7 @@ local netman_options = require("netman.options")
 
 local mkdir   = vim.fn.mkdir
 
-local _level_threshold = 3
+vim.g.netman_log_level = vim.g.netman_log_level or 3
 local _is_setup = false
 local cache_dir = vim.fn.stdpath('cache') .. '/netman/'
 local files_dir = cache_dir .. 'remote_files/'

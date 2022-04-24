@@ -21,7 +21,7 @@ describe("Netman Core #netman-core", function()
     _G.invalid_mock_uri = "someuseless_uri://file"
     _G.dummy_stream = { 'Some complete garbage' ,'literally useless junk' }
     _G.dummy_file = "non-existent-file.txt"
-    require("netman.utils").adjust_log_level(1)
+    vim.g.netman_log_level = 1
     _G.api = require('netman.api')
     _G.mock_provider1 = {
         name = 'mock_provider1',
