@@ -48,7 +48,7 @@ local generate_session_log = function(output_path, logs)
     table.insert(logs, line)
     vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
     vim.fn.writefile(logs, output_path)
-    vim.notify("Saved logs to " .. output_path)
+    vim.notify("Saved logs to " .. output_path, 2, {})
 end
 
 local generate_string = function(string_length)
