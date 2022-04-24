@@ -26,34 +26,6 @@ Using Netman should be as simple as adding this line to your `init.lua`
 require('netman')
 ```
 
-You can customize netman for yourself via the `:config` method
-```lua 
-require('netman'):config({})
-```
-<!-- TODO: Update this -->
-The definition for the table in `config` is as follows (**NOT IMPLEMENTED YET!**)
-```lua
-{
-    keymaps = {},
-        -- PENDING IMPLEMENTATION
-    debug   = false,
-        -- Passing this as true will enable significant more log output.
-        -- Note: Logs are output by default to `$HOME/.local/nvim/netman/logs.txt`
-        -- though this is likely to change to a better (more fitting) location.
-    compress = false,
-        -- Setting "compress" to true will prompt the underlying provider to also
-        -- compress traffic as it pulls it across the network. By defualt
-        -- this is turned off to better compensate for speed lost due
-        -- to compressing files, however it can be enabled if you are 
-        -- experiencing long delays in getting files across the network (usually
-        -- related to slow/underpowered networks)
-    providers = {
-        "netman.providers.ssh"
-        -- List of providers to utilize for remote filesystem interfacing
-    },
-}
-```
-
 ## Network Protocols Targeted
 - [x] [SSH](#ssh) **CURRENT TARGET FOR IMPLEMENTATION**
 - [ ] Rsync
