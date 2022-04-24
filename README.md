@@ -61,7 +61,7 @@ The definition for the table in `config` is as follows (**NOT IMPLEMENTED YET!**
 ```
 
 ## Network Protocols Targeted
-- [ ] [SSH](#ssh) **CURRENT TARGET FOR IMPLEMENTATION**
+- [x] [SSH](#ssh) **CURRENT TARGET FOR IMPLEMENTATION**
 - [ ] Rsync
 
 ## Core Providers
@@ -78,6 +78,11 @@ Accessing files/directories over ssh can be done in below format
     - `$PORT`    : The port to connect to (Optional)
     - `/[//]`    : Forward slash (one) is considered a relative path to the `$USER` home directory. Note, this will work regardless of if `$USER` is specified or not. Providing `///` will act as a "Full Path" override
     - `$PATH`    : The path to a file/directory to interact with. If not provided, defaults to `/[//]` as described above (Optional)
+
+Current Limitations:
+- Interactive authentication currently do not work
+    If you need a password or keyphrase to enter a box, currently this will just fail (ish?).
+    - This is being investigated in [issue 33](https://github.com/miversen33/netman.nvim/issues/33)
 
 ## Debugging
 
