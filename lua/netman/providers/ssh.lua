@@ -1,5 +1,7 @@
 local utils  = require("netman.utils")
-local netman_options = require("netman.options")
+local metadata_options = require("netman.options").explorer.METADATA
+local command_flags = require("netman.options").utils.command
+local api_flags = require("netman.options").api
 local log    = utils.log
 local notify = utils.notify
 
@@ -11,15 +13,15 @@ local protocol_pattern = '^(.*)://'
 local file_name_pattern = '(.*)'
 
 local directory_patterns = {}
-directory_patterns[netman_options.explorer.METADATA.NAME]        = '^,name=' .. file_name_pattern .. '$'
-directory_patterns[netman_options.explorer.METADATA.FULLNAME]    = '^,fullname=' .. file_name_pattern .. '$'
-directory_patterns[netman_options.explorer.METADATA.INODE]       = '^,inode=(%d*)$'
+directory_patterns[metadata_options.NAME]        = '^,name=' .. file_name_pattern .. '$'
+directory_patterns[metadata_options.FULLNAME]    = '^,fullname=' .. file_name_pattern .. '$'
+directory_patterns[metadata_options.INODE]       = '^,inode=(%d*)$'
 directory_patterns['_type']                                      = '^,type=([%w]*)$'
-directory_patterns[netman_options.explorer.METADATA.PERMISSIONS] = '^,permissions="([%d]*)"$'
-directory_patterns[netman_options.explorer.METADATA.SIZE]        = '^,size=(%d*)$'
-directory_patterns[netman_options.explorer.METADATA.PARENT]      = '^,parent=' .. file_name_pattern .. '$'
-directory_patterns[netman_options.explorer.METADATA.OWNER_USER]  = '^,owner_user=([%w]*)'
-directory_patterns[netman_options.explorer.METADATA.OWNER_GROUP] = '^,owner_group=([%w]*)'
+directory_patterns[metadata_options.PERMISSIONS] = '^,permissions="([%d]*)"$'
+directory_patterns[metadata_options.SIZE]        = '^,size=(%d*)$'
+directory_patterns[metadata_options.PARENT]      = '^,parent=' .. file_name_pattern .. '$'
+directory_patterns[metadata_options.OWNER_USER]  = '^,owner_user=([%w]*)'
+directory_patterns[metadata_options.OWNER_GROUP] = '^,owner_group=([%w]*)'
 
 local M = {}
 
@@ -39,28 +41,21 @@ local _write_file = function(buffer_index, uri, cache)
     -- if(use_compression) then
         -- compression = '-C '
     -- end
-    local command = "scp " .. compression .. cache.local_file .. ' ' .. cache.auth_uri .. ':' .. cache.remote_path
+    local command = "scp " .. compression .. cache.local_file .. ' ' .. cache.auth_uri .. ':' .. utils.escape_shell_command(cache.remote_path)
     notify.info("Updating remote file: " .. cache.remote_path)
     log.debug("    Running Command: " .. command)
 
-    local stdout_callback = function(job, output)
-        for _, line in ipairs(output) do
-            utils.log.info("STDOUT: " .. line)
-        end
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    local command_output = utils.run_shell_command(command, command_options)
+    local stderr = command_output.stderr
+    local stdout = command_output.stdout
+    if stderr ~= '' then
+        log.warn("Received Error: " .. stderr)
+        return nil
     end
-
-    local stderr_callback = function(job, output)
-        for _, line in ipairs(output) do
-            utils.notify.warn("STDERR: " .. line)
-        end
-    end
-
-    vim.fn.jobstart(command,
-        {
-            stdout_callback=stdout_callback,
-            stderr_callback=stderr_callback
-    })
-    log.debug("Saved Remote File: " .. cache.remote_path .. " to " .. cache.local_file) 
+    log.debug("Saved Remote File: " .. cache.remote_path .. " to " .. cache.local_file)
 end
 
 local _create_directory = function(uri, cache, permissions)
@@ -132,8 +127,8 @@ local _read_directory = function(uri_details)
 
     log.info("Remote Command: " .. remote_command)
     local command_options = {}
-    command_options[netman_options.utils.command.IGNORE_WHITESPACE_ERROR_LINES] = true
-    command_options[netman_options.utils.command.STDERR_JOIN] = ''
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
     local command_output = utils.run_shell_command(remote_command, command_options)
     local stderr = command_output.stderr
     local stdout = command_output.stdout
@@ -159,20 +154,20 @@ local _read_directory = function(uri_details)
             goto continue
         end
         if line == ',}' then
-            _object[netman_options.explorer.FIELDS.URI] = uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. _object[netman_options.explorer.METADATA.FULLNAME]
+            _object[metadata_options.URI] = uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. _object[metadata_options.FULLNAME]
             if _object._type == 'f' then
-                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = "DESTINATION"
-                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = netman_options.explorer.METADATA.DESTINATION
+                _object[metadata_options.FIELD_TYPE] = "DESTINATION"
+                _object[metadata_options.FIELD_TYPE] = metadata_options.DESTINATION
             elseif _object._type == 'd' then
-                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = "LINK"
-                _object[netman_options.explorer.FIELDS.FIELD_TYPE] = netman_options.explorer.METADATA.LINK
-                _object[netman_options.explorer.METADATA.FULLNAME] =
-                  _object[netman_options.explorer.METADATA.FULLNAME] .. '/'
+                _object[metadata_options.FIELD_TYPE] = "LINK"
+                _object[metadata_options.FIELD_TYPE] = metadata_options.LINK
+                _object[metadata_options.FULLNAME] =
+                  _object[metadata_options.FULLNAME] .. '/'
 
-                _object[netman_options.explorer.FIELDS.NAME] =
-                  _object[netman_options.explorer.METADATA.NAME] .. '/'
+                _object[metadata_options.NAME] =
+                  _object[metadata_options.NAME] .. '/'
 
-                _object[netman_options.explorer.FIELDS.URI] =  _object[netman_options.explorer.FIELDS.URI] .. '/'
+                _object[metadata_options.URI] =  _object[metadata_options.URI] .. '/'
             end
             table.insert(remote_files, _object)
             size = size + 1
@@ -190,8 +185,8 @@ local _read_directory = function(uri_details)
     table.insert(remote_files, 1, remote_files[size])
     remote_files[size + 1] = nil
     parent = 1
-    remote_files[parent][netman_options.explorer.FIELDS.URI] =  uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. remote_files[parent][netman_options.explorer.METADATA.PARENT]
-    remote_files[parent][netman_options.explorer.FIELDS.NAME] = '../'
+    remote_files[parent][metadata_options.URI] =  uri_details.protocol .. '://' .. uri_details.auth_uri .. '//' .. remote_files[parent][metadata_options.PARENT]
+    remote_files[parent][metadata_options.NAME] = '../'
     return {
         remote_files = remote_files
         ,parent = parent
@@ -200,7 +195,9 @@ end
 
 local _parse_uri = function(uri)
     local details = {
+
         base_uri     = uri
+        ,protocol    = nil
         ,host        = nil
         ,port        = nil
         ,remote_path = nil
@@ -238,23 +235,23 @@ local _parse_uri = function(uri)
         details.remote_path = "/" .. path_body
     end
     if details.remote_path:sub(-1) == '/' then
-        details.type = netman_options.api.ATTRIBUTES.DIRECTORY
-        details.return_type = netman_options.api.READ_TYPE.EXPLORE
+        details.type = api_flags.ATTRIBUTES.DIRECTORY
+        details.return_type = api_flags.READ_TYPE.EXPLORE
     else
-        details.type = netman_options.api.ATTRIBUTES.FILE
-        details.return_type = netman_options.api.READ_TYPE.FILE
+        details.type = api_flags.ATTRIBUTES.FILE
+        details.return_type = api_flags.READ_TYPE.FILE
         details.unique_name = utils.generate_string(11)
         details.local_file  = utils.files_dir .. details.unique_name
     end
     log.debug("Path Match: " .. details.remote_path)
-    if details.user and not details.user:match('%s') and details.user:len() > 1 then
+    if details.user and not details.user:match('^([%s]*)$') and details.user:len() > 1 then
         details.auth_uri = details.user .. "@" .. details.host
     else
         details.auth_uri = details.host
     end
-    if details.port and not details.port:match('%s') and details.user:len() > 1 then
-        details.auth_uri = details.auth_uri .. ' -p ' .. details.port
-    end
+    -- if details.port and not details.port:match('^([%s]*)$') and details.user:len() > 1 then
+    --     details.auth_uri = details.auth_uri
+    -- end
     log.debug("Constructed Auth URI: " .. details.auth_uri)
     log.debug("Created Details Object: ", details)
     return details
@@ -273,16 +270,17 @@ end
 
 function M:write(buffer_index, uri, cache)
     cache = _validate_cache(uri, cache)
-    if cache.type == netman_options.api.ATTRIBUTES.DIRECTORY then
+    if cache.type == api_flags.ATTRIBUTES.DIRECTORY then
         return _create_directory(uri, cache)
     else
+        -- This will fail to handle a stream!
         return _write_file(buffer_index, uri, cache)
     end
 end
 
 function M:read(uri, cache)
     cache = _validate_cache(uri, cache)
-    if cache.type == netman_options.api.ATTRIBUTES.DIRECTORY then
+    if cache.type == api_flags.ATTRIBUTES.DIRECTORY then
         return _read_directory(cache), cache.return_type
     else
         return _read_file(cache), cache.return_type
@@ -294,30 +292,12 @@ function M:delete(uri, cache)
     local command = "ssh " .. cache.auth_uri .. ' "rm -rf ' .. cache.remote_path .. '"'
     log.debug("Delete command: " .. command)
     -- TODO:(Mike): Consider making this request verification for delete
-    local completed_successfully = true
-    local stdout_callback = function(job, output)
-        for _, line in ipairs(output) do
-            utils.log.info("    STDOUT: " .. line)
-        end
-    end
-
-    local stderr_callback = function(job, output)
-        for _, line in ipairs(output) do
-            utils.log.warn("    STDERR: " .. line)
-        end
-        completed_successfully = false
-    end
-
-    vim.fn.jobwait({vim.fn.jobstart(command,
-        {
-            stdout_callback=stdout_callback,
-            stderr_callback=stderr_callback
-        })
-    })
-    if not completed_successfully then
-        utils.notify.error("Failed to delete " .. uri .. '! Check logs for more details')
+    local command_output = utils.run_shell_command(command)
+    if command_output.stderr then
+        notify.error("Failed to delete " .. uri .. '! Check logs for more details')
+        log.warn("Received Error: " .. {stderr=command_output.stderr})
     else
-        utils.notify.info("Deleted " .. uri  .. " successfully")
+        notify.info("Deleted " .. uri  .. " successfully")
     end
 end
 
