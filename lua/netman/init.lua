@@ -67,15 +67,14 @@ function M:config(options)
 end
 
 function M:init()
-    log.debug("Init called! Should it run? " .. tostring(M._setup_commands))
     if not M._setup_commands then
         log.debug("Setting Commands")
         local commands = {
              'command -nargs=1 NmloadProvider lua require("netman.api"):load_provider(<f-args>)'
             ,'command -nargs=? Nmlogs         lua require("netman.api"):dump_info(<f-args>)'
             ,'command -nargs=1 Nmdelete       lua require("netman"):delete(<f-args>)'
-            ,'command -nargs=+ Nmread         lua require("netman"):read("file", <f-args>)'
-            ,'command          Nmwrite        lua require("netman"):write("buf", vim.fn.bufnr())'
+            ,'command -nargs=+ Nmread         lua require("netman"):read(<f-args>)'
+            ,'command          Nmwrite        lua require("netman"):write(vim.fn.bufnr())'
             ,'command -nargs=1 Nmbrowse       lua require("netman"):read(nil, <f-args>)'
         }
         for _, command in ipairs(commands) do
