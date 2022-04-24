@@ -60,7 +60,7 @@ end
 
 local _create_directory = function(uri, cache, permissions)
     permissions = permissions or ""
-    local command = "ssh " .. cache.auth_uri .. ' "mkdir ' .. cache.remote_path .. '"'
+    local command = "ssh " .. cache.auth_uri .. ' "mkdir -p ' .. utils.escape_shell_command(uri) .. '"'
     local completed_successfully = true
 
     utils.notify.info("Creating remote directory " .. uri)
