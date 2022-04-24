@@ -1,12 +1,13 @@
 local providers = require("netman.providers")
+local explore_pattern = require("netman.options").protocol.EXPLORE
 
 require("netman.utils").adjust_log_level(1)
 
 describe("Netman providers #netman-providers", function()
     for _, provider_path in ipairs(providers) do
-        
         describe(provider_path, function()
             local provider = assert(require(provider_path))
+            if provider.protocol_patterns == explore_pattern then goto continue end
             describe("write", function()
                 it("should have a write function", function()
                     assert.is_not_nil(provider.write, provider_path .. " is missing write!")
@@ -49,6 +50,7 @@ describe("Netman providers #netman-providers", function()
             if provider.close_connection then
                 pending("test close_connection function")
             end
+            ::continue::
         end)
     end
 end)
