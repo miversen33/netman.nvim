@@ -666,7 +666,30 @@ function M:dump_info(output_path)
     table.insert(headers, '----------------------------------------------------')
     table.insert(headers, 'Logs:')
     table.insert(headers, '')
-    utils.generate_session_log(output_path, headers)
+    local log_buffer = nil
+    for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_get_option(buffer, 'filetype') ~= 'NetmanLogs' then
+            goto continue
+        else
+            log_buffer = buffer
+            break
+        end
+        ::continue::
+    end
+    if not log_buffer then
+        log_buffer = vim.api.nvim_create_buf(true, true)
+        vim.api.nvim_buf_set_option(log_buffer, 'filetype', 'NetmanLogs')
+    end
+
+    vim.api.nvim_buf_set_option(log_buffer, 'modifiable', true)
+    vim.api.nvim_set_current_buf(log_buffer)
+    local logs = utils.generate_session_log(output_path, headers)
+    vim.api.nvim_buf_set_lines(log_buffer, 0, -1, false, logs)
+    vim.api.nvim_command('%s%\\\\n%\r%g')
+    vim.api.nvim_command('%s%\\\\t%\t%g')
+    vim.api.nvim_buf_set_option(log_buffer, 'modifiable', false)
+    vim.api.nvim_buf_set_option(log_buffer, 'modified', false)
+    vim.api.nvim_command('0')
 end
 
 function M:init(core_providers)
