@@ -246,6 +246,7 @@ local _log = function(level, do_notify, ...)
     end
     if level == 'ERROR' then
         _notify(table.concat(headerless_parts, '\t'), 1)
+        error(table.concat(headerless_parts, '\t'), 1)
     end
 end
 
