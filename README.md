@@ -83,7 +83,7 @@ Accessing files/directories over ssh can be done in below format
 
 When debugging your netman session, ensure that you have netman running in `DEBUG` mode. To do this, update your `setup` configuration to include `debug=true` in the input table. An example
 ```lua
-require('netman').setup({'debug'=true})
+require('netman'):init({'debug'=true})
 ```
 
 By using the debug flag, significantly more information is output into the logs.
