@@ -1,3 +1,11 @@
+--- Notes
+--- We need to document not just how this works internally
+--- but _also_ what events this catches
+--- what autocommands we rely on
+--- what autocommands we fire off
+--- what we interact with
+--- Basically everything
+
 local utils = require('netman.utils')
 local netman_options = require('netman.options')
 local log = utils.log
@@ -145,7 +153,6 @@ end
 
 --- TODO(Mike): Document me
 function M:_get_buffer_cache_object(buffer_index, path)
-    log.debug("_get_buffer_cache_object ", {buffer_index=buffer_index, path=path})
     if buffer_index then
         buffer_index = "" .. buffer_index
     end

@@ -33,7 +33,7 @@ function M:explore(explore_details)
     local details = explore_details.details
     for _, detail in ipairs(details) do
         local title = detail[netman_options.explorer.FIELDS.NAME]
-          detail.title = title
+        detail.title = title
     end
     M._cache = explore_details
     log.debug("Launching Explorer!")
