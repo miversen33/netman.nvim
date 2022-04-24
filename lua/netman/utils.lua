@@ -133,7 +133,6 @@ local setup = function(level_threshold)
     mkdir(cache_dir, 'p') -- Creating the cache dir
     mkdir(data_dir,  'p') -- Creating the data dir
     mkdir(files_dir, 'p') -- Creating the temp files dir
-    mkdir(locks_dir, 'p') -- Creating the locks files dir
     log_file = io.open(data_dir .. "logs.txt", "a+")
     session_id = generate_string(15)
 
