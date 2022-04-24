@@ -123,6 +123,9 @@ local _read_as_explore = function(explore_details)
 end
 
 local _cache_provider = function(provider, protocol, path)
+    if M._unclaimed_id_table[path] then
+        return M._unclaimed_id_table[path], M._unclaimed_provider_details[M._unclaimed_id_table[path]]
+    end
     log.debug("Reaching out to provider: " .. provider._provider_path .. ":" .. provider.version .. " to initialize connection for path: " .. path)
     local id = utils.generate_string(10)
     local bp_cache_object = {
