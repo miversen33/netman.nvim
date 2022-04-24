@@ -16,9 +16,15 @@ local _provider_required_attributes = {
     ,'delete'
 }
 
+local _explorer_required_attributes = {
+    'version'
+    ,'protocol_patterns'
+    ,'explore'
+}
+
 local M = {}
 
-M.version = "0.1"
+M.explorer = nil
 M._augroup_defined = false
 M._initialized = false
 M._setup_commands = false
@@ -43,6 +49,11 @@ M._providers = {
 M._unitialized_providers = {
     -- Contains key, value pairs as follows
     -- key: provider name
+    -- value: reason it is unitilized
+}
+M._unintialized_explorers = {
+    -- Contains key, value pairs as follows
+    -- key: explorer name
     -- value: reason it is unitilized
 }
 M._unclaimed_provider_details = {
@@ -83,6 +94,29 @@ local _read_as_file = function(file)
     local command = 'read ++edit ' .. local_path .. ' | set nomodified | filetype detect' .. claim_command
     log.debug("Generated read file command: " .. command)
     return command
+end
+
+local _read_as_explore = function(explore_details)
+    local sanitized_explore_details = {}
+    for _, details in ipairs(explore_details.remote_files) do
+        for _, field in ipairs(netman_options.explorer.FIELDS) do
+            if details[field] == nil then
+                log.warn("Explore Details Missing Required Field: " .. field)
+            end
+        end
+        for key, _ in ipairs(details) do
+            if  netman_options.explorer.FIELDS[key] == nil
+            and netman_options.explorer.METADATA[key] == nil then
+                log.info("Stripping out " .. key .. " from explore details as it does not conform with netman.options.explorer.FIELDS or netman.options.explorer.METADATA")
+                details[key] = nil
+            end
+        end
+        table.insert(sanitized_explore_details, details)
+    end
+    return {
+        parent=explore_details.parent,
+        details=explore_details
+    }
 end
 
 local _cache_provider = function(provider, protocol, path)
@@ -339,7 +373,8 @@ function M:read(buffer_index, path)
         return nil
     end
     if read_data == nil then
-        log.warn("Received nothing to display to the user, this seems wrong but I just do what I'm told...")
+        log.info("Received nothing to display to the user, this seems wrong but I just do what I'm told...")
+        return
     end
     if type(read_data) ~= 'table' then
         log.warn("Data returned is not in a table. Attempting to make it a table")
@@ -356,10 +391,72 @@ function M:read(buffer_index, path)
         log.debug("Setting unique name for path: " .. path .. " to " .. provider_details.unique_name)
         log.debug("Getting file command for path: " .. path)
         return _read_as_file(read_data)
+    elseif read_type == netman_options.api.READ_TYPE.EXPLORE then
+        if not M.explorer then
+            log.error("No tree explorer loaded!")
+            return
+        end
+        log.debug("Calling explorer to handle path: " .. path)
+        return M.explorer:explore(_read_as_explore(read_data))
     end
     log.warn("Mismatched read_type. How on earth did you end up here???")
     log.debug("Ya I don't know what you want me to do here chief...")
     return nil
+end
+
+--- Load Explorer is used to set the current remote explorer to whatever package
+--- is associated with `explorer_path`.
+--- @param explorer_path string
+---     The string path to the explorer to use
+--- @param force boolean
+---     A boolean to tell us if we should force the use of this explorer or not
+---     NOTE: Only respected if the explorer passes validation
+--- @return nil
+function M:load_explorer(explorer_path, force)
+    force = force or false
+    local explorer = require(explorer_path)
+    log.debug("Validating explorer " .. explorer_path)
+
+    local missing_attrs = nil
+    for _, required_attr in ipairs(_explorer_required_attributes) do
+        if not explorer[required_attr] then
+            if missing_attrs then
+                missing_attrs = missing_attrs .. ', ' .. required_attr
+            else
+                missing_attrs = required_attr
+            end
+        end
+    end
+    if missing_attrs then
+        log.error("Failed to initialize explorer: " .. explorer_path .. ". Missing the following required attributes (" .. missing_attrs .. ")")
+        M._unintialized_explorers[explorer_path] = {
+            reason = "Validation Failure"
+           ,name = explorer_path
+           ,version = "Unknown"
+        }
+        return
+    end
+    if M.explorer then
+        log.info("Received new explorer " .. explorer_path .. '. Attempting to override existing explorer ' .. M.explorer._explorer_path)
+        if explorer_path:find('^netman%.providers') and not force then
+            log.debug(
+                "Core explorer: "
+                .. explorer_path .. ':' .. explorer.version
+                .. ' attempted to overwrite third party'
+                .. ' ' .. M.explorer._explorer_path
+                .. '. Refusing...')
+                goto continue
+
+        end
+        M._unintialized_explorers[explorer_path] = {
+            reason = "Overriden by " .. explorer_path .. ":" .. explorer.version
+            ,name = M.explorer._explorer_path
+            ,version = M.explorer.version
+        }
+    end
+    M.explorer = explorer
+    M.explorer._explorer_path = explorer_path
+    ::continue::
 end
 
 --- Load Provider is what a provider should call
@@ -376,6 +473,10 @@ function M:load_provider(provider_path)
     if not status then
         notify.error("Failed to initialize provider: " .. tostring(provider_path) .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider")
         return
+    end
+    if provider.protocol_patterns and provider.protocol_patterns == netman_options.protocol.EXPLORE then
+        log.info("Found explorer " .. provider_path .. ". Attempting load now")
+        return M:load_explorer(provider_path)
     end
     provider._provider_path = provider_path
     log.info("Validating Provider: " .. provider_path)
@@ -523,8 +624,25 @@ function M:dump_info(output_path)
         ,""
         ,"Api Contents: " .. vim.inspect(M, {newline="\\n", indent="\\t"})
         ,">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-        ,"Running Provider Details"
     }
+    if M.explorer then
+        table.insert(headers, 'Registered Explorer Details')
+        table.insert(headers, "    " .. M.explorer._explorer_path .. " --version " .. M.explorer.version)
+        table.insert(headers, '')
+    end
+    table.insert(headers, 'Not Registered Explorer Details')
+    for _, explorer_info in pairs(M._unintialized_explorers) do
+        table.insert(headers,
+        "    "
+        .. explorer_info.name
+        .. " --version "
+        .. explorer_info.version
+        .. " --reason "
+        .. explorer_info.reason
+        )
+    end
+    table.insert(headers, '')
+    table.insert(headers, 'Running Provider Details')
     for pattern, provider in pairs(M._providers) do
         table.insert(headers, "    " .. provider._provider_path .. " --pattern " .. pattern .. " --protocol " .. provider.name .. " --version " .. provider.version)
     end
@@ -568,6 +686,7 @@ end
 if _UNIT_TESTING then
     M._read_as_stream          = _read_as_stream
     M._read_as_file            = _read_as_file
+    M._read_as_explore         = _read_as_explore
     M._get_provider_for_path   = _get_provider_for_path
 end
 
