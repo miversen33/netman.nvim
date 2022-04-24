@@ -277,11 +277,11 @@ do
         notify[level] = levelnr
 
         log[level:lower()] = function(...)
-            if levelnr < _level_threshold then return end
+            if levelnr < vim.g.netman_log_level then return end
             _log(level, false, ...)
         end
         notify[level:lower()] = function(...)
-            if levelnr < _level_threshold then return end
+            if levelnr < vim.g.netman_log_level then return end
             _log(level, true, ...)
         end
     end
@@ -293,7 +293,6 @@ end
 return {
     notify               = notify,
     log                  = log,
-    adjust_log_level     = adjust_log_level,
     generate_string      = generate_string,
     is_process_alive     = is_process_alive,
     cache_dir            = cache_dir,
