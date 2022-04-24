@@ -8,7 +8,6 @@ local _level_threshold = 3
 local _is_setup = false
 local cache_dir = vim.fn.stdpath('cache') .. '/netman/'
 local files_dir = cache_dir .. 'remote_files/'
-local locks_dir = cache_dir .. 'lock_files/'
 local data_dir  = vim.fn.stdpath('data')  .. '/netman/'
 local session_id = ''
 local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
@@ -300,7 +299,6 @@ return {
     cache_dir            = cache_dir,
     data_dir             = data_dir,
     files_dir            = files_dir,
-    locks_dir            = locks_dir,
     generate_session_log = generate_session_log,
     copy_table           = copy_table,
     run_shell_command    = run_shell_command,
