@@ -117,8 +117,30 @@ local _read_file = function(uri_details)
     command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
     command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
     command_options[command_flags.STDERR_JOIN] = ''
-    local stdout, stderr = utils.run_shell_command(command, command_options)
-    utils.log.debug("Saved Remote File: " .. uri_details.remote_path .. " to " .. uri_details.local_file)
+    local command_output = utils.run_shell_command(command, command_options)
+    local stdout = command_output.stdout
+    local stderr = command_output.stderr
+    log.debug("Command output: ", {stdout=stdout, stderr=stderr})
+    if stderr:match('No such file or directory$') then
+        log.debug("Checking if we need to create missing remote file")
+        utils.get_select(
+            {'No', 'Yes'},
+            {
+                prompt=uri_details.remote_path .. " does not exist. Would you like to create it? ",
+                kind = 'string'
+            },
+            function(choice)
+                if choice == 'No' then
+                    require("netman"):close_uri(uri_details.base_uri)
+                else
+                    _create_directory(uri_details.parent, uri_details)
+                    require("netman"):write(uri_details.base_uri)
+                    require("netman"):read(uri_details.base_uri)
+                end
+            end
+        )
+        return
+    end
     log.debug("Saved Remote File: " .. uri_details.remote_path .. " to " .. uri_details.local_file)
     return {
         local_path   = uri_details.local_file
