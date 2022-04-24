@@ -125,15 +125,10 @@ local is_process_alive = function(pid)
     return alive
 end
 
-local adjust_log_level = function(new_level_threshold)
-    _level_threshold = new_level_threshold
-end
-
 local setup = function(level_threshold)
     if _is_setup then
         return
     end
-    _level_threshold = level_threshold or _level_threshold -- setting default logging level
     math.randomseed(os.time()) -- seeding for random strings
     mkdir(cache_dir, 'p') -- Creating the cache dir
     mkdir(data_dir,  'p') -- Creating the data dir
