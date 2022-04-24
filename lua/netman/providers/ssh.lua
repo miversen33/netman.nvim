@@ -109,7 +109,17 @@ local _read_file = function(uri_details)
     if path == "" then
         log.warn("Invalid Path Received from URI: " .. uri_details.base_uri)
     end
+    log.info("Connecting to host: " .. uri_details.host)
+    local command = "scp " .. compression .. port .. uri_details.auth_uri .. ':' .. utils.escape_shell_command(uri_details.remote_path, '\\\\\\') .. ' ' .. uri_details.local_file
+    log.debug("Running Command: " .. command)
+    log.info("Pulling down file: '" .. uri_details.remote_path .. "' and saving to '" .. uri_details.local_file .. "'")
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    local stdout, stderr = utils.run_shell_command(command, command_options)
     utils.log.debug("Saved Remote File: " .. uri_details.remote_path .. " to " .. uri_details.local_file)
+    log.debug("Saved Remote File: " .. uri_details.remote_path .. " to " .. uri_details.local_file)
     return {
         local_path   = uri_details.local_file
         ,origin_path = uri_details.base_uri
