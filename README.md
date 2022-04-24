@@ -63,6 +63,7 @@ The definition for the table in `config` is as follows (**NOT IMPLEMENTED YET!**
 ## Network Protocols Targeted
 - [x] [SSH](#ssh) **CURRENT TARGET FOR IMPLEMENTATION**
 - [ ] Rsync
+- [ ] Docker
 
 ## Core Providers
 
