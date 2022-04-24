@@ -83,10 +83,19 @@ Current Limitations:
 
 When debugging your netman session, ensure that you are running in `DEBUG` mode. This can be done by simply setting
 ```lua
-vim.g.netman_debug = true
+vim.g.netman_log_level = 1
 ```
 in your `init.lua` configuration file.
 **NOTE: It is recommended that you place this line somewhere before you import plugins as `Netman` automatically sets itself up on import of itself or `api`. Any logging during initialization is lost if the appropriate level is not set before that**
+
+Valid log levels are
+- 4 (Error)
+- 3 (Warn)
+- 2 (Info)
+- 1 (Debug)
+- 0 (Trace)
+These are in conjuntion with [vim.log.levels](https://neovim.io/doc/user/lua.html#vim.log.levels)
+
 
 **NOTE: Debug mode a significantly volume of logs, ensure you only have it on when its needed**
 
