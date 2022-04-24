@@ -15,8 +15,7 @@ local M = {}
 function M:read(...)
     local files = { f = select("#", ...), ... }
     for _, file in ipairs(files) do
-        notify.warn("Fetching file: " .. file)
-        local command = api:read(nil, file)
+        local command = api:read(vim.uri_to_bufnr(file), file)
         if not command then
             log.warn("No command returned for read of " .. file)
             goto continue
