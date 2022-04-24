@@ -118,7 +118,7 @@ local _read_as_explore = function(explore_details)
     end
     return {
         parent=explore_details.parent,
-        details=explore_details
+        details=explore_details.remote_files
     }
 end
 
@@ -473,7 +473,7 @@ end
 function M:load_provider(provider_path)
     local status, provider = pcall(require, provider_path)
     log.debug("Attempting to import provider: " .. provider_path, {status=status})
-    if not status then
+    if not status or provider == true or provider == false then
         notify.error("Failed to initialize provider: " .. tostring(provider_path) .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider")
         return
     end

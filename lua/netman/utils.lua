@@ -48,8 +48,7 @@ local generate_session_log = function(output_path, logs)
     table.insert(logs, line)
     vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
     vim.fn.writefile(logs, output_path)
-    vim.notify("Saved logs to " .. output_path, 2, {})
-    return logs
+    vim.api.nvim_notify("Saved logs to " .. output_path, 2, {})
 end
 
 local generate_string = function(string_length)
@@ -61,6 +60,7 @@ local generate_string = function(string_length)
 end
 
 local is_process_alive = function(pid)
+    -- TODO(Mike): Convert this to using execute_shell_command
     local alive = true
     local stdout_callback = function(job, output)
         for _, line in pairs(output) do
@@ -191,7 +191,7 @@ local _log = function(level, do_notify, ...)
         vim.notify(table.concat(headerless_parts, '\t'), level)
     end
     if level == 'ERROR' then
-        error(table.concat(headerless_parts, '\t'), 2)
+        vim.notify(table.concat(headerless_parts, '\t'), 1)
     end
 end
 
@@ -201,7 +201,7 @@ function copy_table(in_table, deep)
     if type(in_table) ~= 'table' then
         return in_table
     end
-    for k, v in pairs(in_table) do 
+    for k, v in pairs(in_table) do
         if deep then
             _copy_table[k] = copy_table(v)
         else

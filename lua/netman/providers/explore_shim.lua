@@ -27,19 +27,17 @@ M.protocol_patterns = netman_options.protocol.EXPLORE
 --     tables within with various metadata bits to be used to
 --     format and display content
 -- @return nil
-function M:explore(parent, explore_details)
+function M:explore(explore_details)
     local netman_explorer = require("netman.providers.explorer")
-
-    local details_key = utils.generate_string(10)
-    for _, details in ipairs(explore_details) do
-        local title = details[netman_options.explorer.FIELDS.NAME]
-        -- TODO: Mike, consider having this do more dynamic stuff?
-        details.title = title
-        -- log.debug("Setting Entry Title: " .. details.title)
+    local parent = explore_details.parent
+    local details = explore_details.details
+    for _, detail in ipairs(details) do
+        local title = detail[netman_options.explorer.FIELDS.NAME]
+          detail.title = title
     end
     M._cache = explore_details
     log.debug("Launching Explorer!")
-    netman_explorer:explore(parent, explore_details)
+    netman_explorer:explore(parent, details)
 end
 
 function M:interact_via_event(index)
