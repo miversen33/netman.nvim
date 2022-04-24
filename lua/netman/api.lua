@@ -471,6 +471,7 @@ function M:load_provider(provider_path)
             vim.api.nvim_command('augroup Netman')
             vim.api.nvim_command('autocmd!')
             vim.api.nvim_command('augroup END')
+            table.insert(au_commands, 'autocmd Netman BufWinEnter * ++once lua require("netman.utils").end_delay()')
             M._augroup_defined = true
         else
             log.debug("Augroup Netman already exists, not recreating augroup")
