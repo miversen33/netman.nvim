@@ -24,6 +24,7 @@ local _explorer_required_attributes = {
 
 local M = {}
 
+M.version = 0.95
 M.explorer = nil
 M._augroup_defined = false
 M._initialized = false
@@ -77,12 +78,14 @@ local _get_provider_for_path = function(path)
 end
 
 local _read_as_stream = function(stream)
+    -- TODO(Mike): Allow for providing the file type
     local command = "0append! " .. table.concat(stream, '\n')
     log.debug("Generated read stream command: " .. command:sub(1, 30))
     return command
 end
 
 local _read_as_file = function(file)
+    -- TODO(Mike): Allow for providing the file type
     local origin_path = file.origin_path
     local local_path  = file.local_path
     local unclaimed_id = M._unclaimed_id_table[origin_path]
