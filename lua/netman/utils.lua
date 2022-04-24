@@ -1,3 +1,5 @@
+--- TODO: (Mike): God help me, this needs a refactor badly
+
 local netman_options = require("netman.options")
 
 local mkdir   = vim.fn.mkdir
@@ -13,14 +15,55 @@ local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
 local shell_escape_pattern = "([\\(%s@!\"\'\\)])"
 local log_timestamp_format = '%Y-%m-%d %H:%M:%S'
 local log_file = nil
+local delay_ui_elements = true
 
 local log = {}
 local notify = {}
+local _delay_buffer = {}
+local log_level_map = {
+    ERROR = 4,
+    WARN = 3,
+    INFO = 2,
+    DEBUG = 1,
+    TRACE = 0
+}
 
 log.levels = vim.deepcopy(vim.log.levels)
 notify.levels = vim.deepcopy(log.levels)
 
 local format_func = function(arg) return vim.inspect(arg, {newline='\n'}) end
+
+local end_delay = function()
+    if not delay_ui_elements then return end
+    delay_ui_elements = false
+    for _, _delay_details in ipairs(_delay_buffer) do
+        if _delay_details._type == 'notify' then
+            vim.api.nvim_notify(_delay_details.params.message, _delay_details.params.level, _delay_details.params.opts)
+        elseif _delay_details._type == 'select' then
+            vim.ui.select(_delay_details.params.items, _delay_details.params.opts, _delay_details.params.on_choice)
+        elseif _delay_details._type == 'input' then
+            vim.ui.input(_delay_details.params.params.options, _delay_details.params.on_confirm)
+        end
+    end
+
+    _delay_buffer = {}
+end
+
+local get_input = function(options, on_confirm)
+    if delay_ui_elements then
+        table.insert(_delay_buffer, {_type = "input", params = {options = options, on_confirm = on_confirm}})
+        return
+    end
+    vim.ui.input(options, on_confirm)
+end
+
+local get_select = function(items, opts, on_choice)
+    if delay_ui_elements then
+        table.insert(_delay_buffer, {_type = "select", params = {items = items, opts = opts, on_choice = on_choice}})
+        return
+    end
+    vim.ui.select(items, opts, on_choice)
+end
 
 local generate_session_log = function(output_path, logs)
     logs = logs or {}
@@ -30,7 +73,7 @@ local generate_session_log = function(output_path, logs)
     local pulled_sid = ''
     local keep_running = true
     local log_file = io.input(log_path)
-    vim.notify("Gathering Logs...", vim.log.levels.INFO)
+    vim.api.nvim_notify("Gathering Logs...", log_level_map.INFO, {})
     while keep_running do
         line = io.read('*line')
         if not line then
@@ -44,11 +87,12 @@ local generate_session_log = function(output_path, logs)
     end
     io.close(log_file)
     local message = "Saving Logs"
-    vim.notify(message, vim.log.levels.INFO)
+    vim.api.nvim_notify(message, log_level_map.INFO, {})
     table.insert(logs, line)
     vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
     vim.fn.writefile(logs, output_path)
     vim.api.nvim_notify("Saved logs to " .. output_path, 2, {})
+    return logs
 end
 
 local generate_string = function(string_length)
@@ -114,6 +158,7 @@ local run_shell_command = function(command, options)
     end
     local stdout = {}
     local stderr = {}
+    local command_options = {}
     local gather_stdout_output = function(output)
         for _, line in ipairs(output) do
             if line then
@@ -142,6 +187,7 @@ local run_shell_command = function(command, options)
         end
     end
 
+
     vim.fn.jobwait({
         vim.fn.jobstart(
             command,
@@ -159,6 +205,14 @@ local run_shell_command = function(command, options)
         .utils.command.STDERR_JOIN])
     end
     return {stdout=stdout, stderr=stderr}
+end
+
+local _notify = function(message, level)
+    if delay_ui_elements then
+        table.insert(_delay_buffer, {_type = "notify", params = {message=message, level=level, opts = {}}})
+        return
+    end
+    vim.api.nvim_notify(message, level, {})
 end
 
 local _log = function(level, do_notify, ...)
@@ -188,10 +242,10 @@ local _log = function(level, do_notify, ...)
     log_file:write(table.concat(parts, '\t'), "\n")
     log_file:flush()
     if do_notify then
-        vim.notify(table.concat(headerless_parts, '\t'), level)
+        _notify(table.concat(headerless_parts, '\t'), log_level_map[level])
     end
     if level == 'ERROR' then
-        vim.notify(table.concat(headerless_parts, '\t'), 1)
+        _notify(table.concat(headerless_parts, '\t'), 1)
     end
 end
 
@@ -249,5 +303,8 @@ return {
     generate_session_log = generate_session_log,
     copy_table           = copy_table,
     run_shell_command    = run_shell_command,
-    escape_shell_command = escape_shell_command
+    escape_shell_command = escape_shell_command,
+    end_delay            = end_delay,
+    get_input            = get_input,
+    get_select           = get_select
 }

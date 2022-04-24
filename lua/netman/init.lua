@@ -15,8 +15,7 @@ local M = {}
 function M:read(...)
     local files = { f = select("#", ...), ... }
     for _, file in ipairs(files) do
-        notify.warn("Fetching file: " .. file)
-        local command = api:read(nil, file)
+        local command = api:read(vim.uri_to_bufnr(file), file)
         if not command then
             log.warn("No command returned for read of " .. file)
             goto continue
@@ -55,6 +54,12 @@ function M:delete(uri)
         return
     end
     api:delete(uri)
+end
+
+function M:close_uri(uri)
+    local bufnr = vim.uri_to_bufnr(uri)
+    require("netman.utils").log.debug("Closing Uri: " .. uri .. ' on buffer: ' .. bufnr)
+    vim.api.nvim_buf_delete(bufnr, {force=false})
 end
 
 function M:config(options)
