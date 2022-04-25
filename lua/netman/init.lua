@@ -1,6 +1,6 @@
 local api    = require('netman.api')
 local utils  = require("netman.utils")
-local log    = utils.logs
+local log    = utils.log
 local notify = utils.notify
 
 local M = {}
