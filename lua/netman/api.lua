@@ -365,6 +365,9 @@ function M:load_explorer(explorer_path, force)
         }
     end
     M.explorer = explorer
+    if M.explorer['init'] then
+        M.explorer:init()
+    end
     M.explorer._explorer_path = explorer_path
     ::continue::
 end

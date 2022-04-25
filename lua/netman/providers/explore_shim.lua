@@ -8,6 +8,14 @@ M._cache = {}
 M.version = 0.1
 M.protocol_patterns = netman_options.protocol.EXPLORE
 
+
+function M:init()
+    --- Note: (Mike): I am not super fond of this, however it will resolve issue https://github.com/miversen33/netman.nvim/issues/41
+    log.info("Disabling Netrw")
+    vim.g.loaded_netrwPlugin = 1
+    vim.g.loaded_netrw = 1
+end
+
 -- To make this work, consider a dual system where we _push_ information
 -- into the explorer (via "some" function) and then explorer
 -- reaches back into the shim to get details on what to do next.
