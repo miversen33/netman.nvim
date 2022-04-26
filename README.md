@@ -1,5 +1,7 @@
 # Neovim (Lua Powered) Network File Manager
 
+Interested in how Netman Works? [Checkout the new shiny Wiki!](https://github.com/miversen33/netman.nvim/wiki)
+
 ## WIP
 
 ## Goals
