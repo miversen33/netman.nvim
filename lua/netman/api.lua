@@ -518,7 +518,7 @@ function M:unload(buffer_index)
        log.info("Processing unload of " .. provider._provider_path .. ":" .. provider.version)
        if provider.close_connection ~= nil then
             log.debug("Closing connection with " .. provider._provider_path .. ":" .. provider.version)
-            provider:close_connection(buffer_index, provider_details)
+            provider:close_connection(buffer_index, provider_details, bp_cache_object.provider_cache)
        end
        ::continue::
    end
