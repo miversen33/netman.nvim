@@ -485,6 +485,7 @@ function M:load_provider(provider_path)
         end
         ::continue::
     end
+    log.info("Initialized " .. provider_path .. " successfully!")
 end
 
 --- Unload will inform relevant providers that a buffer is being
