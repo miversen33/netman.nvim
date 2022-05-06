@@ -334,7 +334,6 @@ function M:read(uri, cache)
         return directory_contents, api_flags.READ_TYPE.EXPLORE
     end
 end
-end
 
 function M:write(buffer_index, uri, cache)
 
