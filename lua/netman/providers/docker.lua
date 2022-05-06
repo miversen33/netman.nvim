@@ -72,6 +72,10 @@ local _parse_uri = function(uri)
 end
 function M:read(uri, cache)
     cache = _parse_uri(uri)
+    if cache.protocol ~= M.protocol_patterns[1] then
+        log.warn("Invalid URI: " .. uri .. " provided!")
+        return nil
+    end
 end
 
 function M:write(buffer_index, uri, cache)
