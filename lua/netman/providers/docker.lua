@@ -11,6 +11,11 @@ local invalid_permission_glob = '^Got permission denied while trying to connect 
 local container_pattern     = "^([%a%c%d%s%-_%.]*)"
 local path_pattern          = '^([/]+)(.*)$'
 local protocol_pattern      = '^(.*)://'
+local _docker_status = {
+    ERROR = "ERROR",
+    RUNNING = "RUNNING",
+    NOT_RUNNING = "NOT_RUNNING"
+}
 
 local M = {}
 
@@ -69,6 +74,58 @@ local _parse_uri = function(uri)
     if cur_path == '' then parent = previous_parent end
     details.parent = parent
     return details
+end
+
+
+local _is_container_running = function(container)
+    local command = 'docker container ls --filter "name=' .. tostring(container) .. '"'
+    -- Creating command to check if the container is running
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    -- Options to make our output easier to read
+
+    log.info("Running container life check command: " .. command)
+    local command_output = shell(command, command_options)
+    local stderr, stdout = command_output.stderr, command_output.stdout
+    log.debug("Life Check Output ", {output=command_output})
+    if stderr ~= '' then
+        log.warn("Received error while checking container status: " .. stderr)
+        return _docker_status.ERROR
+    end
+    if not stdout[2] then
+        log.info("Container " .. container .. " appears to not be running")
+        -- Docker container ls (or docker container ps) will always include a header line that looks like
+        -- CONTAINER ID   IMAGE               COMMAND                  CREATED       STATUS      PORTS     NAMES
+        -- This line is useless to us here, so we ignore the first line of output in stdout. 
+        return _docker_status.NOT_RUNNING
+    end
+    return _docker_status.RUNNING
+end
+
+local _start_container = function(container_name)
+    local command = 'docker run "' .. container_name .. '"'
+
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+
+    log.info("Running start container command: " .. command)
+    local command_output = shell(command, command_options)
+    log.debug("Container Start Output " , {output=command_output})
+    local stderr, stdout = command_output.stderr, command_output.stdout
+    if stderr ~= '' then
+        notify.error("Received the following error while trying to start container " .. container_name .. ": " .. stderr)
+        return false
+    end
+    if _is_container_running(container_name) == _docker_status.RUNNING then
+        log.info("Successfully Started Container: " .. container_name)
+        return true
+    end
+    notify.warn("Failed to start container: " .. container_name .. ' for reasons...?')
+    return false
 end
 function M:read(uri, cache)
     cache = _parse_uri(uri)
