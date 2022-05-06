@@ -102,9 +102,14 @@ function M:init(config_options)
         if docker_path == '' then log.warn("Docker was not found on path!") end
         return false
     end
-    
+
     local docker_version_command = "docker -v"
     command_output = shell(docker_version_command, command_options)
+    if command_output.stdout:match(invalid_permission_glob) then
+        notify.error("It appears you do not have permission to interact with docker on this machine. Please view https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user for more details")
+        log.info("Received invalid docker permission error: " .. command_output.stdout)
+        return false
+    end
     if command_output.stderr ~= '' or command_output.stdout == '' then
         notify.error("Invalid docker version information found!")
         log.info("Received Docker Version Error: " .. command_output.stderr)
