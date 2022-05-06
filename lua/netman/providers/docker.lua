@@ -22,6 +22,7 @@ end
 
 function M:init(config_options)
 
+    return true
 end
 
 function M:close_connection(buffer_index, uri, cache)
