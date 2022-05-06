@@ -395,8 +395,41 @@ function M:write(buffer_index, uri, cache)
     end
 end
 
-function M:delete(uri, cache)
+function M:delete(uri)
+    -- It is _not_ safe to assume we already
+    -- have a cache, additionally its possible
+    -- that the uri provided doesn't match the
+    -- cache uri so we should verify the cache
+    -- we were given has contents
+    local cache = _parse_uri(uri)
+    local path = shell_escape(cache.path)
+    local command = 'docker exec ' .. cache.container .. ' rm -rf ' .. path
 
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+
+    vim.ui.input({
+        prompt = 'Are you sure you wish to delete ' .. cache.path .. ' in container ' .. cache.container .. '? [y/N] ',
+        default = 'N'
+    }
+    , function(input)
+        if input:match('^[yYeEsS]$') then
+            log.debug("Deleting URI: " .. uri .. ' with command: ' .. command)
+            local command_output = shell(command, command_options)
+            local success = true
+            if command_output.stderr ~= '' then
+                log.warn("Received Error: " .. command_output.stderr)
+            end
+            if success then
+                notify.warn("Successfully Deleted " .. cache.path .. ' from container ' .. cache.container)
+            else
+                notify.warn("Failed to delete " .. cache.path .. ' from container ' .. cache.container .. '! See logs (:Nmlogs) for more details')
+            end
+        elseif input:match('^[nNoO]$') then
+            notify.warn("Delete Request Cancelled")
+        end
+    end)
 end
 
 function M:get_metadata(requested_metadata)
