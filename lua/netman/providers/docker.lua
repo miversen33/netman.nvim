@@ -44,9 +44,10 @@ local _parse_uri = function(uri)
         ,protocol    = nil
         ,container   = nil
         ,path        = nil
-        ,type        = nil
+        ,file_type   = nil
         ,return_type = nil
         ,parent      = nil
+        ,local_file  = nil
     }
     details.protocol = uri:match(protocol_pattern)
     uri = uri:gsub(protocol_pattern, '')
@@ -64,10 +65,10 @@ local _parse_uri = function(uri)
         details.path = "/" .. path_body
     end
     if details.path:sub(-1) == '/' then
-        details.type = api_flags.ATTRIBUTES.DIRECTORY
+        details.file_type = api_flags.ATTRIBUTES.DIRECTORY
         details.return_type = api_flags.READ_TYPE.EXPLORE
     else
-        details.type = api_flags.ATTRIBUTES.FILE
+        details.file_type = api_flags.ATTRIBUTES.FILE
         details.return_type = api_flags.READ_TYPE.FILE
         details.unique_name = string_generator(11)
         details.local_file  = local_files .. details.unique_name
