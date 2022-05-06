@@ -8,7 +8,7 @@ local local_files = require("netman.utils").files_dir
 
 local invalid_permission_glob = '^Got permission denied while trying to connect to the Docker daemon socket at'
 
-local container_pattern     = "^([%a%c%d%s%-%.]*)"
+local container_pattern     = "^([%a%c%d%s%-_%.]*)"
 local path_pattern          = '^([/]+)(.*)$'
 local protocol_pattern      = '^(.*)://'
 
