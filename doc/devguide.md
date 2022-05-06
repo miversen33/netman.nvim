@@ -1,4 +1,5 @@
 # Welcome to the Netman Developer Guide!
+<sup>[Source can be found here](https://github.com/miversen33/netman.nvim/blob/main/doc/devguide.md)</sup>  
 Here you will find a breakdown of the following items
 - [TLDR](#tldr)
 - [The Netman Buffer Object Life Cycle](#the-netman-buffer-object-life-cycle)

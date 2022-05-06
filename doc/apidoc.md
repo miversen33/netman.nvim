@@ -1,3 +1,4 @@
+<sup>[Source can be found here](https://github.com/miversen33/netman.nvim/blob/main/doc/apidoc.md)</sup>  
 The "API" of Netman consists of 3 parts. Those parts are
 ## [API](#api) (Redundant I know but :man_shrugging:)
 ## [Providers](#providers)
