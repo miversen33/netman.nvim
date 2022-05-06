@@ -284,6 +284,42 @@ local _read_directory = function(cache, container, directory)
     return directory_contents
 end
 
+local _write_file = function(buffer_index, uri, cache)
+    vim.fn.writefile(vim.fn.getbufline(buffer_index, 1, '$'), cache.local_file)
+    -- Get every line from the buffer from the first to the end and write it to the `local_file` 
+    -- saved in our cache
+    local local_file = shell_escape(cache.local_file)
+    local container_file = shell_escape(cache.path)
+    local command = 'docker cp ' .. local_file .. ' ' .. cache.container .. ':/' .. container_file
+    log.debug("Saving buffer " .. buffer_index .. " to uri " .. uri .. " with command: " .. command)
+
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    local command_output = shell(command, command_options)
+    if command_output.stderr ~= '' then
+        log.warn("Received Error: " .. command_output.stderr)
+        return false
+    end
+    return true
+end
+
+local _create_directory = function(container, directory)
+    local escaped_directory = shell_escape(directory)
+    local command = 'docker exec ' .. container .. ' mkdir -p ' .. escaped_directory
+
+    log.debug("Creating directory " .. directory .. ' in container ' .. container .. ' with command: ' .. command)
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    local command_output = shell(command, command_options)
+    if command_output.stderr ~= '' then
+        log.warn("Received Error: " .. command_output.stderr)
+        return false
+    end
+    return true
+end
+
 local _validate_container = function(uri, container)
     local container_status = _is_container_running(container)
     if container_status == _docker_status.ERROR then
@@ -308,6 +344,7 @@ local _validate_container = function(uri, container)
             end
         end)
     end
+    return true
 end
 
 function M:read(uri, cache)
@@ -336,7 +373,26 @@ function M:read(uri, cache)
 end
 
 function M:write(buffer_index, uri, cache)
-
+    -- It is _not_ safe to assume we already
+    -- have a cache, additionally its possible
+    -- that the uri provided doesn't match the
+    -- cache uri so we should verify the cache
+    -- we were given has contents
+    if next(cache) == nil or cache.base_uri ~= uri then cache = _parse_uri(uri) end
+    if cache.protocol ~= M.protocol_patterns[1] then
+        log.warn("Invalid URI: " .. uri .. " provided!")
+        return nil
+    end
+    if not _validate_container(uri, cache.container) then return nil end
+    local success = false
+    if cache.file_type == api_flags.ATTRIBUTES.DIRECTORY then
+        success = _create_directory(cache.container, cache.path)
+    else
+        success = _write_file(buffer_index, uri, cache)
+    end
+    if not success then
+        notify.error("Unable to write " .. uri .. "! See logs (:Nmlogs) for more details!")
+    end
 end
 
 function M:delete(uri, cache)
