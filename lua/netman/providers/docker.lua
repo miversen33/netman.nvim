@@ -1,12 +1,17 @@
 local log = require("netman.utils").log
 local notify = require("netman.utils").notify
 local shell = require("netman.utils").run_shell_command
+local shell_escape = require("netman.utils").escape_shell_command
 local command_flags = require("netman.options").utils.command
 local api_flags = require("netman.options").api
 local string_generator = require("netman.utils").generate_string
 local local_files = require("netman.utils").files_dir
+local metadata_options = require("netman.options").explorer.METADATA
 
 local invalid_permission_glob = '^Got permission denied while trying to connect to the Docker daemon socket at'
+
+local find_command = [[find -L $PATH$ -nowarn -depth -maxdepth 1 -printf ',{\n,name=%f\n,fullname=%p\n,lastmod_sec=%T@\n,lastmod_ts=%Tc\n,inode=%i\n,type=%Y\n,symlink=%l\n,permissions=%m\n,size=%s\n,owner_user=%u\n,owner_group=%g\n,parent=%h/\n,}\n']]
+local ls_command = [[ls --all --human-readable --inode -l -1 --literal --dereference $PATH$]]
 
 local container_pattern     = "^([%a%c%d%s%-_%.]*)"
 local path_pattern          = '^([/]+)(.*)$'
@@ -15,6 +20,20 @@ local _docker_status = {
     ERROR = "ERROR",
     RUNNING = "RUNNING",
     NOT_RUNNING = "NOT_RUNNING"
+}
+
+local find_pattern_globs = {
+    start_end_glob = '^,([{}])%s*'
+    ,INODE = '^,inode=(.*)$'
+    ,PERMISSIONS = '^,permissions=(.*)$'
+    ,USER = '^,owner_user=(.*)$'
+    ,GROUP = '^,owner_group=(.*)$'
+    ,SIZE = '^,size=(.*)$'
+    ,MOD_TIME = '^,lastmod_ts=(.*)$'
+    ,FIELD_TYPE = '^,type=(.*)$'
+    ,NAME = '^,name=(.*)$'
+    ,PARENT = '^,parent=(.*)$'
+    ,fullname = '^,fullname=(.*)$'
 }
 
 local M = {}
@@ -55,15 +74,11 @@ local _parse_uri = function(uri)
     uri = uri:gsub(container_pattern, '')
     local path_head, path_body = uri:match(path_pattern)
     path_body = path_body or ""
-    if (path_head:len() ~= 1 and path_head:len() ~= 3) then
-        notify.error("Error parsing path: Unable to parse path from uri: " .. details.base_uri .. '. Path should begin with either / (Relative) or /// (Absolute) but path begins with ' .. path_head)
+    if (path_head:len() ~= 1) then
+        notify.error("Error parsing path: Unable to parse path from uri: " .. details.base_uri .. '. Path should begin with / but path begins with ' .. path_head)
         return {}
     end
-    if path_head:len() == 1 then
-        details.path = "$HOME/" .. path_body
-    else
-        details.path = "/" .. path_body
-    end
+    details.path = "/" .. path_body
     if details.path:sub(-1) == '/' then
         details.file_type = api_flags.ATTRIBUTES.DIRECTORY
         details.return_type = api_flags.READ_TYPE.EXPLORE
@@ -144,6 +159,7 @@ local _start_container = function(container_name)
 end
 
 local _read_file = function(container, container_file, local_file)
+    container_file = shell_escape(container_file)
     local command = 'docker cp -L ' .. container .. ':/' .. container_file .. ' ' .. local_file
 
     local command_options = {}
@@ -153,13 +169,119 @@ local _read_file = function(container, container_file, local_file)
 
     log.info("Running container copy file command: " .. command)
     local command_output = shell(command, command_options)
-    log.debug("Container Copy Output " , {output=command_output})
     local stderr, stdout = command_output.stderr, command_output.stdout
     if stderr ~= '' then
         notify.error("Received the following error while trying to copy file from container: " .. stderr)
         return false
     end
     return true
+end
+
+local _process_find_results = function(container, results)
+    local parsed_details = {}
+    local partial_result = ''
+    local details = {}
+    local raw = ''
+    local dun = false
+    local size = 0
+    local uri = 'docker://' .. container
+    for _, result in ipairs(results) do
+        dun = false
+        if result:match(find_pattern_globs.start_end_glob) then
+            dun = true
+            goto continue
+        end
+        raw = raw .. result
+        if result:sub(1,1) == ',' then
+            partial_result = result
+        else
+            result = partial_result .. result
+            partial_result = ''
+        end
+        for key, glob in pairs(find_pattern_globs) do
+            local match = result:match(glob)
+            if match then
+                details[key] = match
+                break
+            end
+        end
+        ::continue::
+        if dun and details.NAME then
+            if details.FIELD_TYPE ~= 'N' then
+                details.raw = raw
+                details.PARENT = uri .. details.PARENT
+                details.URI = uri .. details.fullname
+                if details.FIELD_TYPE == 'd' then
+                    details.FIELD_TYPE = metadata_options.LINK
+                    details.NAME = details.NAME .. '/'
+                    details.URI = details.URI .. '/'
+                else
+                    details.FIELD_TYPE = metadata_options.DESTINATION
+                end
+                table.insert(parsed_details, details)
+                size = size + 1
+            end
+            details = {}
+            dun = false
+            raw = ''
+        end
+    end
+    parsed_details[size].URI = parsed_details[size].PARENT
+    parsed_details[size].NAME = '../'
+    return {remote_files = parsed_details, parent = size}
+end
+
+local _read_directory = function(cache, container, directory)
+    directory = shell_escape(directory)
+    local command_output = {}
+    local stderr, stdout = nil, nil
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    if not cache.directory_command then
+        log.debug("Generating Directory Traversal command")
+        local commands = {
+            {
+                command = 'find --version'
+                ,result_handler = {
+                    command = find_command:gsub('%$PATH%$', directory)
+                    ,result_parser = _process_find_results
+                }
+            },
+        }
+        for _, command_info in ipairs(commands) do
+            log.debug("Running check command: " .. command_info.command)
+            command_output = shell(command_info.command, command_options)
+            stderr, stdout = command_output.stderr, command_output.stdout
+            if stdout[2] == nil or stderr:match('command not found$') then
+                log.info("Command: " .. command_info.command .. ' not found in container ' .. container)
+            else
+                cache.directory_command = command_info.result_handler.command
+                cache.directory_parser = command_info.result_handler.result_parser
+                goto continue
+            end
+        end
+        log.warn("Unable to locate valid directory traversal command!")
+        return nil
+    end
+    ::continue::
+    command_output = {}
+    stderr, stdout = nil, nil
+    local command = 'docker exec ' .. container .. ' ' .. cache.directory_command
+    log.debug("Getting directory " .. directory .. ' contents: ' .. command)
+    command_output = shell(command, command_options)
+    stderr, stdout = command_output.stderr, command_output.stdout
+    if stderr and stderr ~= '' and not stderr:match('No such file or directory$') then
+        notify.warn("Error trying to get contents of " .. directory)
+        return nil
+    end
+    local directory_contents = cache.directory_parser(container, stdout)
+    if not directory_contents then
+        log.debug("Directory: " ..directory .. " returned an error of some kind in container " .. container)
+        return nil
+    end
+    return directory_contents
 end
 
 function M:read(uri, cache)
@@ -203,9 +325,10 @@ function M:read(uri, cache)
                 return nil
             end
         else
-
+            local directory_contents = _read_directory(cache, cache.container, cache.path)
+            if not directory_contents then return nil end
+            return directory_contents, api_flags.READ_TYPE.EXPLORE
         end
-        -- Container is running and we need to read the file/directory
     end
 end
 
