@@ -270,6 +270,7 @@ local docker_provider = "docker-provider-netman.docker"
 require("netman.api"):load_provider(docker_provider)
 ```
 
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/0c70ae6ef32675c4f90c6f3b383c484e23f631f7/lua/netman/providers/docker.lua)
 ```lua
 -- docker.lua
 local M = {}
@@ -333,6 +334,7 @@ This was thrown because we created the optional _init_ method and did not return
 
 As we did _not_ return true, initialization is considered a failure. For now, lets add a `return true` to the bottom of our init function in `docker.lua`
 
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/7e7edde58d0216cf432b9d43f3f7566afaddd7f2/lua/netman/providers/docker.lua)
 ```lua
 local M = {}
 
@@ -548,6 +550,7 @@ end
 ```
 
 With the above in place, we can now safely assume that if Netman is interfacing with us, our dependencies are available for us. It is also worth logging out relevant information for future use. Below is the finished product of the `init` function
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/41bbd55379cbd2122fb5c2f5326d92baf6a371d7/lua/netman/providers/docker.lua)
 ```lua
 -- docker.lua
 local log = require("netman.utils").log
@@ -824,6 +827,7 @@ uri_details = {
 }
 ```
 which is exactly what we want! Lets clean up the above code to be more manageable
+[`docker.lua`](https://github.com/miversen33/netman.nvim/pull/47/commits/473284f5dd4eca52e9ac8af17fe1a8a2b3c74246)
 ```lua
 -- docker.lua
 local log = require("netman.utils").log
@@ -1010,6 +1014,7 @@ end
 ```
 There isn't a ton to say about what is going on here, we are prompting the user for input on _if_ we should start the not running container and handling their response. 
 Lets implement our `_start_container` function next.
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/10ffa0964b8503e874a2ac972f4d8e12d1087606/lua/netman/providers/docker.lua)
 ```lua
 -- docker.lua
 -- rest of file
@@ -1047,6 +1052,7 @@ dependencies available for us!
 ##### Read File Implementation
 
 Starting with file handling
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/e00a257c8c429c6c681c30907aa5cb23984cbc2e/lua/netman/providers/docker.lua)
 ```lua
 -- docker.lua
 -- rest of file
@@ -1167,6 +1173,7 @@ In our case, we have verified that the container we are interfacing with _has_ t
 **Note: As you work through interfacing with your protocol provider, be sure to take into account how you will handle your dependencies being unavailable!**
 
 Below is the command we are going to use with `find` to gather the contents of a directory. This guide (and thus the below code) is not meant to be a template for how to read directory contents, and thus will not be explained. There are sections of the below code that are specific to how to interface with `Netman` and those will be commented as such to explain what they are doing. Things related to how we navigate throughout a docker container, reading the output of find, etc will be left up to you as the developer to work through.
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/3cead71b1ebcc284e687a3de71c1aa29414bc68e/lua/netman/providers/docker.lua)
 ```lua
 -- docker.lua
 local log = require("netman.utils").log
@@ -1512,6 +1519,7 @@ end
 -- rest of file
 ```
 As with above, there isn't much to talk about here so lets get both of these plugged into `write`.
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/808df0e7b22bfa2eee811287b8757ff02d909789/lua/netman/providers/docker.lua)
 ```lua
 -- docker.lua
 -- rest of file
@@ -1545,6 +1553,7 @@ Its also valuable to consider, the [`API Documentation`](https://github.com/mive
 #### Implementing Delete
 
 Delete will actually follow _effectively_ the same logic as `write`, however since `Deleting` is so simple, this section will be very brief. Below is a quick docker implementation of what `delete` would look like
+[`docker.lua`](https://github.com/miversen33/netman.nvim/blob/2c0622a19ddf87a6dddce38ab18cb9245cb2c69e/lua/netman/providers/docker.lua)
 ```lua
 -- docker.lua
 -- rest of file
