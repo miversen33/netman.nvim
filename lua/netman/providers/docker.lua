@@ -1,6 +1,6 @@
 local M = {}
 
-M.protocol_patterns = {}
+M.protocol_patterns = {'docker'}
 M.name = 'docker'
 M.version = 0.1
 
