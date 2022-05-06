@@ -23,6 +23,20 @@ M.protocol_patterns = {'docker'}
 M.name = 'docker'
 M.version = 0.1
 
+--- _parse_uri will take a string uri and return an object containing details about
+--- the uri provided.
+--- @param uri string
+---     A string representation of the uri needing parsed
+--- @return table
+---     This will either be an empty table (in the event of an error) or a table containing the following keys
+---        base_uri
+---        ,command
+---        ,protocol
+---        ,container
+---        ,path
+---        ,type
+---        ,return_type
+---        ,parent
 local _parse_uri = function(uri)
     local details = {
         base_uri     = uri
