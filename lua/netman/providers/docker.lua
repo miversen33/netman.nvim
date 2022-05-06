@@ -127,11 +127,70 @@ local _start_container = function(container_name)
     notify.warn("Failed to start container: " .. container_name .. ' for reasons...?')
     return false
 end
+
+local _read_file = function(container, container_file, local_file)
+    local command = 'docker cp -L ' .. container .. ':/' .. container_file .. ' ' .. local_file
+
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+
+    log.info("Running container copy file command: " .. command)
+    local command_output = shell(command, command_options)
+    log.debug("Container Copy Output " , {output=command_output})
+    local stderr, stdout = command_output.stderr, command_output.stdout
+    if stderr ~= '' then
+        notify.error("Received the following error while trying to copy file from container: " .. stderr)
+        return false
+    end
+    return true
+end
+
 function M:read(uri, cache)
     cache = _parse_uri(uri)
     if cache.protocol ~= M.protocol_patterns[1] then
         log.warn("Invalid URI: " .. uri .. " provided!")
         return nil
+    end
+    local container_status = _is_container_running(cache.container)
+    if container_status == _docker_status.ERROR then
+        notify.error("Unable to find container! Check logs (:Nmlogs) for more details")
+        return nil
+    elseif container_status == _docker_status.NOT_RUNNING then
+        log.debug("Getting input from user!")
+        vim.ui.input({
+            prompt = 'Container ' .. tostring(cache.container) .. ' is not running, would you like to start it? [y/N] ',
+            default = 'Y'
+        }
+        , function(input)
+            if input:match('^[yYeEsS]$') then
+                local started_container = _start_container(cache.container)
+                if started_container then require("netman"):read(uri) end
+            elseif input:match('^[nNoO]$') then
+                log.info("Not starting container " .. tostring(cache.container))
+                return nil
+            else
+                notify.info("Invalid Input. Not starting container!")
+                return nil
+            end
+        end)
+    else
+        if cache.file_type == api_flags.ATTRIBUTES.FILE then
+            if _read_file(cache.container, cache.path, cache.local_file) then
+                return {
+                    local_path = cache.local_file
+                    ,origin_path = cache.path
+                }, api_flags.READ_TYPE.FILE
+            else
+                log.warn("Failed to read remote file " .. cache.path .. '!')
+                notify.info("Failed to access remote file " .. cache.path .. " on container " .. cache.container)
+                return nil
+            end
+        else
+
+        end
+        -- Container is running and we need to read the file/directory
     end
 end
 
