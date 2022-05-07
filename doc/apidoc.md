@@ -73,7 +73,6 @@ The [`uri`](#uri) is the string representation of the remote data that the user 
 The process of interfacing with the [`api`](#api) is outlined more in the [Developer Guide](https://github.com/miversen33/netman.nvim/wiki/Developer-Guide)
 
 ## init(core_providers)
-
 - Version Added: 0.1
 - `core_providers`
     - Type: [Array](https://www.lua.org/pil/11.1.html)
@@ -207,7 +206,30 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
 - Version Added: 0.1
 - Notes
     - It's a version tag, what notes do you need?
+## unload_provider(provider_path)
+- Version Added: 0.95
+-  `provider_path`
+    - Type: [String](http://www.lua.org/pil/2.4.html)
+    - Details: The string path for the provider to unload
+- Returns: nil
+- Throws: nil
+- Notes
+    - This function is provided strictly for development use and is **not** required to be called in the lifecycle of a provider. 
+    - Use cases for this function are mostly when working on a new provider. By calling this function, you will remove the provider
+        **both from `Netman's` memory as well as `lua` as a whole
+    - Targeted use is live development of a provider without having to restart Neovim.
+    - See Also [reload_provider](#reloadproviderproviderpath)
 
+## reload_provider(provider_path)
+- Version Added: 0.95
+- `provider_path`
+    - Type: [String](http://www.lua.org/pil/2.4.html)
+    - Details: The string path for the provider to reload
+- Returns: nil
+- Throws
+    - Any errors that [load_provider](#loadproviderproviderpath) throws
+- Notes
+    - This is a helper function that simply calls [unload_provider](#unloadproviderproviderpath) followed immediately by [load_provider](#loadproviderproviderpath)
 # Providers
 A [`provider`](#providers) is a program (`Neovim` plugin in the case of `Netman`) that acts as a middle man between [`api`](#api) and external programs. The [`providers`](#providers) job is to communicate with said external programs and return consistently formatted data to the [`api`](#api) so it can be returned to the user to be handled.
 
