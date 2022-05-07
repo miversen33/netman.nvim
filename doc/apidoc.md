@@ -1,7 +1,8 @@
 <sup>[Source can be found here](https://github.com/miversen33/netman.nvim/blob/main/doc/apidoc.md)</sup>  
-The "API" of Netman consists of 3 parts. Those parts are
+The "API" of Netman consists of 4 parts. Those parts are
 ## [API](#api) (Redundant I know but :man_shrugging:)
 ## [Providers](#providers)
+## [Options](#options)
 ## [Shims](#shimswip)
 
 ## TLDR
@@ -346,6 +347,48 @@ Details on how to implement a [`provider`](#providers) can be found within the [
 - Notes
     - You've come far in the documentation. I am proud of you :)
 
+# Options
+Options can be found in `netman.options`. These "options" are a table which acts as a sort of enum for the core of `Netman`. `api` relies on these options as a standard way of communicating "information" between itself and its providers. Below is a breakdown of each "option" that can be found here. These options will be referenced throughout various points in the [`API Documentation`](https://github.com/miversen33/netman.nvim/wiki/API-Documentation) as well as the [`Developer Guide`](https://github.com/miversen33/netman.nvim/wiki/Developer-Guide)
+- utils
+    - command
+        - IGNORE_WHITESPACE_ERROR_LINES
+        - IGNORE_WHITESPACE_OUTPUT_LINES
+        - STDOUT_JOIN
+        - STDERR_JOIN
+        - SHELL_ESCAPE
+- api
+    - READ_TYPE
+        - FILE
+        - STREAM
+        - EXPLORE
+    - ATTRIBUTES
+        - FILE
+        - DIRECTORY
+        - LINK
+    - protocol
+        - EXPLORE
+    - explorer
+        - METADATA
+            - PERMISSIONS
+            - OWNER_USER
+            - OWNER_GROUP
+            - SIZE_LABEL
+            - SIZE
+            - GROUP
+            - PARENT
+            - FIELD_TYPE
+            - TYPE
+            - INODE
+            - LASTACCESS
+            - FULLNAME
+            - URI
+            - NAME
+            - LINK
+            - DESTINATION
+        - FIELDS
+            - FIELD_TYPE
+            - NAME
+            - URI
 # Shims(WIP)
 ## explore(details)
 - Version Added: 0.9
