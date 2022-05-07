@@ -32,6 +32,7 @@ describe("Netman Core #netman-core", function()
         write = function() end,
         delete = function() end,
         parse_uri = function() end,
+        get_metadata = function() end,
         init = function() return true end
     }
     _G.mock_provider2 = {
@@ -43,6 +44,7 @@ describe("Netman Core #netman-core", function()
         write = function() end,
         delete = function() end,
         parse_uri = function() end,
+        get_metadata = function() end,
         init = function() return true end
     }
     package.loaded[_G.mock_provider1.name] =_G.mock_provider1
