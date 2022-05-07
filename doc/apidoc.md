@@ -1,8 +1,8 @@
 <sup>[Source can be found here](https://github.com/miversen33/netman.nvim/blob/main/doc/apidoc.md)</sup>  
 The "API" of Netman consists of 4 parts. Those parts are
 ## [API](#api) (Redundant I know but :man_shrugging:)
-## [Providers](#providers)
-## [Options](#options)
+## [Providers](#providers-1)
+## [Options](#options-1)
 ## [Shims](#shimswip)
 
 ## TLDR
