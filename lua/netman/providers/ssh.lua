@@ -16,12 +16,30 @@ local directory_patterns = {}
 directory_patterns[metadata_options.NAME]        = '^,name=' .. file_name_pattern .. '$'
 directory_patterns[metadata_options.FULLNAME]    = '^,fullname=' .. file_name_pattern .. '$'
 directory_patterns[metadata_options.INODE]       = '^,inode=(%d*)$'
-directory_patterns['_type']                                      = '^,type=([%w]*)$'
+directory_patterns['_type']                      = '^,type=([%w]*)$'
 directory_patterns[metadata_options.PERMISSIONS] = '^,permissions="([%d]*)"$'
 directory_patterns[metadata_options.SIZE]        = '^,size=(%d*)$'
 directory_patterns[metadata_options.PARENT]      = '^,parent=' .. file_name_pattern .. '$'
-directory_patterns[metadata_options.OWNER_USER]  = '^,owner_user=([%w]*)'
-directory_patterns[metadata_options.OWNER_GROUP] = '^,owner_group=([%w]*)'
+directory_patterns[metadata_options.USER]  = '^,owner_user=([%w]*)'
+directory_patterns[metadata_options.GROUP] = '^,owner_group=([%w]*)'
+
+local find_flag_to_metadata = {}
+find_flag_to_metadata[metadata_options.BLKSIZE]     = {key='BLKSIZE'     ,flag=",BLKSIZE=%s"    ,glob='^,BLKSIZE=(.*)'}
+find_flag_to_metadata[metadata_options.DEV]         = {key='DEV'         ,flag=",DEV=utils%d"   ,glob='^,DEV=(.*)'}
+find_flag_to_metadata[metadata_options.FULLNAME]    = {key='FULLNAME'    ,flag=",FULLNAME=%p"   ,glob='^,FULLNAME=(.*)'}
+find_flag_to_metadata[metadata_options.GID]         = {key='GID'         ,flag=",GID=%G"        ,glob='^,GID=(.*)'}
+find_flag_to_metadata[metadata_options.GROUP]       = {key='GROUP'       ,flag=",GROUP=%g"      ,glob='^,GROUP=(.*)'}
+find_flag_to_metadata[metadata_options.INODE]       = {key='INODE'       ,flag=",INODE=%i"      ,glob='^,INODE=(.*)'}
+find_flag_to_metadata[metadata_options.LASTACCESS]  = {key='LASTACCESS'  ,flag=",LASTACCESS=%a" ,glob='^,LASTACCESS=(.*)'}
+find_flag_to_metadata[metadata_options.NAME]        = {key='NAME'        ,flag=",NAME=%f"       ,glob='^,NAME=(.*)'}
+find_flag_to_metadata[metadata_options.NLINK]       = {key='NLINK'       ,flag=",NLINK=%n"      ,glob='^,NLINK=(.*)'}
+find_flag_to_metadata[metadata_options.USER]        = {key='USER'        ,flag=",USER=%u"       ,glob='^,USER=(.*)'}
+find_flag_to_metadata[metadata_options.PARENT]      = {key='PARENT'      ,flag=",PARENT=%h"     ,glob='^,PARENT=(.*)'}
+find_flag_to_metadata[metadata_options.PERMISSIONS] = {key='PERMISSIONS' ,flag=",PERMISSIONS=%m",glob='^,PERMISSIONS=(.*)'}
+find_flag_to_metadata[metadata_options.SIZE]        = {key='SIZE'        ,flag=",SIZE=%s"       ,glob='^,SIZE=(.*)'}
+find_flag_to_metadata[metadata_options.TYPE]        = {key='TYPE'        ,flag=",TYPE=%Y"       ,glob='^,TYPE=(.*)'}
+find_flag_to_metadata[metadata_options.UID]         = {key='UID'         ,flag=",UID=%U"        ,glob='^,UID=(.*)'}
+find_flag_to_metadata[metadata_options.URI]         = {key='URI'         ,flag=",URI=$URI"      ,glob='^,URI=(.*)'}
 
 local M = {}
 
@@ -345,6 +363,61 @@ function M:delete(uri, cache)
     else
         notify.info("Deleted " .. uri  .. " successfully")
     end
+end
+
+function M:get_metadata(uri, metadata)
+    local return_metadata = {}
+    local cache = _validate_cache(uri)
+    local path = utils.escape_shell_command(cache.remote_path)
+    local find_command = "find -L " .. path .. " -nowarn -maxdepth 0 -printf '"
+    local used_flags = {}
+    for _, key in ipairs(metadata) do
+        log.debug("Processing Metadata Flag: " .. key)
+        local find_flag = find_flag_to_metadata[key]
+        local flag = ''
+        if find_flag then
+            flag = find_flag.flag:gsub('%$URI', path) .. '\n'
+            table.insert(used_flags, find_flag)
+        end
+        find_command = find_command .. flag
+    end
+    find_command = find_command .. "'"
+    log.info("Metadata fetching command: " .. find_command)
+    
+    local auth_uri = utils.escape_shell_command(cache.auth_uri)
+    local remote_command = 'ssh ' .. auth_uri .. ' "' .. find_command .. '"'
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    log.debug("Running Remote Command: " .. remote_command)
+    local command_output = utils.run_shell_command(remote_command, command_options)
+    log.debug("Command Output ", {stdout = command_output.stdout, stderr = command_output.stderr})
+    if command_output.stderr:match('No such file or directory$') then
+        log.info("Received Error while looking for " .. uri .. '. ' .. command_output.stderr)
+        notify.warn(cache.remote_path .. ' does not exist on ' .. cache.host .. '!')
+        return nil
+    end
+    if command_output.stderr ~= '' then
+        log.warn("Received Error while getting metadata for " .. uri .. '. ', {error=command_output.stderr})
+        log.info("I can do this... Carrying on")
+    end
+    for _, line in ipairs(command_output.stdout) do
+        if line == '' then
+            goto continue
+        end
+        for _, flag in ipairs(used_flags) do
+            local match = line:match(flag.glob)
+            if match then
+                return_metadata[flag.key] = match
+                table.remove(used_flags, _)
+            end
+        end
+        ::continue::
+    end
+
+    log.info("Generated Metadata ", {metadata=return_metadata})
+    return return_metadata
 end
 
 function M:close_connection()

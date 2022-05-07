@@ -22,6 +22,7 @@ local _provider_required_attributes = {
     ,'read'
     ,'write'
     ,'delete'
+    ,'get_metadata'
 }
 
 local _explorer_required_attributes = {
@@ -250,6 +251,53 @@ function M:delete(delete_path)
     provider:delete(delete_path)
 end
 
+--- Get Metadata is the function an explorer will call (via the shim) for fetching
+--- metadata associated with a URI.
+--- @param uri string
+---     String path representation to resolve for metadata gathering location
+--- @param metadata table
+---     An table (as an array) with _valid netman.options.METADATA_ entries
+--- @return table
+---     A table will be returned. The table will consist of the metadata input table contents
+---     as the keys and the metadata associated with the key as the value
+function M:get_metadata(uri, metadata)
+    if not metadata then
+        metadata = {}
+        for key, _ in pairs(require('netman.options').explorer.METADATA) do
+            table.insert(metadata, key)
+        end
+    end
+    if not uri then
+        notify.error("No uri provided!")
+        return nil
+    end
+    local provider_details = M:_get_buffer_cache_object(nil, uri)
+    if not provider_details then
+        log.warn("No provider details returned for " .. uri)
+        return nil
+    end
+    log.debug("Reaching out for metadata ", metadata)
+    local return_metadata = provider_details.provider:get_metadata(uri, metadata)
+    log.debug("Removing lingering Cache data for metadata request")
+    M._unclaimed_provider_details[M._unclaimed_id_table[uri]] = nil
+    M._unclaimed_id_table[uri] = nil
+    if not return_metadata then
+        log.warn("No metadata returned for " .. uri .. '!')
+        return nil
+    end
+    local sanitized_metadata = {}
+    for metadata_key, metadata_value in pairs(return_metadata) do
+        if not netman_options.explorer.METADATA[metadata_key] then
+            log.warn("Metadata Key" .. metadata_key .. ' is not valid. Removing...')
+        else
+            sanitized_metadata[metadata_key] = metadata_value
+        end
+    end
+    return sanitized_metadata
+end
+
+--- Read is the main entry to resolving a uri and getting the contents
+--- asso
 --- Read is the main entry to resolving a uri and getting the contents
 --- associated with it. Read reaches out to the appropriate provider
 --- and retrieves valid contents.
