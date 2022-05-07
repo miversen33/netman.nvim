@@ -459,6 +459,19 @@ function M:unload_provider(provider_path)
             end
         end
     end
+    local provider_map = {}
+    for id, provider_details in pairs(M._unclaimed_provider_details) do
+        if provider_details.provider._provider_path == provider_path then
+            provider_map[provider_details.origin_path] = id
+        end
+    end
+    if next(provider_map) == nil then
+        log.info("Removing Provider " .. provider_path .. " from associated buffers")
+        for uri, id in pairs(provider_map) do
+            M._unclaimed_id_table[uri] = nil
+            M._unclaimed_id_table[id] = nil
+        end
+    end
     return true
 end
 
