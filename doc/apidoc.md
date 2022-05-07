@@ -193,7 +193,7 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
     - [`write`](#writebufferindex-writepath) does an asynchronous call to the [`provider`](#provider)'s `write` method and then immediately returns back so the user can continue working. **DO NOT EXPECT THIS TO BLOCK**
     - [`write`](#writebufferindex-writepath) is available to be called via the `:Nmwrite` vim command
 ## get_metadata(requested_metadata)
-- Version Added: Pending
+- Version Added: 0.95
 - `requested_metadata`
     - Type: [Array](https://www.lua.org/pil/11.1.html)
     - Details: `requested_metadata` should be an array of [valid METADATA](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/options.lua) options
@@ -201,7 +201,7 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
     - `key`, `value` pairs table where the key is each item in `requested_metadata` and the `value` is what was returned by the provider
 - Throws: nil
 - Notes
-    - This is a WIP and pending additional implementation/integration
+    - This will be called by the explorer shim whenever an explorer requests [`libuv`](https://github.com/luvit/luv/blob/master/docs.md#uvfs_statpath-callback) details about a remote location. `Netman` will reach down to the provider for the remote location and call the same named function ([`get_metadata`](#getmetadatauri-requestedmetadata)).
 ## version
 - Version Added: 0.1
 - Notes
@@ -308,22 +308,23 @@ Details on how to implement a [`provider`](#providers) can be found within the [
 - Version Added: 0.1
 - `uri`
     - Type: [String](http://www.lua.org/pil/2.4.html)
-    - Details: The string [`URI`](#uri) to create
+    - Details: The string [`URI`](#uri) to delete
 - Returns: nil
 - Throws
     - It is acceptable to throw any errors that are encountered in the process of delete the requested [`URI`](#uri)
 - Notes
     - [`api`](#api) does not currently provide any tools for dealing with oddities in the delete process (user verification, permission error, network failure, etc), and those errors and validations are left up to the provider to handle.
     - **NOTE: [`api`](#api) calls the [`delete`](#deleteuri-cache) function asynchronously and thus the provider cannot expect the [`api`](#api) to block on it. The provider should get whatever details it will need for the delete immediately before doing any long running tasks as those resources may change over time**
-## get_metadata(cache, requested_metadata)
-- Version Added: Pending
-- `cache`
-    - Type: [Table](https://www.lua.org/pil/2.5.html)
-    - Details: The `table` object that is stored and managed by the [`api`](#api). The `api` gets this object from the [`provider`](#provider)'s [`init`](). For more details on how the cache works, consult the [Developer Guide](https://github.com/miversen33/netman.nvim/wiki/Developer-Guide)
+## get_metadata(uri, requested_metadata)
+- Version Added: 0.95
+- `uri`
+    - Type: [String](http://www.lua.org/pil/2.4.html)
+    - Details: The string [`URI`](#uri) to get metadata for
 - `requested_metadata`
-    - Type: [Table](https://www.lua.org/pil/2.5.html)
-    - Details: `requested_metadata` will be a `key`, `value` table where the `key` a valid [METADATA](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/options.lua) option (more info to come)
-- Returns: `requested_metadata`
+    - Type: [Array](https://www.lua.org/pil/11.1.html)
+    - Details: `requested_metadata` will be a `key`, `value` table where the `key` a valid [METADATA](#options-1) option
+- Returns
+    - Should return a [`Table`]()
 - Throws: nil
 - Notes
     - This will be called by [`api`](#api) whenever the user requests additional metadata about a link/destination. The `keys` are all valid [`stat` flags](https://man7.org/linux/man-pages/man2/lstat.2.html) and [`api`](#api) will expect the data returned to conform to the datatypes that `stat` will return for those flags
