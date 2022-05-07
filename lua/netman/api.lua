@@ -372,6 +372,59 @@ function M:load_explorer(explorer_path, force)
     ::continue::
 end
 
+--- Unoad Provider is a function that is provided to allow a user (developer)
+--- to remove a provider from Netman. This is most useful when changes have been
+--- made to the provider and you wish to reflect those changes without
+--- restarting Neovim
+--- @param provider_path string
+---    The string path to the provider
+---    EG: "netman.provider.ssh"
+--- @return nil
+function M:unload_provider(provider_path)
+    log.info("Attempting to unload provider: " .. provider_path)
+    local status, provider = pcall(require, provider_path)
+    package.loaded[provider_path] = nil
+    if not status or provider == true or provider == false then
+        log.warn("Failed to fetch provider " .. provider_path .. " for unload!")
+        return
+    end
+    if provider.protocol_patterns then
+        log.info("Disassociating Protocol Patterns and Autocommands with provider: " .. provider_path)
+        for _, pattern in ipairs(provider.protocol_patterns) do
+            local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
+            if M._providers[new_pattern] then
+                log.debug("Removing associated autocommands with " .. new_pattern .. " for provider " .. provider_path)
+                if not M._unitialized_providers[provider_path] then
+                    M._unitialized_providers[provider_path] = {
+                        reason = "Provider Unloaded"
+                        ,name = provider_path
+                        ,protocol = table.concat(provider.protocol_patterns, ', ')
+                        ,version = provider.version
+                    }
+                end
+                M._providers[new_pattern] = nil
+                vim.api.nvim_command('autocmd! Netman FileReadCmd '  .. new_pattern .. '://*')
+                vim.api.nvim_command('autocmd! Netman BufReadCmd '   .. new_pattern .. '://*')
+                vim.api.nvim_command('autocmd! Netman FileWriteCmd ' .. new_pattern .. '://*')
+                vim.api.nvim_command('autocmd! Netman BufWriteCmd '  .. new_pattern .. '://*')
+                vim.api.nvim_command('autocmd! Netman BufUnload '    .. new_pattern .. '://*')
+            end
+        end
+    end
+    return true
+end
+
+--- Reload Provider is a developer helper function that is provided for a developer
+--- to quickly reload their provider into Netman without having to restart Neovim
+--- @param provider_path string
+---    The string path to the provider
+---    EG: "netman.provider.ssh"
+--- @return nil
+function M:reload_provider(provider_path)
+    M:unload_provider(provider_path)
+    M:load_provider(provider_path)
+end
+
 --- Load Provider is what a provider should call
 --- (via require('netman.api').load_provider) to load yourself
 --- into netman and be utilized for uri resolution in other
@@ -484,6 +537,7 @@ function M:load_provider(provider_path)
         end
         ::continue::
     end
+    M._unitialized_providers[provider_path] = nil
     log.info("Initialized " .. provider_path .. " successfully!")
 end
 
