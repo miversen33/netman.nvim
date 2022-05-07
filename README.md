@@ -198,7 +198,7 @@ OR
 Accessing files/directories in a container can be done in the URI below format
 - $PROTOCOL://$CONTAINER/$PATH
     A break down of what is happening here
-    - `$PROTOCOL` : Must be either `sftp`, `scp`, or `ssh`
+    - `$PROTOCOL` : Must be `docker`
     - `$CONTAINER`: The container (by name) to open
     - `$PATH`     : The path to a file/directory to interact with.
     **NOTE: Unlike the `ssh` provider, the `docker` provider does _not_ allow relative pathing
