@@ -171,7 +171,7 @@ Can also be called via lua
 Accessing files/directories over ssh can be done in below URI format
 - $PROTOCOL://[$USERNAME@]$HOSTNAME[:$PORT]/[//][$PATH]
     A break down of what is happening here
-    - `$PROTOCOL`: Must be either `sftp`, `scp`, or `ssh`
+    - `$PROTOCOL`: Must be `sftp`, `scp`, or `ssh`
     - `$USERNAME`: The username to authenticate with (Optional)
     - `$HOSTNAME`: The hostname to connect to. Supports using hostnames defined in an [SSH CONFIG](https://linux.die.net/man/5/ssh_config) file
     - `$PORT`    : The port to connect to (Optional)
