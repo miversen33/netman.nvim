@@ -551,7 +551,7 @@ function M:dump_info(output_path)
         "    "
         .. explorer_info.name
         .. " --version "
-        .. explorer_info.version
+        .. tostring(explorer_info.version)
         .. " --reason "
         .. explorer_info.reason
         )
@@ -559,7 +559,7 @@ function M:dump_info(output_path)
     table.insert(headers, '')
     table.insert(headers, 'Running Provider Details')
     for pattern, provider in pairs(M._providers) do
-        table.insert(headers, "    " .. provider._provider_path .. " --pattern " .. pattern .. " --protocol " .. provider.name .. " --version " .. provider.version)
+        table.insert(headers, "    " .. tostring(provider._provider_path) .. " --pattern " .. pattern .. " --protocol " .. tostring(provider.name) .. " --version " .. tostring(provider.version))
     end
     table.insert(headers, "")
     table.insert(headers, "Not Running Provider Details")
@@ -568,11 +568,11 @@ function M:dump_info(output_path)
             "    "
             .. provider
             .. " --protocol "
-            .. provider_info.name
+            .. tostring(provider_info.name)
             .. " --version "
-            .. provider_info.version
+            .. tostring(provider_info.version)
             .. " --reason "
-            .. provider_info.reason
+            .. tostring(provider_info.reason)
         )
     end
     table.insert(headers, '----------------------------------------------------')
