@@ -526,8 +526,10 @@ function M:unload(buffer_index)
 end
 
 function M:dump_info(output_path)
----@diagnostic disable-next-line: ambiguity-1
-    output_path = output_path or "$HOME/" .. utils.generate_string(10)
+    if output_path ~= 'memory' then
+        ---@diagnostic disable-next-line: ambiguity-1
+        output_path = output_path or "$HOME/" .. utils.generate_string(10)
+    end
     local neovim_details = vim.version()
     local headers = {
         '----------------------------------------------------'

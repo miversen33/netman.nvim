@@ -90,7 +90,9 @@ local format_func = function(arg) return vim.inspect(arg, {newline='\n'}) end
 
 local generate_session_log = function(output_path, logs)
     logs = logs or {}
-    output_path = vim.fn.resolve(vim.fn.expand(output_path))
+    if output_path ~= 'memory' then
+        output_path = vim.fn.resolve(vim.fn.expand(output_path))
+    end
     local log_path = data_dir .. "logs.txt"
     local line = ''
     local pulled_sid = ''
@@ -109,12 +111,15 @@ local generate_session_log = function(output_path, logs)
         end
     end
     io.close(log_file)
-    local message = "Saving Logs"
+    local message = ''
+    if output_path ~= 'memory' then message = "Saving Logs" else message = "Generating Logs" end
     vim.api.nvim_notify(message, log_level_map.INFO, {})
     table.insert(logs, line)
     vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
-    vim.fn.writefile(logs, output_path)
-    vim.api.nvim_notify("Saved logs to " .. output_path, 2, {})
+    if output_path ~= 'memory' then
+        vim.fn.writefile(logs, output_path)
+        vim.api.nvim_notify("Saved logs to " .. output_path, 2, {})
+    end
     return logs
 end
 
