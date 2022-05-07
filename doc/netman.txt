@@ -1,0 +1,788 @@
+*netman* Framework that exposes remote resources to local users
+
+===============================================================================
+INTRODUCTION
+Netman.nvim is a plugin that allows Neovim to interface with remote 
+file systems without having to know what is on the remote filesystem or how 
+to interface with it.
+
+Getting Started:
+1) Include Netman in your `init.lua`
+    `require("netman")`
+2) Profit??
+
+Details:
+Netman sits under most providers and injects itself into the Neovim Event 
+system to ensure that buffer events related to changing the underlying 
+resource are directed to the associated provider. As an example, if you open 
+an sftp resource (via `:edit sftp://myhost/mydoc`), Netman will ensure that 
+all read, write, delete, and Metadata gathering events are forwarded to the 
+`ssh` provider (that is part of Netman core) so it can handle them.
+
+                                                               *NmloadProvider*
+:NmloadProvider ~
+Takes 1 argument (the path to a provider to load) and calls
+|netman.api.load_provider|. This will mostly be used by developers 
+expirimenting with provider creation/configuration. Example: >
+    :NmloadProvider netman.providers.ssh
+< OR >
+    :lua require("netman.api"):load_provider("netman.providers.ssh")
+>
+See Also: |netman.api.load_provider|
+
+                                                             *NmreloadProvider*
+:NmreloadProvider ~
+Takes 1 argument (the path to the provider to reload) and calls
+|netman.api.reload_provider|. This will mostly be used by developers 
+expirimenting with provider modification as it provides the ability
+to reload your provider into Netman without having to restart Neovim Example: 
+>
+    :NmreloadProvider netman.providers.ssh
+< OR >
+    :lua require("netman.api"):reload_provider("netman.providers.ssh")
+<
+See Also: |netman.api.reload_provider|
+
+                                                             *NmunloadProvider*
+:NmunloadProvider ~
+Takes 1 argument (the path to the provider to unload) and calls 
+|netman.api.unload_provider|. This will mostly be used by developers
+expirimenting with provider modification as it provides the ability
+to remove a provider from Netman during the current session.
+
+-->NOTE: THIS DOES NOT HAVE TO BE CALLED BY A PROVIDER DURING THE 
+LIFECYCLE OF A PROVIDER. THIS IS STRICTLY MEANT TO BE A DEVELOPMENT TOOL<--
+
+Example: >
+    :NmunloadProvider netman.providers.ssh
+< OR >
+    :lua require("netman.api"):unload_provider("netman.providers.ssh")
+<
+See Also: |netman.api.unload_provider|
+
+                                                                       *Nmlogs*
+:Nmlogs ~
+Takes at most 1 argument (the path to dump logs to) and calls 
+|netman.api.dump_info|. This will mostly be used by developers debugging their
+providers. If no argument is passed, Nmlogs will create a file with a random
+name in your home directory.
+Note: You can optionally pass `memory` as the argument to this function
+and `:Nmlogs` will not create a log file
+Example: >
+    :Nmlogs
+< OR >
+    :Nmlogs my_log_file
+< OR >
+    :Nmlogs memory
+< OR >
+    :lua require("netman.api"):dump_info()
+< OR >
+    :lua require("netman.api"):dump_info("my_log_file")
+< OR >
+    :lua require("netman.api"):dump_info("memory)
+<
+See Also: |netman.api.dump_info|
+
+                                                                       *Nmread*
+:Nmread ~
+Takes `n` arguments (where `n` is > 0) and opens a new buffer. Example: >
+    :Nmread sftp://myhost/my/dir/myfile.txt
+< OR >
+    :lua require("netman"):read("sftp://myhost/my/dir/myfile.txt")
+>
+See Also: |netman.read| |netman.api.read| |netman.providers.read|
+
+                                                                     *Nmdelete*
+:Nmdelete ~
+Takes exactly 1 argument (the path to delete). Example: >
+    :Nmdelete sftp://myhost/my/dir/myfile.txt
+< OR >
+    :lua require("netman"):delete("sftp://myhost/my/dir/myfile.txt")
+<
+See Also: |netman.delete| |netman.api.delete| |netman.providers.delete|
+
+                                                                      *Nmwrite*
+:Nmwrite ~
+Informs the underlying provider associated with the URI and buffer. Example: >
+    :Nmwrite
+< OR >
+    :lua require("netman"):write()
+<
+See Also: |netman.write| |netman.api.write| |netman.providers.write|
+
+                                                                  *netman.read*
+netman:read ~
+Neovim exposed function for interfacing with |netman.api.read|. Takes `n`
+arguments and opens a new buffer for each argument. This function should 
+also be used for exploring directories. Example: >
+    require("netman"):read(
+        "sftp://myhost/my/dir/myfile.txt"
+        ,"docker://mycontainer/myfile.conf"
+    )
+<
+See Also: |netman.api.read| |netman.providers.read|
+
+                                                                 *netman.write*
+netman.write ~
+Neovim exposed function for interfacing with |netman.api.write|. This function 
+will tell Netman to write the contents of the current buffer to its provider.
+Example: >
+    require("netman"):write()
+<
+See Also: |netman.api.write| |netman.providers.write|
+                                                                   *netman.api*
+netman.api ~
+The api is the core of Netman and all processing of remote data is done
+through the it. It is worth noting that the api itself does not do much
+processing of the data, relegating that to the relevant provider to do.
+Instead, api acts as a sort of middle man between the user and the provider.
+API is designed with the following core concepts in mind
+
+- The api should be strict
+- The api should be consistent
+- The api should make as few decisions as possible
+- The api should not manipulate data
+
+With these concepts in mind, the api is able to ensure a _stable_ contract
+between the user and provider without either having to interface much
+with the other.
+
+There are 2 key variables that the api revolves around, and these are
+- buffer_index
+- uri
+
+The buffer_index is the lua integer representation of the vim buffer id
+that is currently being interacted with. This is used as a sort of key
+within api due to the nature of buffer_index never changing within vim.
+This fact (that buffer_index is unique) makes it a prime mechanic for
+being the key in various objects within api.
+
+The uri is the string representation of the remote data that the user wishes
+to interface with. A uri is traditionally represented in the following manner
+`protocol://host_authentication_information/path` and api makes this
+assumption when dealing with uri from the user.
+
+                                                              *netman.api.init*
+netman.api.init ~
+Version Added: 0.1
+Definition
+    init(core_providers)
+    - core_providers
+        - Type: Array
+        - Details: core_providers is an optional array that can be provided on 
+                API initialization. If not provided, this will default to
+                `netman.providers`
+Returns: nil
+Throws
+    - Errors thrown by load_provider will be thrown from this as well
+Notes
+    - init is called **automatically** on import of netman.api and has a lock in
+      place to prevent side effects of multiple imports of api.
+    - **This function _does not_ need to be called when importing `netman.api`**
+
+                                                          *netman.api.dump_info*
+netman.api.dump_info ~
+Version Added: 0.1
+Definition
+    dump_info(output_path)
+    - output_path
+        - Type: String
+        - Details: output_path is optional and defaults to
+                   `$HOME/*random string*` where `*random string*` is a randomly
+                   generated 10 character string
+Returns: nil
+Throws: nil
+Notes
+    - dump_info can be called via the `:Nmlogs` vim command and will do the
+      following 2 things
+        - Dump session related logs into the file created at output_path 
+          (Note: if a file exists in output_path, it will be **overwritten** 
+          with the dump)
+        - Open this file in a new `NetmanLogs` filetype buffer for viewing
+
+                                                             *netman.api.unload*
+netman.api.unload ~
+Version Added: 0.1
+Definition
+    unload(buffer_index)
+    - buffer_index
+        - Type: integer
+        - Details: buffer_index is the index of the buffer to be unloaded from
+                   the api's current state.
+Returns: nil
+Throws: nil
+Notes
+    - unload will be called automatically when a `Netman` managed buffer is
+      closed by vim (due to the an autocommand that is registered to |BufUnload|
+      for the specific protocol that the buffer was opened with)
+    - Unload will cleanup the local file used for a remote file pull if the
+      provider performed a remote file pull
+    - Unload will call |close_connection| on the associated provider if the
+      provider implemented |close_connection|
+
+                                                      *netman.api.load_provider*
+netman.api.load_provider ~
+Version Added: 0.1
+Definition
+    load_provider(provider_path)
+    - provider_path
+        - Type: String
+        - Details: provider_path should be the string path to import a provider.
+                   For example `"netman.providers.ssh"`
+Returns: nil
+Throws
+    - "Failed to initialize provider: " error
+        - This is thrown when an attempt to import the provider fails or the
+          provider has no contents (IE, its an empty file)
+        - This is _also_ thrown (with different sub details) if the provider is
+          missing one of the required attributes. For more details on required
+          attributes for a provider, please consult the Developer Guide:
+          https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+Notes
+    - load_provider is the expected function to call when you are registering a
+      new provider to handle a protocol, or registering an explorer to handle
+      tree browsing. The function does a handful of things, which are laid out
+      below
+        - Attempts to import the provider. If there is a failure in the initial
+          import, the above error(s) are thrown
+        - Validates the provider has the required attributes as laid out in the
+          developer guide: 
+          https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+        - Calls the provider's init function if it has one
+        - Ensures that _core providers_ do not override 3rd party providers. 
+          This means that `Netman` will _never_ attempt to override an existing 
+          provider for a protocol that netman supports.
+            - **NOTE: Netman does _not_ prevent overriding of 3rd party
+              providers by other 3rd party providers. Netman operates providers
+              on "most recent provider" basis. This means that the most recent
+              provider to register as the provider for a protocol will be used**
+        - Register autocommands that link the providers protocols to `Netman`
+          to be handled by the api
+
+                                                               *netman.api.read*
+netman.api.read ~
+Version Added: 0.1
+Definition
+    read(buffer_index, path)
+    - buffer_index
+        - Type: integer
+        - Details: **Required** Index of the buffer to associate the uri with, 
+                   stored within api and used as the key to access state objects
+                   associated with the buffer. If nil (but provided), api delays
+                   association until the `URI` is claimed later. For more
+                   details on this process, please consult the developer guide: 
+                https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+    - path
+        - Type: String
+        - Details: The uri to open. This is passed directly to the associated 
+                   provider for this uri
+Returns
+    - read returns 1 of the following 2 items, depending on what the provider
+      declares the return type should be on read
+        - nil
+            - This is usually returned if the provider determined that it needs
+              to interface with a file manager, though it can also be returned
+              if read throws an error (see below)
+        - command
+            - This is a command that is generated by api to be used by `vim` to
+              display the contents for the user to interface with.
+Throws
+    - Any errors that the provider may throw during its read operation
+    - "Unable to figure out how to display: " error
+        - An invalid return type was provided to read from the provider's read
+          operation
+    - "No tree explorer loaded" error
+        - The provider attempted to load an explorer when one wasn't available
+          to load
+- Notes
+    - read is accessible via the |:Nmread| command which is made available by
+      |netman.init|. It is also automatically called on |FileReadCmd| and
+      |BufReadCmd| vim events. The end user should _not_ have to directly
+      interface with `netman.api.read`, instead preferring to let vim handle
+      that via the above listed events.
+    - Read operates on a generate-and-reserve model where it generates buffer
+      details (via calls to the associated provider) and then depending on
+      results from the provider it will either claim the buffer details
+      immediately or wait for the provider to inform it that it is safe to do
+      so. This is especially useful when opening multiple files via different
+      providers as api will not conflict with itself trying to organize buffers
+      to buffer objects while juggling the various (potentially asynchronous)
+      providers
+    - read expects a return of 1 of 3 well defined types from the providers read
+      function, which are detailed more below. These types are
+        - READ_TYPE.FILE
+            - If read is returned a READ_TYPE.FILE, it will assume that the
+              information being read into the vim buffer is a local file. API
+              will document this and remember to clean up this local file after
+              unload is called
+        - READ_TYPE.STREAM
+        - READ_TYPE.EXPLORE
+See Also: |:Nmread| |netman.providers.read| |netman.init| |FileReadCmd|
+|BufReadCmd|
+
+                                                             *netman.api.delete*
+netman.api.delete ~
+Version Added: 0.1
+Definition
+    delete(delete_path)
+    - delete_path
+        - Type: String
+        - Details: The string URI to delete.
+Returns: nil
+Throws
+    - "Unable to delete: " error
+        - Thrown if a viable provider was unable to be found for delete_path
+    - Any errors that the provider throws during the delete process
+Notes
+    - delete does **_not_** require the URI to be a loaded buffer, _however_ it
+    does require a provider be loaded (via load_provider that can handle the 
+    protocol of the URI that 
+    is being requested to delete
+    - delete is available to be called via the |:Nmdelete| vim command
+See Also: |:Nmdelete| |netman.providers.delete|
+
+                                                              *netman.api.write*
+netman.api.write ~
+Version Added: 0.1
+Definition
+    write(buffer_index, write_path)
+    - buffer_index
+        - Type: integer
+        - Details: The buffer index associated with the write path
+    - write_path
+        - Type: String
+        - Details: The string uri to create
+Returns: nil
+Throws
+    - Any errors that the provider throws during the write process
+Notes
+    - write does an asynchronous call to the provider's write method and then 
+    immediately returns back so the user can continue working. **DO NOT EXPECT 
+    THIS TO BLOCK**
+    - write is available to be called via the |:Nmwrite| vim command
+See Also: |:Nmwrite| |netman.providers.write|
+
+                                                       *netman.api.get_metadata*
+netman.api.get_metadata ~
+Version Added: 0.95
+Definition
+    get_metadata(requested_metadata)
+    - requested_metadata
+        - Type: Array
+        - Details: requested_metadata should be an array of valid METADATA, as
+                   described in |netman.options.metadata| options
+Returns
+    - key, value pairs table where the key is each item in requested_metadata 
+    and the value is what was returned by the provider
+Throws: nil
+Notes
+    - This will be called by the explorer shim whenever an explorer requests 
+      libuv details about a remote location. Netman will reach down to the 
+      provider for the remote location and call the same named function 
+      get_metadata.
+See Also: |netman.options.metadata| |netman.providers.get_metadata|
+
+                                                            *netman.api.version*
+netman.api.version ~
+Version Added: 0.1
+Definition
+    version
+    - Notes
+        - It's a version tag, what notes do you need?
+
+                                                    *netman.api.unload_provider*
+netman.api.unload_provider ~
+Version Added: 0.95
+Definition
+    unload_provider(provider_path)
+    -  provider_path
+        - Type: String
+        - Details: The string path for the provider to unload
+Returns: nil
+Throws: nil
+Notes
+    - This function is provided strictly for development use and is **not** 
+      required to be called in the lifecycle of a provider. 
+    - Use cases for this function are mostly when working on a new provider. By 
+      calling this function, you will remove the provider
+        **both from `Netman's` memory as well as `lua` as a whole
+    - Targeted use is live development of a provider without having to restart 
+      Neovim.
+See Also |netman.api.reload_provider|
+
+                                                    *netman.api.reload_provider*
+netman.api.reload_provider ~
+Version Added: 0.95
+Definition
+    reload_provider(provider_path)
+    - provider_path
+        - Type: String
+        - Details: The string path for the provider to reload
+Returns: nil
+Throws
+    - Any errors that |netman.api.load_provider| throws
+Notes
+    - This is a helper function that simply calls |netman.api.unload_provider|
+      followed immediately by |netman.api.load_provider|
+See Also: |netman.api.unload_provider| |netman.api.load_provider|
+
+                                                            *netman.providers*
+netman.providers ~
+A provider is a program (`Neovim` plugin in the case of `Netman`) that acts as 
+a middle man between |netman.api| and external programs. The provider's job is 
+to communicate with said external programs and return consistently formatted 
+data to the |netman.api| so it can be returned to the user to be handled.
+
+An example of a provider is `netman.providers.ssh`
+
+When creating a provider, there are several key things to keep in mind.
+|netman.api| chooses which provider to use for a given URI based on the 
+provider `protocol_patterns`. These patterns are extracted and analyzed when a 
+provider registers itself with the |netman.api| on its |netman.providers.
+load_provider| call (**which is required in order to have your provider be made 
+available to consume URIs from the user**)
+
+There are several required attributes a provider must implement, those being
+- read
+- write
+- delete
+- get_metadata
+- name
+- protocol_patterns
+- version
+
+There are additional optional attributes that if implemented, will be called 
+during the lifecycle of the provider and buffers associated with it. Those being
+- init
+- close_connection
+
+There are 2 key variables that are provided with most calls to a provider by 
+the |netman.api|. Those are
+- URI
+- cache
+
+The URI is the string representation of the location of the remote data that 
+the user wishes to interface with. A URI is traditionally represented in the 
+following manner `protocol://host_authentication_information/path` and |netman.
+api| uses this assumption to determine if a provider should handle that URI or 
+not. 
+
+The cache object is a table that is created (as an empty table) by |netman.
+api| after calling the provider's |netman.providers.init| function. This is a 
+safe place for the provider to store `state` as it is not manipulated by 
+anything else (including the |netman.api|, other providers, etc) and stores any 
+changes made to it by the provider. This is especially useful when establishing 
+the initial details from the URI so the provider doesn't have to continually 
+re-parse a URI
+
+Details on how to implement a provider can be found within the Developer Guide
+https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+
+                                                        *netman.providers.read*
+netman.providers.read ~
+Version Added: 0.1
+Definition
+    read(uri, cache)
+    - URI
+        - Type: String
+        - Details: The string URI to read
+    - cache
+        - Type: Table
+        - Details: The table object that is stored and managed by the
+                   |netman.api|. The `api` gets this object from the provider's 
+                   init. For more details on how the cache works, consult the 
+                   Developer Guide 
+                https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+Returns
+    - read must return one of the 4 following items
+        - A table containing the following key, value pairs, and READ_TYPE.FILE
+            - local_path: String to file path to load
+            - origin_path: String for the original URI of the file
+            - unique_name: (Optional) String to indicate what the "unique" name 
+                           of this file is
+        - An array containing strings to be displayed in the buffer, and 
+          READ_TYPE.STREAM
+            - It is assumed that each entry in the array is 1 "line" to be 
+              displayed in the buffer. Conform to this assumption in order to 
+              use READ_TYPE.STREAM
+        - A table containing the following key, value pairs, and 
+          READ_TYPE.EXPLORE
+            - parent: Integer pointing to the location in details that is the 
+                      parent object
+            - details: An array of table objects where each table contains the 
+                      following key, value (at minimum) pairs
+                - FIELD_TYPE: String
+                - NAME: String
+                - URI: String
+        - nil
+        - For more information on how the read process works, please consult
+          the Developer Guide
+          https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+Throws
+    - It is acceptable to throw any errors that are encountered in the process 
+      of opening the requested URI
+Notes
+    - read is a `synchronous` operation, meaning |netman.api| will block and 
+    wait for _some_ result on read. This can be partially circumvented by 
+    returning `nil` and then calling |netman.api.read| at a later point with 
+    the same URI details as provided earlier. This is useful if the provider 
+    has to do some backend work before it can "read" the URI properly (IE, 
+    needs to get a password from the user, must register an endpoint, must 
+    create a container, etc). More details on the `read` process can be found 
+    in the Developer Guide
+    https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+
+                                                        *netman.providers.write*
+netman.providers.write ~
+Version Added: 0.1
+Definition
+    write(buffer_index, uri, cache)
+    - buffer_index
+        - Type: Integer
+        - Details: The buffer index associated with the write path
+    - uri
+        - Type: String
+        - Details: The string URI to create
+    - cache
+        - Type: Table
+        - Details: The table object that is stored and managed by the 
+                   |netman.api|. The api gets this object from the provider's 
+                   init. For more details on how the cache works, consult the 
+                   Developer Guide
+                https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+Returns: nil
+Throws
+    - It is acceptable to throw any errors that are encountered in the process 
+      of writing the requested URI
+Notes
+    - |netman.api| does not currently provide any tools for dealing with 
+    oddities in the write process (permission error, network failure, etc), and 
+    those errors and validations are left up to the provider to handle.
+    - **NOTE: |netman.api| calls the write function asynchronously and thus the 
+    provider cannot expect the |netman.api| to block on it. The provider should 
+    get whatever details it will need for the write immediately before doing 
+    any long running tasks as those resources may change over time**
+
+                                                       *netman.providers.delete*
+netman.providers.delete ~
+Version Added: 0.1
+Definition
+    delete(uri)
+    - uri
+        - Type: String
+        - Details: The string URI to delete
+Returns: nil
+Throws
+    - It is acceptable to throw any errors that are encountered in the process  
+      of delete the requested URI
+Notes
+    - |netman.api| does not currently provide any tools for dealing with 
+    oddities in the delete process (user verification, permission error, 
+    network failure, etc), and those errors and validations are left up to the 
+    provider to handle.
+    - **NOTE: |netman.api| calls the delete function asynchronously and thus 
+    the provider cannot expect the |netman.api| to block on it. The provider 
+    should get whatever details it will need for the delete immediately before 
+    doing any long running tasks as those resources may change over time**
+
+                                                 *netman.providers.get_metadata*
+netman.provide.get_metadata ~
+Version Added: 0.95
+Definition
+    get_metadata(uri, requested_metadata)
+    - uri
+        - Type: String
+        - Details: The string URI to get metadata for
+    - requested_metadata
+        - Type: Array
+        - Details: requested_metadata an array of values where each value in 
+                   the array can be located in the |netman.options.metadata| 
+                   table.
+Returns
+    - Should return a Table where the key in each entry of the table should be 
+      from the input requested_metadata array
+Throws: nil
+Notes
+    - This will be called by |netman.api| whenever the user requests additional 
+      metadata about a link/destination. The keys are all valid `stat flags
+      (https://man7.org/linux/man-pages/man2/lstat.2.html) and |netman.api| 
+      will expect the data returned to conform to the datatypes that `stat` 
+      will return for those flags
+
+                                                         *netman.providers.init*
+netman.providers.init ~
+Version Added: 0.1
+Definition
+    init(configuration_options)
+    - `configuration_options`
+        - Type: [Table](http://www.lua.org/pil/2.4.html)
+        - Details: WIP (currently unused)
+Returns
+    - Should return a `true`/`false` depending on if the provider was able to 
+      properly initialize itself
+Throws: nil
+Notes
+    - **init is an optional function that will be called immediately after 
+    import of the provider if it exists**
+    - This function's intended purpose is to allow the provider to verify that 
+    the environment it is being ran in is capable of handling it (IE, the 
+    environment meets whatever requirements the provider has), though it can be 
+    used for whatever the provider need in order to ensure it is ready to run
+
+                                             *netman.providers.close_connection*
+netman.providers.close_connection ~
+Version Added: 0.1
+Definition
+    close_connection(buffer_index, uri, cache)
+    - buffer_index
+        - Type: Integer
+        - Details: The buffer index associated with the write path
+    - uri
+        - Type: String
+        - Details: The string URI to create
+    - cache
+        - Type: Table
+        - Details: The table object that is stored and managed by the 
+                   |netman.api|. The `api` gets this object from the provider's 
+                   init. For more details on how the cache works, consult the 
+                   Developer Guide
+                https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+Returns: nil
+Throws: nil
+Notes
+    - **close_connection is an optional function that will be called 
+    immediately after a `BufUnload` event if called from `vim`, if 
+    close_connection exists on the provider**
+    - This function's intended purpose is to allow the provider to clean up 
+    after a buffer has been closed. The intent being to allow the provider a 
+    way to close its existing connections to remote locations, close files, etc
+
+                                                         *netman.providers.name*
+netman.providers.name ~
+Version Added: 0.1
+Definition
+    name
+    - Notes: The string name of the provider
+
+                                            *netman.providers.protocol_patterns*
+netman.providers.protocol_patterns ~
+Version Added: 0.1
+Definition
+    protocol_patterns
+    - Notes
+        - protocol_patterns should be an array of the various protocols 
+          (**not globs**) that the provider supports.
+        - **NOTE: protocol_patterns is sanitized on read in by |netman.api|
+
+                                                      *netman.providers.version*
+netman.providers.version ~
+Version Added: 0.1
+Definition
+    version
+    - Notes
+        - You've come far in the documentation. I am proud of you :)
+
+                                                              *netman.options*
+netman.options ~
+Options can be found in `netman.options`. These "options" are a table which acts
+as a sort of enum for the core of `Netman`. `api` relies on these options as a 
+standard way of communicating "information" between itself and its providers. 
+Below is a breakdown of each "option" that can be found here. 
+
+                                                          *netman.options.utils*
+netman.options.utils ~
+Table structure containing the following format >
+- utils
+    - command
+        - IGNORE_WHITESPACE_ERROR_LINES
+        - IGNORE_WHITESPACE_OUTPUT_LINES
+        - STDOUT_JOIN
+        - STDERR_JOIN
+        - SHELL_ESCAPE
+<
+
+                                                            *netman.options.api*
+netman.options.api ~
+The api options contains the following keys
+- READ_TYPE
+- ATTRIBUTES
+- protocol
+- explorer
+See Also: |netman.options.api.READ_TYPE| |netman.options.api.ATTRIBUTES| 
+          |netman.options.api.protocol| |netman.options.api.explorer|
+
+                                                  *netman.options.api.READ_TYPE*
+netman.options.api.READ_TYPE ~
+READ_TYPE has the following items in it
+- FILE
+- STREAM
+- EXPLORE
+
+These should be used when implementing a provider's |netman.providers.read|
+function
+See Also: |netman.providers.read|
+
+                                                 *netman.options.api.ATTRIBUTES*
+netman.options.api.ATTRIBUTES ~
+ATTRIBUTES has the following items in it
+- FILE
+- DIRECTORY
+- LINK
+
+These are generally used internally but can be used within a |netman.providers|
+to help keep track of metadata associated with a URI
+
+                                                   *netman.options.api.protocol*
+netman.options.api.protocol ~
+Protocol has the following items in it
+- EXPLORE
+
+Consider this option unstable, don't use it. I'm warning you
+
+                                                   *netman.options.api.explorer*
+netman.options.api.explorer ~
+Explorer has the following items in it
+- METADATA
+- FIELDS
+
+The usage of this option is explored more in depth in the Developer Guide
+https://github.com/miversen33/netman.nvim/wiki/Developer-Guide
+
+                                          *netman.options.api.explorer.METADATA*
+netman.options.api.explorer.METADATA ~
+METADATA has the following items in it
+- PERMISSIONS
+- OWNER_USER
+- OWNER_GROUP
+- SIZE_LABEL
+- SIZE
+- GROUP
+- PARENT
+- FIELD_TYPE
+- TYPE
+- INODE
+- LASTACCESS
+- FULLNAME
+- URI
+- NAME
+- LINK
+- DESTINATION
+
+**NOTE: METADATA is used by |netman.api| to ensure that the |netman.providers| 
+is returning valid METADATA for an explorer to consume. Ensure you are not
+returning anything outside of this table if you wish for your data to be
+presented as you expect**
+
+                                            *netman.options.api.explorer.FIELDS*
+netman.options.api.explorer.FIELDS ~
+FIELDS has the following items in it
+- FIELD_TYPE
+- NAME
+- URI
+
+The items listed in here are _required_ on an item that is supposed to be
+displayed in an explorer. Failure to provide the above 3 items on an item
+for an explorer will likely result in either malformed display data or 
+outright refusal to display the item
+
+vim:tw=78:ts=8:ft=help:norl:
