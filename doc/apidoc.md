@@ -265,8 +265,6 @@ Details on how to implement a [`provider`](#providers) can be found within the [
     - It is acceptable to throw any errors that are encountered in the process of opening the requested URI
 - Notes
     - [`read`](#readuri-cache) is a `synchronous` operation, meaning [`api`](#api) will block and wait for _some_ result on read. This can be partially circumvented by returning `nil` and then calling `netman.api.read` at a later point with the same [`URI`](#uri) details as provided earlier. This is useful if the provider has to do some backend work before it can "read" the URI properly (IE, needs to get a password from the user, must register an endpoint, must create a container, etc). More details on the `read` process can be found in the [`Developer Guide`](https://github.com/miversen33/netman.nvim/wiki/Developer-Guide)
-    - [`read`](#readuri-cache) **cannot** (currently) interface with the user immediately on vim open (this appears to be due to an issue in how the UI is loaded in vim). To circumvent this, there have been 2 functions added to `netman.utils`. These functions (`get_input`, `get_select`) will queue up `vim.ui.input` and `vim.ui.select` requests until `vim` has fired the `BufWinEnter` `autocommand`, at which point the queue is cleared out (and resolved) and subsequent entries simply override flow into the `vim.ui.input` and `vim.ui.select` functions. 
-    **NOTE** This is subject to change as the current approach isn't the most ideal way of handling this
 ## write(buffer_index, uri, cache)
 - Version Added: 0.1
 - `buffer_index`

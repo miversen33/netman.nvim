@@ -123,22 +123,24 @@ local _read_file = function(uri_details)
     log.debug("Command output: ", {stdout=stdout, stderr=stderr})
     if stderr:match('No such file or directory$') then
         log.debug("Checking if we need to create missing remote file")
-        utils.get_select(
-            {'No', 'Yes'},
-            {
-                prompt=uri_details.remote_path .. " does not exist. Would you like to create it? ",
-                kind = 'string'
-            },
-            function(choice)
-                if choice == 'No' then
-                    require("netman"):close_uri(uri_details.base_uri)
-                else
-                    _create_directory(uri_details.parent, uri_details)
-                    require("netman"):write(uri_details.base_uri)
-                    require("netman"):read(uri_details.base_uri)
-                end
+        vim.ui.input({
+            prompt = uri_details.remote_path .. ' does not exist. Would you like to create it? [y/N] ',
+            default = 'Y'
+        }
+        , function(input)
+            if input:match('^[yYeEsS]$') then
+                _create_directory(uri_details.parent, uri_details)
+                require("netman"):write(uri_details.base_uri)
+                require("netman"):read(uri_details.base_uri)
+                return nil
+            elseif input:match('^[nNoO]$') then
+                require("netman"):close_uri(uri_details.base_uri)
+                return nil
+            else
+                notify.info("Invalid Input. Not starting container!")
+                return nil
             end
-        )
+        end)
         return
     end
     log.debug("Saved Remote File: " .. uri_details.remote_path .. " to " .. uri_details.local_file)
