@@ -33,7 +33,7 @@ local _explorer_required_attributes = {
 
 local M = {}
 
-M.version = 0.95
+M.version = 1.0
 M.explorer = nil
 M._augroup_defined = false
 M._initialized = false
