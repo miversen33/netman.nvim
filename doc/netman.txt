@@ -1,6 +1,6 @@
-*netman* Framework that exposes remote resources to local users
+*netman*                  Framework that exposes remote resources to local users
 
-===============================================================================
+================================================================================
 INTRODUCTION
 Netman.nvim is a plugin that allows Neovim to interface with remote 
 file systems without having to know what is on the remote filesystem or how 
@@ -19,7 +19,7 @@ an sftp resource (via `:edit sftp://myhost/mydoc`), Netman will ensure that
 all read, write, delete, and Metadata gathering events are forwarded to the 
 `ssh` provider (that is part of Netman core) so it can handle them.
 
-                                                               *NmloadProvider*
+                                                                *NmloadProvider*
 :NmloadProvider ~
 Takes 1 argument (the path to a provider to load) and calls
 |netman.api.load_provider|. This will mostly be used by developers 
@@ -30,7 +30,7 @@ expirimenting with provider creation/configuration. Example: >
 >
 See Also: |netman.api.load_provider|
 
-                                                             *NmreloadProvider*
+                                                              *NmreloadProvider*
 :NmreloadProvider ~
 Takes 1 argument (the path to the provider to reload) and calls
 |netman.api.reload_provider|. This will mostly be used by developers 
@@ -43,7 +43,7 @@ to reload your provider into Netman without having to restart Neovim Example:
 <
 See Also: |netman.api.reload_provider|
 
-                                                             *NmunloadProvider*
+                                                              *NmunloadProvider*
 :NmunloadProvider ~
 Takes 1 argument (the path to the provider to unload) and calls 
 |netman.api.unload_provider|. This will mostly be used by developers
@@ -60,7 +60,7 @@ Example: >
 <
 See Also: |netman.api.unload_provider|
 
-                                                                       *Nmlogs*
+                                                                        *Nmlogs*
 :Nmlogs ~
 Takes at most 1 argument (the path to dump logs to) and calls 
 |netman.api.dump_info|. This will mostly be used by developers debugging their
@@ -83,7 +83,7 @@ Example: >
 <
 See Also: |netman.api.dump_info|
 
-                                                                       *Nmread*
+                                                                        *Nmread*
 :Nmread ~
 Takes `n` arguments (where `n` is > 0) and opens a new buffer. Example: >
     :Nmread sftp://myhost/my/dir/myfile.txt
@@ -92,7 +92,7 @@ Takes `n` arguments (where `n` is > 0) and opens a new buffer. Example: >
 >
 See Also: |netman.read| |netman.api.read| |netman.providers.read|
 
-                                                                     *Nmdelete*
+                                                                      *Nmdelete*
 :Nmdelete ~
 Takes exactly 1 argument (the path to delete). Example: >
     :Nmdelete sftp://myhost/my/dir/myfile.txt
@@ -101,7 +101,7 @@ Takes exactly 1 argument (the path to delete). Example: >
 <
 See Also: |netman.delete| |netman.api.delete| |netman.providers.delete|
 
-                                                                      *Nmwrite*
+                                                                       *Nmwrite*
 :Nmwrite ~
 Informs the underlying provider associated with the URI and buffer. Example: >
     :Nmwrite
@@ -110,7 +110,7 @@ Informs the underlying provider associated with the URI and buffer. Example: >
 <
 See Also: |netman.write| |netman.api.write| |netman.providers.write|
 
-                                                                  *netman.read*
+                                                                   *netman.read*
 netman:read ~
 Neovim exposed function for interfacing with |netman.api.read|. Takes `n`
 arguments and opens a new buffer for each argument. This function should 
@@ -122,7 +122,7 @@ also be used for exploring directories. Example: >
 <
 See Also: |netman.api.read| |netman.providers.read|
 
-                                                                 *netman.write*
+                                                                  *netman.write*
 netman.write ~
 Neovim exposed function for interfacing with |netman.api.write|. This function 
 will tell Netman to write the contents of the current buffer to its provider.
@@ -130,7 +130,7 @@ Example: >
     require("netman"):write()
 <
 See Also: |netman.api.write| |netman.providers.write|
-                                                                   *netman.api*
+                                                                    *netman.api*
 netman.api ~
 The api is the core of Netman and all processing of remote data is done
 through the it. It is worth noting that the api itself does not do much
@@ -162,7 +162,7 @@ to interface with. A uri is traditionally represented in the following manner
 `protocol://host_authentication_information/path` and api makes this
 assumption when dealing with uri from the user.
 
-                                                              *netman.api.init*
+                                                               *netman.api.init*
 netman.api.init ~
 Version Added: 0.1
 Definition
