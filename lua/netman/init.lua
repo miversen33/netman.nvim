@@ -9,14 +9,14 @@ function M:read(...)
     local files = { f = select("#", ...), ... }
     for _, file in ipairs(files) do
         notify.warn("Fetching file: " .. file)
-        if vim.fn.bufexists(file) == 0 then
-            vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, false))
-            vim.api.nvim_command('file ' .. file)
-        end
-        local command = api:read(vim.uri_to_bufnr(file), file)
+        local command = api:read(nil, file)
         if not command then
             log.warn("No command returned for read of " .. file)
             goto continue
+        end
+        if vim.fn.bufexists(file) == 0 then
+            vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, false))
+            vim.api.nvim_command('file ' .. file)
         end
         local undo_levels = vim.api.nvim_get_option('undolevels')
         vim.api.nvim_command('keepjumps sil! 0')
