@@ -322,9 +322,9 @@ Details on how to implement a [`provider`](#providers) can be found within the [
     - Details: The string [`URI`](#uri) to get metadata for
 - `requested_metadata`
     - Type: [Array](https://www.lua.org/pil/11.1.html)
-    - Details: `requested_metadata` will be a `key`, `value` table where the `key` a valid [METADATA](#options-1) option
+    - Details: `requested_metadata` an array of values where each value in the array can be located in the [`Netman METADATA Table`](#options-1).
 - Returns
-    - Should return a [`Table`]()
+    - Should return a [Table](https://www.lua.org/pil/2.5.html) where the `key` in each entry of the table should be from the input `requested_metadata` array
 - Throws: nil
 - Notes
     - This will be called by [`api`](#api) whenever the user requests additional metadata about a link/destination. The `keys` are all valid [`stat` flags](https://man7.org/linux/man-pages/man2/lstat.2.html) and [`api`](#api) will expect the data returned to conform to the datatypes that `stat` will return for those flags
