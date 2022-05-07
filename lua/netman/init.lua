@@ -60,7 +60,9 @@ function M:init()
     if not M._setup_commands then
         utils.log.debug("Setting Commands")
         local commands = {
-             'command -nargs=1 NmloadProvider lua require("netman.api"):load_provider(<f-args>)'
+            'command -nargs=1 NmloadProvider lua require("netman.api"):load_provider(<f-args>)'
+            ,'command -nargs=1 NmunloadProvider lua require("netman.api"):unload_provider(<f-args>)'
+            ,'command -nargs=1 NmreloadProvider lua require("netman.api"):reload_provider(<f-args>)'
             ,'command -nargs=? Nmlogs         lua require("netman.api"):dump_info(<f-args>)'
             ,'command -nargs=1 Nmdelete       lua require("netman"):delete(<f-args>)'
             ,'command -nargs=+ Nmread         lua require("netman"):read(<f-args>)'
