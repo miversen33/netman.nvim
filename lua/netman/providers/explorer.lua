@@ -24,10 +24,12 @@ function M:explore(parent, explore_details)
         table.insert(M._cache, detail)
     end
     vim.api.nvim_buf_set_lines(buffer, 0, -1, false, output)
+    vim.api.nvim_buf_set_name(0, 'NetmanExplore')
     vim.api.nvim_buf_set_option(buffer, 'modified', false)
     vim.api.nvim_buf_set_option(buffer, 'modifiable', false)
     vim.api.nvim_command('0')
     vim.api.nvim_buf_set_keymap(buffer, 'n', '<Enter>', ":lua require('netman.providers.explorer'):open(vim.fn.line('.'))<CR>", {noremap=true, silent=true})
+    vim.api.nvim_command('autocmd Netman BufLeave NetmanExplore ++once lua vim.api.nvim_buf_delete(0, {})')
 end
 
 function M:open(index)
