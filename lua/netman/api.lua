@@ -533,7 +533,9 @@ function M:load_provider(provider_path)
     if provider.init then
         log.debug("Found init function for provider!")
             -- TODO(Mike): Figure out how to load configuration options for providers
-        if not provider:init({}) then
+        local provider_config = {}
+        local status, valid = pcall(provider.init, provider, provider_config)
+        if not status or valid ~= true then
             log.warn(provider._provider_path .. ":" .. provider.version .. " refused to initialize. Discarding")
             M._unitialized_providers[provider_path] = {
                  reason = "Initialization Failed"
