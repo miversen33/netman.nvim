@@ -115,8 +115,8 @@ local generate_session_log = function(output_path, logs)
     if output_path ~= 'memory' then message = "Saving Logs" else message = "Generating Logs" end
     vim.api.nvim_notify(message, log_level_map.INFO, {})
     table.insert(logs, line)
-    vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
     if output_path ~= 'memory' then
+        vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
         vim.fn.writefile(logs, output_path)
         vim.api.nvim_notify("Saved logs to " .. output_path, 2, {})
     end
