@@ -546,12 +546,16 @@ function M:close_connection(buffer_index, uri, cache)
 
 end
 
-function M.repair_uri(uri)
+function M.repair_uri(uri, cwd)
     log.debug("Attempting to repair: " .. uri)
     local container = ''
     _, uri = uri:match('^(.*)://(.*)$')
     log.debug("Established URI: " .. tostring(uri))
     container, uri = uri:match(container_pattern .. '(.*)')
+    if not container or container:len() == 0 then
+        _, container = cwd:match('^(.*)://(.*/)$')
+        container, _ = container:match(container_pattern)
+    end
     log.debug("Established container: " .. tostring(container) .. " and uri: " .. tostring(uri))
     if uri:sub(1,1) ~= '/' then
         uri = '/' .. uri

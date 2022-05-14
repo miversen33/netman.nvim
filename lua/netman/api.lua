@@ -245,7 +245,7 @@ function M:repair_uri(uri)
         return uri
     end
     log.debug("Requesting " .. provider._provider_path .. " repair " .. uri)
-    return provider.repair_uri(uri)
+    return provider.repair_uri(uri, M._cwd)
 end
 
 --- Write is the only entry to writing a buffers contents to a uri
