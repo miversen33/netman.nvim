@@ -545,4 +545,21 @@ function M:close_connection(buffer_index, uri, cache)
 
 end
 
+function M.repair_uri(uri)
+    log.debug("Attempting to repair: " .. uri)
+    local container = ''
+    _, uri = uri:match('^(.*)://(.*)$')
+    log.debug("Established URI: " .. tostring(uri))
+    container, uri = uri:match(container_pattern .. '(.*)')
+    log.debug("Established container: " .. tostring(container) .. " and uri: " .. tostring(uri))
+    if uri:sub(1,1) ~= '/' then
+        uri = '/' .. uri
+    end
+    uri = uri:gsub('/+', '/')
+    uri = M.name .. '://' .. container .. uri
+    log.debug("Repair finished: " .. uri)
+    return uri
+end
+
+
 return M
