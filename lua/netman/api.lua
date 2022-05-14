@@ -330,11 +330,12 @@ function M:get_metadata(uri, metadata)
     local birthtime = {sec=0, nsec=0}
     local ctime = {sec=0, nsec=0}
     local mtime = {sec=0, nsec=0}
+
+    -- TODO: (Mike): this is kinda awful
     for metadata_key, metadata_value in pairs(return_metadata) do
         if not metadata_options[metadata_key] then
             log.warn("Metadata Key" .. metadata_key .. ' is not valid. Removing...')
         else
-            -- TODO: (Mike): this is kinda awful
             if metadata_key == metadata_options.ATIME_NSEC then
                 atime.nsec = metadata_value
             elseif metadata_key == metadata_options.ATIME_SEC then
