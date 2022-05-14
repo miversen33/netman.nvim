@@ -8,6 +8,7 @@
 
 local utils = require('netman.utils')
 local netman_options = require('netman.options')
+local metadata_options = netman_options.explorer.METADATA
 local log = utils.log
 local notify = utils.notify
 
@@ -71,6 +72,10 @@ M._unclaimed_provider_details = {
 }
 
 M._unclaimed_id_table = {
+
+}
+
+M._metadata_cache = {
 
 }
 
@@ -216,6 +221,10 @@ function M:_claim_buf_details(buffer_index, details_id)
     return M._buffer_provider_cache["" .. buffer_index]
 end
 
+function M:cwd()
+    return M._cwd or vim.loop.cwd()
+end
+
 --- Write is the only entry to writing a buffers contents to a uri
 --- Write reaches out to the appropriate provider associated with
 --- the write_path. If the buffer does not have a matching
@@ -261,38 +270,74 @@ end
 ---     A table will be returned. The table will consist of the metadata input table contents
 ---     as the keys and the metadata associated with the key as the value
 function M:get_metadata(uri, metadata)
-    if not metadata then
-        metadata = {}
-        for key, _ in pairs(require('netman.options').explorer.METADATA) do
-            table.insert(metadata, key)
-        end
-    end
     if not uri then
         notify.error("No uri provided!")
         return nil
+    end
+    -- local sanitized_metadata = M._metadata_cache[uri]
+    -- if sanitized_metadata then
+    --     if sanitized_metadata['checkin'] >= os.time() - netman_options.api.METADATA_TIMEOUT then
+    --         return sanitized_metadata
+    --     else
+    --         M._metadata_cache[uri] = nil
+    --     end
+    -- end
+    local sanitized_metadata = {}
+    if not metadata or metadata == {} then
+        metadata = {}
+        for key, _ in pairs(require('netman.options').explorer.METADATA) do
+            metadata[key] = 1
+        end
     end
     local provider_details = M:_get_buffer_cache_object(nil, uri)
     if not provider_details then
         log.warn("No provider details returned for " .. uri)
         return nil
     end
-    log.debug("Reaching out for metadata ", metadata)
+    log.debug("Reaching out for metadata for " .. uri, metadata)
     local return_metadata = provider_details.provider:get_metadata(uri, metadata)
-    log.debug("Removing lingering Cache data for metadata request")
     M._unclaimed_provider_details[M._unclaimed_id_table[uri]] = nil
     M._unclaimed_id_table[uri] = nil
     if not return_metadata then
         log.warn("No metadata returned for " .. uri .. '!')
         return nil
     end
-    local sanitized_metadata = {}
+    local atime = {sec=0, nsec=0}
+    local birthtime = {sec=0, nsec=0}
+    local ctime = {sec=0, nsec=0}
+    local mtime = {sec=0, nsec=0}
     for metadata_key, metadata_value in pairs(return_metadata) do
-        if not netman_options.explorer.METADATA[metadata_key] then
+        if not metadata_options[metadata_key] then
             log.warn("Metadata Key" .. metadata_key .. ' is not valid. Removing...')
         else
-            sanitized_metadata[metadata_key] = metadata_value
+            -- TODO: (Mike): this is kinda awful
+            if metadata_key == metadata_options.ATIME_NSEC then
+                atime.nsec = metadata_value
+            elseif metadata_key == metadata_options.ATIME_SEC then
+                atime.sec = metadata_value
+            elseif metadata_key == metadata_options.BTIME_NSEC then
+                birthtime.nsec = metadata_value
+            elseif metadata_key == metadata_options.BTIME_SEC then
+                birthtime.sec = metadata_value
+            elseif metadata_key == metadata_options.CTIME_NSEC then
+                ctime.nsec = metadata_value
+            elseif metadata_key == metadata_options.CTIME_SEC then
+                ctime.sec = metadata_value
+            elseif metadata_key == metadata_options.MTIME_NSEC then
+                mtime.nsec = metadata_value
+            elseif metadata_key == metadata_options.MTIME_SEC then
+                mtime.sec = metadata_value
+            else
+                sanitized_metadata[metadata_key:lower()] = metadata_value
+            end
         end
     end
+    sanitized_metadata['atime'] = atime
+    sanitized_metadata['birthtime'] = birthtime
+    sanitized_metadata['ctime'] = ctime
+    sanitized_metadata['mtime'] = mtime
+    -- M._metadata_cache[uri] = sanitized_metadata
+    -- M._metadata_cache[uri]['checkin'] = os.time()
     return sanitized_metadata
 end
 
