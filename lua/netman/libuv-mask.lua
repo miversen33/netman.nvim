@@ -89,16 +89,6 @@ function M.fs_open(path, flags, mode, callback)
     M._file_descriptor_map[M._file_index] = path
     return M._file_index
 end
-    -- if M._file_descriptor_map[path] then return M._file_descriptor_map[path] end
-    -- M._file_index = M._file_index + 1
-    -- M._file_descriptor_map[path] = M._file_index
-    -- M._file_descriptor_map[M._file_index] = path
-    -- if callback then callback(M._file_index) else return M._file_index end
-    -- if path:sub(1,1) == '/' then return M._hidden_functions['fs_open'](path, flags, mode, callback) end
-    -- https://github.com/luvit/luv/blob/master/docs.md#uvfs_openpath-flags-mode-callback
-    -- I think this should reach out to require("netman"):read(path)?
-    -- local open_status = api:read(nil, path)
--- end
 
 function M.fs_scandir(path, callback)
     if (path:sub(1,1) == '/')
@@ -122,14 +112,11 @@ function M.fs_scandir_next(file_descriptor)
             needs_fetch = true
         end
         if needs_fetch then
-            -- local temp_replace = false
             if api.explorer and api.explorer ~= M._explorer_shim then
                 M._explorer_shim._cached_explorer = api.explorer
-                -- temp_replace = true
             end
             api.explorer = M._explorer_shim
             api:read(nil, path)
-            -- if temp_replace then api.explorer = M._explorer_shim._cached_explorer end
         end
         return M._explorer_shim.next()
     end
