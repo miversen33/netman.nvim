@@ -387,12 +387,18 @@ function M:read(buffer_index, path)
         return nil
     end
     local provider_details = M:_get_buffer_cache_object(buffer_index, path)
-    local read_data, read_type = provider_details.provider:read(path, provider_details.provider_cache)
+    local read_data, read_type, read_cwd = provider_details.provider:read(path, provider_details.provider_cache)
     if read_type == nil then
         log.info("Setting read type to api.READ_TYPE.STREAM")
         log.debug("back in my day we didn't have optional return values...")
         read_type = netman_options.api.READ_TYPE.STREAM
     end
+    if read_cwd == nil then
+        log.warn("Received no cwd for " .. path .. '!')
+        notify.error("No CWD returned for " .. path .. ". See logs (:Nmlogs) for more details")
+        return nil
+    end
+    provider_details.cwd = read_cwd
     if netman_options.api.READ_TYPE[read_type] == nil then
         notify.error("Unable to figure out how to display: " .. path .. '!')
         log.warn("Received invalid read type: " .. read_type .. ". This should be either api.READ_TYPE.STREAM or api.READ_TYPE.FILE!")
@@ -423,7 +429,7 @@ function M:read(buffer_index, path)
             return
         end
         log.debug("Calling explorer to handle path: " .. path)
-        return M.explorer:explore(_read_as_explore(read_data))
+        return M.explorer:explore(path, _read_as_explore(read_data))
     end
     log.warn("Mismatched read_type. How on earth did you end up here???")
     log.debug("Ya I don't know what you want me to do here chief...")
