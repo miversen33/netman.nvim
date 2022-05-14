@@ -91,6 +91,7 @@ local _parse_uri = function(uri)
     details.container = uri:match(container_pattern) or ''
     uri = uri:gsub(container_pattern, '')
     local path_head, path_body = uri:match(path_pattern)
+    path_head = path_head or "/"
     path_body = path_body or ""
     if (path_head:len() ~= 1) then
         notify.error("Error parsing path: Unable to parse path from uri: " .. details.base_uri .. '. Path should begin with / but path begins with ' .. path_head)
