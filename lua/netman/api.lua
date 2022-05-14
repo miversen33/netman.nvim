@@ -127,7 +127,7 @@ local _read_as_explore = function(explore_details)
     end
     return {
         parent=explore_details.parent,
-        details=explore_details.remote_files
+        details=sanitized_explore_details
     }
 end
 
