@@ -2,7 +2,8 @@
 local netman_options = require("netman.options")
 local command_flags = require("netman.options").utils.command
 
-vim.g.netman_log_level     = vim.g.netman_log_level or 3
+vim.g.netman_log_level         = vim.g.netman_log_level or 3
+
 local mkdir                = vim.fn.mkdir
 local _is_setup            = false
 local cache_dir            = vim.fn.stdpath('cache') .. '/netman/'
