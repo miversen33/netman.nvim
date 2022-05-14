@@ -185,10 +185,6 @@ local _log = function(level, do_notify, ...)
     if do_notify or level == 'ERROR' then
         vim.api.nvim_notify(table.concat(headerless_parts, '\t'), log_level_map[level], {})
     end
-    if level == 'ERROR' then
-        vim.api.nvim_notify(table.concat(headerless_parts, '\t'), 1, {})
-        error(table.concat(headerless_parts, '\t'), 1)
-    end
 end
 
 local setup = function()
