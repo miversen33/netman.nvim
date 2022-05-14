@@ -147,6 +147,12 @@ local is_process_alive = function(pid)
     return true
 end
 
+local dump_callstack = function(callstack_offset)
+    callstack_offset = callstack_offset or 2
+    log_file:write(debug.traceback("", callstack_offset), "\n")
+    log_file:flush()
+end
+
 local _log = function(level, do_notify, ...)
     -- Yoinked the concepts in here from https://github.com/neovim/neovim/blob/master/runtime/lua/vim/lsp/log.lua
     -- Thanks Neovim team <3
