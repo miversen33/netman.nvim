@@ -174,8 +174,8 @@ function M:_get_buffer_cache_object(buffer_index, path)
         log.info('No cache table found for index: ' .. buffer_index .. '. Creating one now')
         M._buffer_provider_cache[buffer_index] = {}
     end
-    if M._buffer_provider_cache[buffer_index][protocol] == nil then
-        log.debug("No cache object associated with protocol: " .. protocol .. " for index: " .. buffer_index .. ". Attempting to claim one")
+    if M._buffer_provider_cache[buffer_index] == nil then
+        log.debug("No cache object associated with buffer: " .. buffer_index .. ". Attempting to claim one")
 
         local id = _cache_provider(_get_provider_for_path(path), protocol, path)
         return M:_claim_buf_details(buffer_index, id)
@@ -197,23 +197,23 @@ function M:_claim_buf_details(buffer_index, details_id)
         M._buffer_provider_cache["" .. buffer_index] = {}
         bp_cache_object = M._buffer_provider_cache["" .. buffer_index]
     end
-    local existing_provider = M._buffer_provider_cache["" .. buffer_index][unclaimed_object.protocol]
-    if existing_provider then
+    local existing_provider = M._buffer_provider_cache["" .. buffer_index]
+    if existing_provider and next(existing_provider) then
         log.info(
             "Overriding previous provider: "
-            .. existing_provider._provider_path
-            .. ":" .. existing_provider.version
+            .. existing_provider.provider._provider_path
+            .. ":" .. existing_provider.provider.version
             .. " with " .. unclaimed_object.provider.name
             .. ":" .. unclaimed_object.provider.version
             .. " for index: " .. buffer_index
         )
     end
-    M._buffer_provider_cache["" .. buffer_index][unclaimed_object.protocol] = unclaimed_object
+    M._buffer_provider_cache["" .. buffer_index] = unclaimed_object
     log.debug("Claimed " .. details_id .. " and associated it with " .. buffer_index)
     M._unclaimed_provider_details[details_id] = nil
     M._unclaimed_id_table[unclaimed_object.origin_path] = nil
     log.debug("Removed unclaimed details for " .. details_id)
-    return M._buffer_provider_cache["" .. buffer_index][unclaimed_object.protocol]
+    return M._buffer_provider_cache["" .. buffer_index]
 end
 
 --- Write is the only entry to writing a buffers contents to a uri
