@@ -458,12 +458,12 @@ function M:get_metadata(uri, requested_metadata)
     local container_name = shell_escape(cache.container)
     local find_command = "find -L " .. path .. " -nowarn -maxdepth 0 -printf '"
     local used_flags = {}
-    for _, key in ipairs(requested_metadata) do
-        log.debug("Processing Metadata Flag: " .. key)
+    for key, _ in pairs(requested_metadata) do
+        log.trace("Processing Metadata Flag: " .. key)
         local find_flag = find_flag_to_metadata[key]
         local flag = ''
         if find_flag then
-            flag = find_flag.flag:gsub('%$URI', path) .. '\n'
+            flag = find_flag.flag:gsub('%$URI', uri) .. '\n'
             table.insert(used_flags, find_flag)
         end
         find_command = find_command .. flag
