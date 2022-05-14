@@ -655,7 +655,7 @@ function M:dump_info(output_path)
         ,"Netman Version: " .. M.version
         ,""
         ,"Api Contents: " .. vim.inspect(M, {newline="\\n", indent="\\t"})
-        ,">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+        ,">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
     }
     if M.explorer then
         table.insert(headers, 'Registered Explorer Details')
@@ -691,6 +691,11 @@ function M:dump_info(output_path)
             .. " --reason "
             .. tostring(provider_info.reason)
         )
+    end
+    table.insert(headers, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    table.insert(headers, "Overriden Explorers")
+    for _explorer, _ in pairs(require("netman.libuv-mask").overriden_callers) do
+        table.insert(headers, '    ' .. tostring(_explorer))
     end
     table.insert(headers, '----------------------------------------------------')
     table.insert(headers, 'Logs:')
