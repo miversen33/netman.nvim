@@ -24,6 +24,7 @@ function M:read(...)
         vim.api.nvim_command('keepjumps sil! 0d')
         vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
         vim.api.nvim_command('sil! set nomodified')
+        api:_set_remote_cwd(vim.fn.bufnr())
         ::continue::
     end
 end
