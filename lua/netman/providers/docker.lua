@@ -38,7 +38,7 @@ local find_pattern_globs = {
 
 local find_flag_to_metadata = {}
 find_flag_to_metadata[metadata_options.BLKSIZE]     = {key='BLKSIZE'     ,flag=",BLKSIZE=%s"    ,glob='^,BLKSIZE=(.*)'}
-find_flag_to_metadata[metadata_options.DEV]         = {key='DEV'         ,flag=",DEV=utils%d"   ,glob='^,DEV=(.*)'}
+find_flag_to_metadata[metadata_options.DEV]         = {key='DEV'         ,flag=",DEV=%d"        ,glob='^,DEV=(.*)'}
 find_flag_to_metadata[metadata_options.FULLNAME]    = {key='FULLNAME'    ,flag=",FULLNAME=%p"   ,glob='^,FULLNAME=(.*)'}
 find_flag_to_metadata[metadata_options.GID]         = {key='GID'         ,flag=",GID=%G"        ,glob='^,GID=(.*)'}
 find_flag_to_metadata[metadata_options.GROUP]       = {key='GROUP'       ,flag=",GROUP=%g"      ,glob='^,GROUP=(.*)'}
