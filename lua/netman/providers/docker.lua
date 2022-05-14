@@ -135,10 +135,10 @@ local _is_container_running = function(container)
     command_options[command_flags.STDERR_JOIN] = ''
     -- Options to make our output easier to read
 
-    log.info("Running container life check command: " .. command)
+    log.debug("Running container life check command: " .. command)
     local command_output = shell(command, command_options)
     local stderr, stdout = command_output.stderr, command_output.stdout
-    log.debug("Life Check Output ", {output=command_output})
+    log.trace("Life Check Output ", {output=command_output})
     if stderr ~= '' then
         log.warn("Received error while checking container status: " .. stderr)
         return _docker_status.ERROR
