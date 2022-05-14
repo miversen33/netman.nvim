@@ -231,4 +231,5 @@ return {
     generate_session_log = generate_session_log,
     run_shell_command    = run_shell_command,
     escape_shell_command = escape_shell_command,
+    dump_callstack       = dump_callstack,
 }
