@@ -225,6 +225,29 @@ function M:cwd()
     return M._cwd or vim.loop.cwd()
 end
 
+function M:repair_uri(uri)
+    if not uri then
+        log.debug("Y U PASS NO URI TO FIX?")
+        return nil
+    end
+    local protocol = uri:match(protocol_from_path_glob)
+    if not protocol then
+        log.debug("Unable to parse " .. uri)
+        return uri
+    end
+    local provider = M._providers[protocol]
+    if not provider then
+        log.info("No provider found to fix " .. uri)
+        return uri
+    end
+    if not provider.repair_uri then
+        log.info("Provider " .. provider._provider_path .. " does not support repairing uris")
+        return uri
+    end
+    log.debug("Requesting " .. provider._provider_path .. " repair " .. uri)
+    return provider.repair_uri(uri)
+end
+
 --- Write is the only entry to writing a buffers contents to a uri
 --- Write reaches out to the appropriate provider associated with
 --- the write_path. If the buffer does not have a matching
