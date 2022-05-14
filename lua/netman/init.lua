@@ -74,6 +74,10 @@ function M:init()
             utils.log.debug("Setting Vim Command: " .. command)
             vim.api.nvim_command(command)
         end
+        utils.log.debug("Overriding File Explorers for Remote Resource Interactions")
+        for _, _package in ipairs(require("netman.options").explorer.OVERRIDE_BROWSERS) do
+            require("netman.libuv-mask"):override_from_caller(_package)
+        end
         M._setup_commands = true
     end
 end
