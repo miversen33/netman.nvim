@@ -504,7 +504,7 @@ function M:get_metadata(uri, requested_metadata)
         end
         ::continue::
     end
-    log.info("Generated Metadata ", {metadata=metadata})
+    log.debug("Generated Metadata ", {metadata=metadata})
     return metadata
 
 end
