@@ -153,12 +153,12 @@ local _log = function(level, do_notify, ...)
     local argc = select("#", ...)
     if argc == 0 then return true end
 
-    local info = debug.getinfo(3, "Sl")
+    local info = debug.getinfo(3, "Sln")
     local header = string.format('[%s] [SID: %s] [Level: %s] ', os.date(log_timestamp_format), session_id, level)
     if level:len() == 4 then
         header = header .. ' '
     end
-    header = string.format(header .. ' -- %s:%s', info.short_src, info.currentline)
+    header = string.format(header .. ' -- %s:%s:%s', info.short_src, info.name, info.currentline)
     local parts = { header }
     local headerless_parts = {}
     for i = 1, argc do
