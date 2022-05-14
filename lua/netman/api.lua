@@ -560,6 +560,15 @@ function M:reload_provider(provider_path)
     M:load_provider(provider_path)
 end
 
+function M:_set_remote_cwd(buffer_index)
+    if buffer_index and M._buffer_provider_cache["" .. buffer_index] then
+        M._cwd = M._buffer_provider_cache["" .. buffer_index].cwd
+    else
+        M._cwd = vim.loop.cwd()
+    end
+    log.debug("Set remote cwd to " .. M._cwd .. ' for index ' .. tostring(buffer_index))
+end
+
 --- Load Provider is what a provider should call
 --- (via require('netman.api').load_provider) to load yourself
 --- into netman and be utilized for uri resolution in other
