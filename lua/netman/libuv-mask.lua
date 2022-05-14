@@ -21,7 +21,6 @@ M._explorer_shim = {
     _explore_cache = {},
     _parent = nil,
     explore = function(_, path, details)
-        log.debug("Dumping Received Details! ", details)
         -- Consider removing parent?
         M._explorer_shim._parent = details.parent
         local count = 1
