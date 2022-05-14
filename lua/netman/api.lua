@@ -530,6 +530,7 @@ function M:unload_provider(provider_path)
                 vim.api.nvim_command('autocmd! Netman FileWriteCmd ' .. new_pattern .. '://*')
                 vim.api.nvim_command('autocmd! Netman BufWriteCmd '  .. new_pattern .. '://*')
                 vim.api.nvim_command('autocmd! Netman BufUnload '    .. new_pattern .. '://*')
+                vim.api.nvim_command('autocmd! Netman BufEnter '    .. new_pattern .. '://*')
             end
         end
     end
@@ -668,6 +669,10 @@ function M:load_provider(provider_path)
             ,'autocmd Netman FileWriteCmd ' .. new_pattern .. '://* lua require("netman"):write()'
             ,'autocmd Netman BufWriteCmd '  .. new_pattern .. '://* lua require("netman"):write()'
             ,'autocmd Netman BufUnload '    .. new_pattern .. '://* lua require("netman.api"):unload(vim.fn.expand("<abuf>"))'
+            ,'autocmd Netman BufEnter '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(vim.fn.expand("<abuf>"))'
+            ,'autocmd Netman WinEnter '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(vim.fn.expand("<abuf>"))'
+            ,'autocmd Netman BufLeave '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(nil))'
+            ,'autocmd Netman WinLeave '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(nil))'
         }
         if not M._augroup_defined then
             vim.api.nvim_command('augroup Netman')
