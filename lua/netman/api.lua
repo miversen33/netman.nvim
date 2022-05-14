@@ -356,6 +356,11 @@ function M:get_metadata(uri, metadata)
             end
         end
     end
+    if sanitized_metadata['type'] == 'f' then
+        sanitized_metadata['mode'] = 0x8000
+    else
+        sanitized_metadata['mode'] = 0x4000
+    end
     sanitized_metadata['atime'] = atime
     sanitized_metadata['birthtime'] = birthtime
     sanitized_metadata['ctime'] = ctime
