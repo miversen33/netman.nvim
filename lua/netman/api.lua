@@ -230,6 +230,7 @@ function M:repair_uri(uri)
         log.debug("Y U PASS NO URI TO FIX?")
         return nil
     end
+    if uri:sub(-2, -1) == ':/' then uri = uri .. '/' end
     local protocol = uri:match(protocol_from_path_glob)
     if not protocol then
         log.debug("Unable to parse " .. uri)
