@@ -373,12 +373,13 @@ function M:read(uri, cache)
         return nil
     end
     if not _validate_container(uri, cache.container) then return nil end
+    local cwd = cache.protocol .. '://' .. cache.container
     if cache.file_type == api_flags.ATTRIBUTES.FILE then
         if _read_file(cache.container, cache.path, cache.local_file) then
             return {
                 local_path = cache.local_file
-                ,origin_path = cache.path
-            }, api_flags.READ_TYPE.FILE
+                ,origin_path = uri
+            }, api_flags.READ_TYPE.FILE, cwd .. cache.parent
         else
             log.warn("Failed to read remote file " .. cache.path .. '!')
             notify.info("Failed to access remote file " .. cache.path .. " on container " .. cache.container)
@@ -387,7 +388,7 @@ function M:read(uri, cache)
     else
         local directory_contents = _read_directory(cache, cache.container, cache.path)
         if not directory_contents then return nil end
-        return directory_contents, api_flags.READ_TYPE.EXPLORE
+        return directory_contents, api_flags.READ_TYPE.EXPLORE, cwd .. cache.path
     end
 end
 
