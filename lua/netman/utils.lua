@@ -171,9 +171,12 @@ local _log = function(level, do_notify, ...)
             table.insert(headerless_parts, format_func(arg))
         end
     end
+    if level == 'ERROR' then
+        table.insert(parts, debug.traceback("", 3))
+    end
     log_file:write(table.concat(parts, '\t'), "\n")
     log_file:flush()
-    if do_notify then
+    if do_notify or level == 'ERROR' then
         vim.api.nvim_notify(table.concat(headerless_parts, '\t'), log_level_map[level], {})
     end
     if level == 'ERROR' then
