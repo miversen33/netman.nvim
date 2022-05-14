@@ -12,7 +12,7 @@ local log = utils.log
 local notify = utils.notify
 
 local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
-local protocol_from_path_glob = '^([%w-.]+)://'
+local protocol_from_path_glob = '^([%w%-.]+)://'
 
 -- TODO(Mike): Potentially implement auto deprecation/enforcement here?
 local _provider_required_attributes = {
