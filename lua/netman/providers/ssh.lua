@@ -344,10 +344,11 @@ end
 
 function M:read(uri, cache)
     cache = _validate_cache(uri, cache)
+    local cwd = cache.protocol .. '://' .. cache.auth_uri .. '/'
     if cache.type == api_flags.ATTRIBUTES.DIRECTORY then
-        return _read_directory(cache), cache.return_type
+        return _read_directory(cache), cache.return_type, cwd .. cache.remote_path
     else
-        return _read_file(cache), cache.return_type
+        return _read_file(cache), cache.return_type, cwd .. cache.parent
     end
 end
 
