@@ -6,7 +6,6 @@ if table.unpack then unpack = table.unpack end
 
 local M = {}
 
--- local package_name_escape = "([\\(%s@!\"\'\\)\\-.])"
 local package_name_escape = "([\\(%s@!\"\'\\)-.])"
 
 M._inited = false
