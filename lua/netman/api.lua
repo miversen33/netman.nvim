@@ -331,6 +331,11 @@ function M:get_metadata(uri, metadata)
     local ctime = {sec=0, nsec=0}
     local mtime = {sec=0, nsec=0}
 
+    if return_metadata[metadata_options.TYPE] == 'f' then
+        return_metadata[metadata_options.MODE] = 0x8000
+    else
+        return_metadata[metadata_options.MODE] = 0x4000
+    end
     -- TODO: (Mike): this is kinda awful
     for metadata_key, metadata_value in pairs(return_metadata) do
         if not metadata_options[metadata_key] then
@@ -356,11 +361,6 @@ function M:get_metadata(uri, metadata)
                 sanitized_metadata[metadata_key:lower()] = metadata_value
             end
         end
-    end
-    if sanitized_metadata['type'] == 'f' then
-        sanitized_metadata['mode'] = 0x8000
-    else
-        sanitized_metadata['mode'] = 0x4000
     end
     sanitized_metadata['atime'] = atime
     sanitized_metadata['birthtime'] = birthtime
