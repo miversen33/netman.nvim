@@ -10,6 +10,7 @@ local metadata_options = require("netman.options").explorer.METADATA
 
 local invalid_permission_glob = '^Got permission denied while trying to connect to the Docker daemon socket at'
 
+-- This will absolutely fail on busybox :(
 local find_command = [[find -L $PATH$ -nowarn -depth -maxdepth 1 -printf ',{\n,name=%f\n,fullname=%p\n,lastmod_sec=%T@\n,lastmod_ts=%Tc\n,inode=%i\n,type=%Y\n,symlink=%l\n,permissions=%m\n,size=%s\n,owner_user=%u\n,owner_group=%g\n,parent=%h/\n,}\n']]
 local stat_command = [[find -L $PATH$ -maxdepth 0 -exec sh -c 'for file; do stat "$file" -c \'\\'{BLKSIZE\\=%B\\,DEV\\=%d\\,GID\\=%g\\,GROUP\\=\'\\'\"%G\'\\'\"\\,INODE\\=%i\\,ATIME_SEC\\=?\\,ATIME_NSEC\\=%X\\,MTIME_SEC\\=%Y\\,MTIME_NSEC\\=?\\,CTIME_SEC\\=?\\,CTIME_NSEC\\=%Z\\,NAME\\=\'\\'\"%n\'\\'\"\\,NLINK\\=%h\\,USER\\=\'\\'\"%U\'\\'\"\\,PERMISSIONS\\=%a\\,SIZE\\=%b\\,TYPE\\=\'\\'\"%F\'\\'\"\\,UID\\=%u\\,URI\\=\'\\'\"\$URI\$\'\\'\"\\}; done' sh {} \+]]
 local container_pattern     = "^([%a%c%d%s%-_%.]*)"
