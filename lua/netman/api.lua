@@ -326,10 +326,10 @@ function M:get_metadata(uri, metadata)
         log.warn("No metadata returned for " .. uri .. '!')
         return nil
     end
-    local atime = {sec=0, nsec=0}
+    local atime     = {sec=0, nsec=0}
     local birthtime = {sec=0, nsec=0}
-    local ctime = {sec=0, nsec=0}
-    local mtime = {sec=0, nsec=0}
+    local ctime     = {sec=0, nsec=0}
+    local mtime     = {sec=0, nsec=0}
 
     if return_metadata[metadata_options.TYPE] == 'f' then
         return_metadata[metadata_options.MODE] = 0x8000
