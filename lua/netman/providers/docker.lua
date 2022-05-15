@@ -11,8 +11,7 @@ local metadata_options = require("netman.options").explorer.METADATA
 local invalid_permission_glob = '^Got permission denied while trying to connect to the Docker daemon socket at'
 
 local find_command = [[find -L $PATH$ -nowarn -depth -maxdepth 1 -printf ',{\n,name=%f\n,fullname=%p\n,lastmod_sec=%T@\n,lastmod_ts=%Tc\n,inode=%i\n,type=%Y\n,symlink=%l\n,permissions=%m\n,size=%s\n,owner_user=%u\n,owner_group=%g\n,parent=%h/\n,}\n']]
-local ls_command = [[ls --all --human-readable --inode -l -1 --literal --dereference $PATH$]]
-
+local stat_command = [[find -L $PATH$ -maxdepth 0 -exec sh -c 'for file; do stat "$file" -c \'\\'{BLKSIZE\\=%B\\,DEV\\=%d\\,GID\\=%g\\,GROUP\\=\'\\'\"%G\'\\'\"\\,INODE\\=%i\\,ATIME_SEC\\=?\\,ATIME_NSEC\\=%X\\,MTIME_SEC\\=%Y\\,MTIME_NSEC\\=?\\,CTIME_SEC\\=?\\,CTIME_NSEC\\=%Z\\,NAME\\=\'\\'\"%n\'\\'\"\\,NLINK\\=%h\\,USER\\=\'\\'\"%U\'\\'\"\\,PERMISSIONS\\=%a\\,SIZE\\=%b\\,TYPE\\=\'\\'\"%F\'\\'\"\\,UID\\=%u\\,URI\\=\'\\'\"\$URI\$\'\\'\"\\}; done' sh {} \+]]
 local container_pattern     = "^([%a%c%d%s%-_%.]*)"
 local path_pattern          = '^([/]+)(.*)$'
 local protocol_pattern      = '^(.*)://'
@@ -35,25 +34,6 @@ local find_pattern_globs = {
     ,PARENT = '^,parent=(.*)$'
     ,fullname = '^,fullname=(.*)$'
 }
-
-local find_flag_to_metadata = {}
-find_flag_to_metadata[metadata_options.BLKSIZE]     = {key='BLKSIZE'     ,flag=",BLKSIZE=%s"    ,glob='^,BLKSIZE=(.*)'}
-find_flag_to_metadata[metadata_options.DEV]         = {key='DEV'         ,flag=",DEV=%d"        ,glob='^,DEV=(.*)'}
-find_flag_to_metadata[metadata_options.FULLNAME]    = {key='FULLNAME'    ,flag=",FULLNAME=%p"   ,glob='^,FULLNAME=(.*)'}
-find_flag_to_metadata[metadata_options.GID]         = {key='GID'         ,flag=",GID=%G"        ,glob='^,GID=(.*)'}
-find_flag_to_metadata[metadata_options.GROUP]       = {key='GROUP'       ,flag=",GROUP=%g"      ,glob='^,GROUP=(.*)'}
-find_flag_to_metadata[metadata_options.INODE]       = {key='INODE'       ,flag=",INODE=%i"      ,glob='^,INODE=(.*)'}
-find_flag_to_metadata[metadata_options.LASTACCESS]  = {key='LASTACCESS'  ,flag=",LASTACCESS=%a" ,glob='^,LASTACCESS=(.*)'}
-find_flag_to_metadata[metadata_options.NAME]        = {key='NAME'        ,flag=",NAME=%f"       ,glob='^,NAME=(.*)'}
-find_flag_to_metadata[metadata_options.NLINK]       = {key='NLINK'       ,flag=",NLINK=%n"      ,glob='^,NLINK=(.*)'}
-find_flag_to_metadata[metadata_options.USER]        = {key='USER'        ,flag=",USER=%u"       ,glob='^,USER=(.*)'}
-find_flag_to_metadata[metadata_options.PARENT]      = {key='PARENT'      ,flag=",PARENT=%h"     ,glob='^,PARENT=(.*)'}
-find_flag_to_metadata[metadata_options.PERMISSIONS] = {key='PERMISSIONS' ,flag=",PERMISSIONS=%m",glob='^,PERMISSIONS=(.*)'}
-find_flag_to_metadata[metadata_options.SIZE]        = {key='SIZE'        ,flag=",SIZE=%s"       ,glob='^,SIZE=(.*)'}
-find_flag_to_metadata[metadata_options.TYPE]        = {key='TYPE'        ,flag=",TYPE=%Y"       ,glob='^,TYPE=(.*)'}
-find_flag_to_metadata[metadata_options.UID]         = {key='UID'         ,flag=",UID=%U"        ,glob='^,UID=(.*)'}
-find_flag_to_metadata[metadata_options.URI]         = {key='URI'         ,flag=",URI=$URI"      ,glob='^,URI=(.*)'}
-
 local M = {}
 
 M.protocol_patterns = {'docker'}
@@ -452,63 +432,6 @@ function M:delete(uri)
     end)
 end
 
-function M:get_metadata(uri, requested_metadata)
-    local metadata = {}
-    local cache = _parse_uri(uri)
-    local path = shell_escape(cache.path)
-    local container_name = shell_escape(cache.container)
-    local find_command = "find -L " .. path .. " -nowarn -maxdepth 0 -printf '"
-    local used_flags = {}
-    for key, _ in pairs(requested_metadata) do
-        log.trace("Processing Metadata Flag: " .. key)
-        local find_flag = find_flag_to_metadata[key]
-        local flag = ''
-        if find_flag then
-            flag = find_flag.flag:gsub('%$URI', uri) .. '\n'
-            table.insert(used_flags, find_flag)
-        end
-        find_command = find_command .. flag
-    end
-    find_command = find_command .. "'"
-    log.info("Metadata fetching command: " .. find_command)
-
-    local command = 'docker exec ' .. container_name .. ' ' .. find_command
-    local command_options = {}
-    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
-    command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
-    command_options[command_flags.STDERR_JOIN] = ''
-
-    log.debug("Running Find Command: " .. command)
-    local command_output = shell(command, command_options)
-    log.debug("Command Output", {stdout=command_output.stdout, stderr=command_output.stderr})
-
-    if command_output.stderr:match("No such file or directory$") then
-        log.info("Received error while looking for " .. uri .. ". " .. command_output.stderr)
-        notify.warn(cache.path .. " does not exist in container " .. cache.container .. '!')
-        return nil
-    end
-    if command_output.stderr ~= '' then
-        log.warn("Received error while getting metadata for " .. uri .. '. ', {error=command_output.stderr})
-        log.info("I can do this... Carrying on")
-    end
-    for _, line in ipairs(command_output.stdout) do
-        if line == '' then
-            goto continue
-        end
-        for _, flag in ipairs(used_flags) do
-            local match = line:match(flag.glob)
-            if match then
-                metadata[flag.key] = match
-                table.remove(used_flags, _)
-            end
-        end
-        ::continue::
-    end
-    log.debug("Generated Metadata ", {metadata=metadata})
-    return metadata
-
-end
-
 function M:init(config_options)
     local command = 'command -v docker'
     local command_options = {}
@@ -566,5 +489,108 @@ function M.repair_uri(uri, cwd)
     return uri
 end
 
+
+-- THIS HURTS ALOT
+function M.get_metadata(uri, requested_metadata)
+    log.debug("get_metadata", {uri=uri, requested_metadata=requested_metadata})
+    local metadata = {}
+    uri = uri:gsub('%%', '%%%%')
+    local cache = _parse_uri(uri)
+    local path = shell_escape(cache.path)
+    local container_name = shell_escape(cache.container)
+    local _stat_command = stat_command:gsub('%$PATH%$', path)
+    _stat_command = _stat_command:gsub('%$URI%$', uri)
+
+    local command = 'docker exec ' .. container_name .. ' ' .. _stat_command
+    local command_options = {}
+    command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
+    command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
+    command_options[command_flags.STDERR_JOIN] = ''
+    command_options[command_flags.STDOUT_JOIN] = ''
+
+    log.debug("Path " .. path)
+    log.debug("URI " .. uri)
+    log.debug("Running Find Command: " .. command)
+    local command_output = shell(command, command_options)
+    log.debug("Command Output", {stdout=command_output.stdout, stderr=command_output.stderr})
+
+    if command_output.stderr:match("No such file or directory$") then
+        log.info("Received error while looking for " .. uri .. ". " .. command_output.stderr)
+        notify.warn(cache.path .. " does not exist in container " .. cache.container .. '!')
+        return nil
+    end
+    if command_output.stderr ~= '' then
+        log.warn("Received error while getting metadata for " .. uri .. '. ', {error=command_output.stderr})
+        log.info("I can do this... Carrying on")
+    end
+    local unused_metadata = {}
+    for _key, _ in pairs(requested_metadata) do
+        unused_metadata[_key] = 1
+    end
+
+    -- THERE HAS TO BE A WAY TO IMPROVE THIS ABOMINATION
+    local key, value = "", ""
+    local cur_string = key
+    local is_string = false
+    local index = 1
+    local is_escaped = false
+    local key_value_match = function()
+        is_escaped = false
+        value = cur_string
+        if value:len() > 0 and value ~= '?' and requested_metadata[key] then
+            if not is_string then value = tonumber(value) end
+            metadata[key] = value
+            unused_metadata[key] = nil
+        end
+        is_string = false
+        cur_string = ''
+        key, value = '', ''
+    end
+    for char in command_output.stdout:gmatch('.') do
+        if not char then break end
+        if char == '\\' then
+            is_escaped = true
+            goto continue
+        elseif char == '{' and is_escaped then
+            key, value = '', ''
+            cur_string = ''
+            is_escaped = false
+            goto continue
+        elseif char == '}' and is_escaped then
+            key_value_match()
+            goto continue
+        elseif char == ',' and is_escaped then
+            -- Key AND Value pair have been matched
+            key_value_match()
+            goto continue
+        elseif char == '=' and is_escaped then
+            is_escaped = false
+            key = cur_string
+            cur_string = ''
+            goto continue
+        elseif (char == "'" or char == '"') and is_escaped then
+            is_string = true
+            is_escaped = false
+            goto continue
+        else
+            is_escaped = false
+            cur_string = cur_string .. char
+        end
+        ::continue::
+        index = index + 1
+    end
+    local _type = metadata[metadata_options.TYPE]
+    if _type ~= 'directory' then
+        metadata[metadata_options.TYPE] = 'f'
+    else
+        metadata[metadata_options.TYPE] = 'd'
+    end
+    for _key, _ in pairs(unused_metadata) do
+        metadata[_key] = nil
+    end
+    log.debug("Generated Metadata ", {metadata=metadata})
+    return metadata
+
+end
 
 return M
