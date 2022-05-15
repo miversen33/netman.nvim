@@ -319,7 +319,7 @@ function M:get_metadata(uri, metadata)
         return nil
     end
     log.debug("Reaching out for metadata for " .. uri, metadata)
-    local return_metadata = provider_details.provider:get_metadata(uri, metadata)
+    local return_metadata = provider_details.provider.get_metadata(uri, metadata)
     M._unclaimed_provider_details[M._unclaimed_id_table[uri]] = nil
     M._unclaimed_id_table[uri] = nil
     if not return_metadata then
