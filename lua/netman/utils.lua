@@ -11,7 +11,7 @@ local files_dir            = cache_dir .. 'remote_files/'
 local data_dir             = vim.fn.stdpath('data')  .. '/netman/'
 local session_id           = ''
 local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
-local shell_escape_pattern = "([\\(%s@!\"\'\\)])"
+local shell_escape_pattern = [[([%s^&*()%]="'+.|,<>?%[{}%\])]]
 local log_timestamp_format = '%Y-%m-%d %H:%M:%S'
 local log_file             = nil
 local log                  = {}
