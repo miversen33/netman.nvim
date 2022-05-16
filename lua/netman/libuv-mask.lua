@@ -14,7 +14,6 @@ M._lru_cache = {}
 M._inited = false
 M.overriden_callers = {}
 M._overriden_callers = {}
-M._old_vim_loop = vim.loop
 M._file_descriptor_map = {}
 M._path_map = {}
 M._file_index = 0 -- Hopefully this avoids potential libuv overlap on file descriptors?
