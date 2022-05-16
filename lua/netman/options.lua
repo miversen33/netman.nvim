@@ -9,6 +9,7 @@ return {
             ,STDERR_JOIN = "STDERR_JOIN"
             ,SHELL_ESCAPE = "SHELL_ESCAPE"
         }
+        ,LRU_CACHE_TICK_LIMIT = 1 -- seconds
     }
     ,api = {
         READ_TYPE = {

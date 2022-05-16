@@ -1,12 +1,15 @@
 local log = require("netman.utils").log
 local api = require('netman.api')
 local metadata_flags = require("netman.options").explorer.METADATA
+local tick_limit = require("netman.options").utils.LRU_CACHE_TICK_LIMIT
 -- Planning ahead for if/when Neovim deprecates this :/
 if table.unpack then unpack = table.unpack end
 
 local M = {}
 
 local package_name_escape = "([\\(%s@!\"\'\\)-.])"
+
+M._lru_cache = {}
 
 M._inited = false
 M.overriden_callers = {}
@@ -332,12 +335,46 @@ M._hidden_functions = {
     fs_write        = vim.loop.fs_write,
 }
 
+M._cachable_functions = {
+    fs_access       = 1,
+    -- fs_fstat        = 1, -- Caching fstat seems to break plenary?
+    fs_realpath     = 1,
+    fs_stat         = 1,
+    fs_lstat        = 1,
+    fs_readlink     = 1,
+    fs_statfs       = 1,
+}
+
 function M:_init()
     if M._inited then return end
 
     for uv_func, override_func in pairs(M._override_functions) do
         local func = vim.loop[uv_func]
         vim.loop[uv_func] = function(...)
+            local invalidate_indexes = {}
+            for key, cache in pairs(M._lru_cache) do
+                if cache[1] < os.clock() then
+                    table.insert(invalidate_indexes, key)
+                end
+            end
+            for _, key in ipairs(invalidate_indexes) do
+                M._lru_cache[key] = nil
+            end
+            local func_hash = uv_func
+            local _key = func_hash .. '('
+            for i=1, select('#', ...) do
+                _key = _key .. ',' .. tostring(select(i, ...))
+            end
+            _key = _key .. ')'
+            local cachable = false
+            if M._cachable_functions[uv_func] then
+                cachable = true
+                local cache = M._lru_cache[_key]
+                if M._lru_cache[_key] then
+                    log.trace("Returning cache result for " .. _key, cache[2])
+                    return unpack(cache[2])
+                end
+            end 
             local caller = debug.getinfo(3, 'S')
             local call_func = func
             local found_match = false
@@ -349,8 +386,9 @@ function M:_init()
                 end
             end
             local results = {call_func(...)}
-            if found_match then
-                log.debug({caller=caller, uv_func=uv_func, params=..., results=unpack(results)})
+            log.trace({caller=caller, uv_func=uv_func, params=..., results=results})
+            if cachable and found_match then
+                M._lru_cache[_key] = {os.clock() + tick_limit, results}
             end
             return unpack(results)
         end
