@@ -492,15 +492,16 @@ end
 
 
 -- THIS HURTS ALOT
-function M.get_metadata(uri, requested_metadata)
+function M.get_metadata(uri, requested_metadata, escape_path, forced)
     log.debug("get_metadata", {uri=uri, requested_metadata=requested_metadata})
     local metadata = {}
-    uri = uri:gsub('%%', '%%%%')
-    local cache = _parse_uri(uri)
-    local path = shell_escape(cache.path)
+    local uri_copy = uri:gsub('%%', '%%%%')
+    local cache = _parse_uri(uri_copy)
+    local path = cache.path
+    if escape_path then path = shell_escape(cache.path) end
     local container_name = shell_escape(cache.container)
     local _stat_command = stat_command:gsub('%$PATH%$', path)
-    _stat_command = _stat_command:gsub('%$URI%$', uri)
+    _stat_command = _stat_command:gsub('%$URI%$', uri_copy)
 
     local command = 'docker exec ' .. container_name .. ' ' .. _stat_command
     local command_options = {}
@@ -509,19 +510,21 @@ function M.get_metadata(uri, requested_metadata)
     command_options[command_flags.STDERR_JOIN] = ''
     command_options[command_flags.STDOUT_JOIN] = ''
 
-    log.debug("Path " .. path)
-    log.debug("URI " .. uri)
     log.debug("Running Find Command: " .. command)
     local command_output = shell(command, command_options)
     log.debug("Command Output", {stdout=command_output.stdout, stderr=command_output.stderr})
 
     if command_output.stderr:match("No such file or directory$") then
-        log.info("Received error while looking for " .. uri .. ". " .. command_output.stderr)
+        log.info("Received error while looking for " .. uri_copy .. ". " .. command_output.stderr)
         notify.warn(cache.path .. " does not exist in container " .. cache.container .. '!')
         return nil
     end
     if command_output.stderr ~= '' then
-        log.warn("Received error while getting metadata for " .. uri .. '. ', {error=command_output.stderr})
+        log.warn("Received error while getting metadata for " .. uri_copy .. '. ', {error=command_output.stderr})
+        if not forced then
+            log.info("Trying again!")
+            return M.get_metadata(uri, requested_metadata, true, true)
+        end
         log.info("I can do this... Carrying on")
     end
     local unused_metadata = {}
