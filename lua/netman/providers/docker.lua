@@ -509,9 +509,9 @@ function M.get_metadata(uri, requested_metadata, escape_path, forced)
     command_options[command_flags.STDERR_JOIN] = ''
     command_options[command_flags.STDOUT_JOIN] = ''
 
-    log.debug("Running Find Command: " .. command)
+    log.trace("Running Find Command: " .. command)
     local command_output = shell(command, command_options)
-    log.debug("Command Output", {stdout=command_output.stdout, stderr=command_output.stderr})
+    log.trace("Command Output", {stdout=command_output.stdout, stderr=command_output.stderr})
 
     if command_output.stderr:match("No such file or directory$") then
         log.info("Received error while looking for " .. uri_copy .. ". " .. command_output.stderr)
@@ -591,7 +591,7 @@ function M.get_metadata(uri, requested_metadata, escape_path, forced)
     for _key, _ in pairs(unused_metadata) do
         metadata[_key] = nil
     end
-    log.debug("Generated Metadata ", {metadata=metadata})
+    log.trace("Generated Metadata ", {metadata=metadata})
     return metadata
 
 end
