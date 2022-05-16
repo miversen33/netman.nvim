@@ -493,7 +493,6 @@ end
 
 -- THIS HURTS ALOT
 function M.get_metadata(uri, requested_metadata, escape_path, forced)
-    log.debug("get_metadata", {uri=uri, requested_metadata=requested_metadata})
     local metadata = {}
     local uri_copy = uri:gsub('%%', '%%%%')
     local cache = _parse_uri(uri_copy)
