@@ -12,7 +12,13 @@ local invalid_permission_glob = '^Got permission denied while trying to connect 
 
 -- This will absolutely fail on busybox :(
 local find_command = [[find -L $PATH$ -nowarn -depth -maxdepth 1 -printf ',{\n,name=%f\n,fullname=%p\n,lastmod_sec=%T@\n,lastmod_ts=%Tc\n,inode=%i\n,type=%Y\n,symlink=%l\n,permissions=%m\n,size=%s\n,owner_user=%u\n,owner_group=%g\n,parent=%h/\n,}\n']]
-local stat_command = [[find -L $PATH$ -maxdepth 0 -exec sh -c 'for file; do stat "$file" -c \'\\'{BLKSIZE\\=%B\\,DEV\\=%d\\,GID\\=%g\\,GROUP\\=\'\\'\"%G\'\\'\"\\,INODE\\=%i\\,ATIME_SEC\\=?\\,ATIME_NSEC\\=%X\\,MTIME_SEC\\=%Y\\,MTIME_NSEC\\=?\\,CTIME_SEC\\=?\\,CTIME_NSEC\\=%Z\\,NAME\\=\'\\'\"%n\'\\'\"\\,NLINK\\=%h\\,USER\\=\'\\'\"%U\'\\'\"\\,PERMISSIONS\\=%a\\,SIZE\\=%b\\,TYPE\\=\'\\'\"%F\'\\'\"\\,UID\\=%u\\,URI\\=\'\\'\"\$URI\$\'\\'\"\\}; done' sh {} \+]]
+local stat_command = [[find -L $PATH$ -maxdepth 0 -exec sh -c 'for file; do stat "$file" -c ,BLKSIZE=%B\\n,DEV=%d\\n,GID=%g\\n,GROUP=%G\\n,INODE=%i\\n,ATIME_SEC=?\\n,ATIME_NSEC=%X\\n,MTIME_SEC=%Y\\n,MTIME_NSEC=?\\n,CTIME_SEC=?\\n,CTIME_NSEC=%Z\\n,NAME=%n\\n,NLINK=%h\\n,USER=%U\\n,PERMISSIONS=%a\\n,SIZE=%b\\n,TYPE=%F\\n,UID=%u\\n,; done' sh {} \+]]
+local stat_key_types = {}
+stat_key_types[metadata_options.GROUP] = 'string'
+stat_key_types[metadata_options.NAME] = 'string'
+stat_key_types[metadata_options.USER] = 'string'
+stat_key_types[metadata_options.TYPE] = 'string'
+
 local container_pattern     = "^([%a%c%d%s%-_%.]*)"
 local path_pattern          = '^([/]+)(.*)$'
 local protocol_pattern      = '^(.*)://'
@@ -526,61 +532,22 @@ function M.get_metadata(uri, requested_metadata, escape_path, forced)
         end
         log.info("I can do this... Carrying on")
     end
-    local unused_metadata = {}
-    for _key, _ in pairs(requested_metadata) do
-        unused_metadata[_key] = 1
-    end
 
-    -- THERE HAS TO BE A WAY TO IMPROVE THIS ABOMINATION
-    local key, value = "", ""
-    local cur_string = key
-    local is_string = false
-    local index = 1
-    local is_escaped = false
-    local key_value_match = function()
-        is_escaped = false
-        value = cur_string
-        if value:len() > 0 and value ~= '?' and requested_metadata[key] then
-            if not is_string then value = tonumber(value) end
-            metadata[key] = value
-            unused_metadata[key] = nil
-        end
-        is_string = false
-        cur_string = ''
-        key, value = '', ''
-    end
-    for char in command_output.stdout:gmatch('.') do
-        if not char then break end
-        if char == '\\' then
-            is_escaped = true
-            goto continue
-        elseif char == '{' and is_escaped then
-            key, value = '', ''
-            cur_string = ''
-            is_escaped = false
-            goto continue
-        elseif char == '}' and is_escaped then
-            key_value_match()
-            goto continue
-        elseif char == ',' and is_escaped then
-            -- Key AND Value pair have been matched
-            key_value_match()
-            goto continue
-        elseif char == '=' and is_escaped then
-            is_escaped = false
-            key = cur_string
-            cur_string = ''
-            goto continue
-        elseif (char == "'" or char == '"') and is_escaped then
-            is_string = true
-            is_escaped = false
-            goto continue
-        else
-            is_escaped = false
-            cur_string = cur_string .. char
-        end
-        ::continue::
-        index = index + 1
+    local _match = '\\n,'
+    local _start = 1
+    local _tend = 0
+    local _end = command_output.stdout:len()
+    local _sub = ''
+    local key = ''
+    local value = ''
+    while _start < _end do
+        _, _tend = command_output.stdout:find(_match, _start)
+        if not _tend then break end
+        _sub = command_output.stdout:sub(_start+1, _tend - 3)
+        key, value = _sub:match('^([A-Z%d_%-]+)=(.*)')
+        if not stat_key_types[key] then value = tonumber(value) end
+        metadata[key] = value
+        _start = _tend
     end
     local _type = metadata[metadata_options.TYPE]
     if _type ~= 'directory' then
