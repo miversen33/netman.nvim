@@ -508,7 +508,7 @@ function M.get_metadata(uri, requested_metadata, escape_path, forced)
     local container_name = shell_escape(cache.container)
     local _stat_command = stat_command:gsub('%$PATH%$', path)
     _stat_command = _stat_command:gsub('%$URI%$', uri_copy)
-
+    
     local command = 'docker exec ' .. container_name .. ' ' .. _stat_command
     local command_options = {}
     command_options[command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true
@@ -533,7 +533,7 @@ function M.get_metadata(uri, requested_metadata, escape_path, forced)
         end
         log.info("I can do this... Carrying on")
     end
-
+        
     local _match = '\\n,'
     local _start = 1
     local _tend = 0
