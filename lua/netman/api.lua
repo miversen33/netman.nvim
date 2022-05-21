@@ -185,7 +185,7 @@ function M:_get_buffer_cache_object(buffer_index, path)
         local id = _cache_provider(_get_provider_for_path(path), protocol, path)
         return M:_claim_buf_details(buffer_index, id)
     else
-        return M._buffer_provider_cache[buffer_index][protocol]
+        return M._buffer_provider_cache[buffer_index]
     end
 end
 
