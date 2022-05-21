@@ -12,7 +12,8 @@ local invalid_permission_glob = '^Got permission denied while trying to connect 
 
 -- This will absolutely fail on busybox :(
 local find_command = [[find -L $PATH$ -nowarn -depth -maxdepth 1 -printf ',{\n,name=%f\n,fullname=%p\n,lastmod_sec=%T@\n,lastmod_ts=%Tc\n,inode=%i\n,type=%Y\n,symlink=%l\n,permissions=%m\n,size=%s\n,owner_user=%u\n,owner_group=%g\n,parent=%h/\n,}\n']]
-local stat_command = [[find -L $PATH$ -maxdepth 0 -exec sh -c 'for file; do stat "$file" -c ,BLKSIZE=%B\\n,DEV=%d\\n,GID=%g\\n,GROUP=%G\\n,INODE=%i\\n,ATIME_SEC=?\\n,ATIME_NSEC=%X\\n,MTIME_SEC=%Y\\n,MTIME_NSEC=?\\n,CTIME_SEC=?\\n,CTIME_NSEC=%Z\\n,NAME=%n\\n,NLINK=%h\\n,USER=%U\\n,PERMISSIONS=%a\\n,SIZE=%b\\n,TYPE=%F\\n,UID=%u\\n,; done' sh {} \+]]
+-- This works well enough but the string formatting really hurts. I wonder if there is a better way we can do this?
+local stat_command = [[stat $PATH$ -c ',BLKSIZE=%B\n,DEV=%d\n,GID=%g\n,GROUP=%G\n,INODE=%i\n,ATIME_SEC=?\n,ATIME_NSEC=%X\n,MTIME_SEC=%Y\n,MTIME_NSEC=?\n,CTIME_SEC=?\n,CTIME_NSEC=%Z\n,NAME=%n\n,NLINK=%h\n,USER=%U\n,PERMISSIONS=%a\n,SIZE=%b\n,TYPE=%F\n,UID=%u\n,']]
 local stat_key_types = {}
 stat_key_types[metadata_options.GROUP] = 'string'
 stat_key_types[metadata_options.NAME] = 'string'
