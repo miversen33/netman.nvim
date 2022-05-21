@@ -514,11 +514,11 @@ function M.get_metadata(uri, requested_metadata, escape_path, forced)
     command_options[command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true
     command_options[command_flags.STDERR_JOIN] = ''
     command_options[command_flags.STDOUT_JOIN] = ''
-
-    log.trace("Running Find Command: " .. command)
+    
+    log.debug("Generated Find Command: " .. command)
     local command_output = shell(command, command_options)
-    log.trace("Command Output", {stdout=command_output.stdout, stderr=command_output.stderr})
-
+    log.trace("Find command results: ", {stdout=command_output.stdout, stderr=command_output.stderr})
+    
     if command_output.stderr:match("No such file or directory$") then
         log.info("Received error while looking for " .. uri_copy .. ". " .. command_output.stderr)
         notify.warn(cache.path .. " does not exist in container " .. cache.container .. '!')
