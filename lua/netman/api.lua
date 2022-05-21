@@ -754,7 +754,7 @@ function M:dump_info(output_path)
     }
     if M.explorer then
         table.insert(headers, 'Registered Explorer Details')
-        table.insert(headers, "    " .. M.explorer._explorer_path .. " --version " .. M.explorer.version)
+        table.insert(headers, "    " .. tostring(M.explorer._explorer_path) .. " --version " .. tostring(M.explorer.version))
         table.insert(headers, '')
     end
     table.insert(headers, 'Not Registered Explorer Details')
