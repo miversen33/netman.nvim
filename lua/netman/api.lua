@@ -4,7 +4,6 @@ local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
 local utils = require("netman.tools.utils")
 local libruv = require('netman.tools.libruv')
-local timeit = utils.time_func
 
 local M = {}
 -- Gets set to true after init is complete
