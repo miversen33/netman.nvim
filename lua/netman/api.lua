@@ -1,20 +1,25 @@
---- Notes
---- We need to document not just how this works internally
---- but _also_ what events this catches
---- what autocommands we rely on
---- what autocommands we fire off
---- what we interact with
---- Basically everything
+local notify = require("netman.tools.utils").notify
+local log = require("netman.tools.utils").log
+local netman_options = require("netman.tools.options")
+local cache_generator = require("netman.tools.cache")
+local utils = require("netman.tools.utils")
+local libruv = require('netman.tools.libruv')
+local timeit = utils.time_func
 
-local utils = require('netman.utils')
-local netman_options = require('netman.options')
-local metadata_options = netman_options.explorer.METADATA
-local log = utils.log
-local notify = utils.notify
+local M = {}
+-- Gets set to true after init is complete
+M._inited = false
+
+M._providers = {
+    protocol_to_path = {},
+    path_to_provider = {},
+    uninitialized    = {}
+}
+M._explorers = {}
 
 local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
 local protocol_from_path_glob = '^([%w%-.]+)://'
-
+local package_path_sanitizer_glob = '([%.%(%)%%%+%-%*%?%[%^%$]+)'
 -- TODO(Mike): Potentially implement auto deprecation/enforcement here?
 local _provider_required_attributes = {
     'name'
@@ -26,388 +31,240 @@ local _provider_required_attributes = {
     ,'get_metadata'
 }
 
-local _explorer_required_attributes = {
-    'version'
-    ,'protocol_patterns'
-    ,'explore'
-}
-
-local M = {}
-
-M.version = 1.0
-M.explorer = nil
-M._augroup_defined = false
-M._initialized = false
-M._setup_commands = false
-M._buffer_provider_cache = {
-    -- Tables that are added to this table should contain the following
-    -- key,value pairs
-    -- key: Buffer Index (as string)
-    -- value: Table with the following key, value pairs
-    --     key: protocol
-    --     value: Table with the following key, value pairs
-    --         provider: required provider from pcall
-    --         origin_path: original uri used to create this connection
-    --         protocol: set this to your global (required) name value
-    --         buffer: set this to nil, it will be set later
-    --         provider_cache: empty table object
-}
-M._providers = {
-    -- Contains key, value pairs as follows
-    -- key: Protocol (pre glob)
-    -- value: imported provider
-}
-M._unitialized_providers = {
-    -- Contains key, value pairs as follows
-    -- key: provider name
-    -- value: reason it is unitilized
-}
-M._unintialized_explorers = {
-    -- Contains key, value pairs as follows
-    -- key: explorer name
-    -- value: reason it is unitilized
-}
-M._unclaimed_provider_details = {
-
-}
-
-M._unclaimed_id_table = {
-
-}
-
-M._metadata_cache = {
-
-}
-
-local _get_provider_for_path = function(path)
-    local provider = nil
-    local protocol = path:match(protocol_from_path_glob)
-    provider = M._providers[protocol]
-    if provider == nil then
-        notify.error("Error parsing path: " .. path .. " -- Unable to establish provider")
-        return nil, nil
-    end
-    log.info("Selecting provider: " .. provider._provider_path .. ':' .. provider.version .. ' for path: ' .. path)
-    return provider, protocol
+--- Retrieves the provider and its cache for a protocol
+--- @param protocol string
+---     The protocol to check against
+--- @return any, netman.tools.cache
+---     Will return nil if we are unable to find a matching provider
+local function get_provider_for_protocol(protocol)
+    local provider_path = M._providers.protocol_to_path[protocol]
+    if not provider_path then return nil end
+    local provider_details = M._providers.path_to_provider[provider_path]
+    return provider_details.provider, provider_details.cache
 end
 
-local _read_as_stream = function(stream)
-    -- TODO(Mike): Allow for providing the file type
-    local command = "0append! " .. table.concat(stream, '\n')
-    log.debug("Generated read stream command: " .. command:sub(1, 30))
-    return command
-end
-
-local _read_as_file = function(file)
-    -- TODO(Mike): Allow for providing the file type
-    local origin_path = file.origin_path
-    local local_path  = file.local_path
-    local unclaimed_id = M._unclaimed_id_table[origin_path]
-    local claim_command = ''
-    if unclaimed_id then
-        claim_command = ' | lua require("netman.api"):_claim_buf_details(vim.fn.bufnr(), "' .. M._unclaimed_id_table[origin_path] .. '")'
-    end
-    log.debug("Processing details: ", {origin_path=origin_path, local_path=local_path, unclaimed_id=unclaimed_id})
-    local command = 'read ++edit ' .. local_path .. ' | set nomodified | filetype detect' .. claim_command
-    log.debug("Generated read file command: " .. command)
-    return command
-end
-
-local _read_as_explore = function(explore_details)
-    local sanitized_explore_details = {}
-    for _, details in ipairs(explore_details.remote_files) do
-        for _, field in ipairs(netman_options.explorer.FIELDS) do
-            if details[field] == nil then
-                log.warn("Explore Details Missing Required Field: " .. field)
-            end
-        end
-        for key, _ in ipairs(details) do
-            if  netman_options.explorer.FIELDS[key] == nil
-            and netman_options.explorer.METADATA[key] == nil then
-                log.info("Stripping out " .. key .. " from explore details as it does not conform with netman.options.explorer.FIELDS or netman.options.explorer.METADATA")
-                details[key] = nil
-            end
-        end
-        table.insert(sanitized_explore_details, details)
-    end
-    return {
-        parent=explore_details.parent,
-        details=sanitized_explore_details
-    }
-end
-
-local _cache_provider = function(provider, protocol, path)
-    if M._unclaimed_id_table[path] then
-        return M._unclaimed_id_table[path], M._unclaimed_provider_details[M._unclaimed_id_table[path]]
-    end
-    log.debug("Reaching out to provider: " .. provider._provider_path .. ":" .. provider.version .. " to initialize connection for path: " .. path)
-    local id = utils.generate_string(10)
-    local bp_cache_object = {
-        provider        = provider
-        ,protocol       = protocol
-        ,local_path     = nil
-        ,origin_path    = path
-        ,unique_name    = ''
-        ,buffer         = nil
-        ,provider_cache = {}
-    }
-    M._unclaimed_provider_details[id] = bp_cache_object
-    M._unclaimed_id_table[path] = id
-    log.debug("Cached provider: " .. provider._provider_path .. ":" .. provider.version .. " for id: " .. id)
-    return id, M._unclaimed_provider_details[id]
-end
-
---- TODO(Mike): Document me
-function M:_get_buffer_cache_object(buffer_index, path)
-    if buffer_index then
-        buffer_index = "" .. buffer_index
-    end
-    if path == nil then
-        log.error("No path was provided with index: " .. buffer_index .. '!')
-        return nil
-    end
-    local protocol = path:match(protocol_from_path_glob)
-    if protocol == nil then
-        log.error("Unable to parse path: " .. path .. " to get protocol!")
-        return nil
-    end
-    if buffer_index == nil then
-        local _, provider = _cache_provider(_get_provider_for_path(path), protocol, path)
-        return provider
-    end
-    if M._buffer_provider_cache[buffer_index] == nil then
-        log.info('No cache table found for index: ' .. buffer_index .. '. Creating one now')
-        M._buffer_provider_cache[buffer_index] = {}
-    end
-    if M._buffer_provider_cache[buffer_index] == nil then
-        log.debug("No cache object associated with buffer: " .. buffer_index .. ". Attempting to claim one")
-
-        local id = _cache_provider(_get_provider_for_path(path), protocol, path)
-        return M:_claim_buf_details(buffer_index, id)
-    else
-        return M._buffer_provider_cache[buffer_index]
-    end
-end
-
-function M:_claim_buf_details(buffer_index, details_id)
-    local unclaimed_object = M._unclaimed_provider_details[details_id]
-    log.debug("Claiming " .. details_id .. " and associating it with index: " .. buffer_index)
-    if unclaimed_object == nil then
-        log.info("Attempted to claim: " .. details_id .. " which doesn't exist...")
-        return
-    end
-    unclaimed_object.buffer = buffer_index
-    local bp_cache_object = M._buffer_provider_cache["" .. buffer_index]
-    if bp_cache_object == nil then
-        M._buffer_provider_cache["" .. buffer_index] = {}
-        bp_cache_object = M._buffer_provider_cache["" .. buffer_index]
-    end
-    local existing_provider = M._buffer_provider_cache["" .. buffer_index]
-    if existing_provider and next(existing_provider) then
-        log.info(
-            "Overriding previous provider: "
-            .. existing_provider.provider._provider_path
-            .. ":" .. existing_provider.provider.version
-            .. " with " .. unclaimed_object.provider.name
-            .. ":" .. unclaimed_object.provider.version
-            .. " for index: " .. buffer_index
-        )
-    end
-    M._buffer_provider_cache["" .. buffer_index] = unclaimed_object
-    log.debug("Claimed " .. details_id .. " and associated it with " .. buffer_index)
-    M._unclaimed_provider_details[details_id] = nil
-    M._unclaimed_id_table[unclaimed_object.origin_path] = nil
-    log.debug("Removed unclaimed details for " .. details_id)
-    return M._buffer_provider_cache["" .. buffer_index]
-end
-
-function M:cwd()
-    return M._cwd or vim.loop.cwd()
-end
-
-function M:repair_uri(uri)
-    if not uri then
-        log.debug("Y U PASS NO URI TO FIX?")
-        return nil
-    end
-    if uri:sub(-2, -1) == ':/' then uri = uri .. '/' end
-    local protocol = uri:match(protocol_from_path_glob)
-    if not protocol then
-        log.debug("Unable to parse " .. uri)
-        return uri
-    end
-    local provider = M._providers[protocol]
-    if not provider then
-        log.info("No provider found to fix " .. uri)
-        return uri
-    end
-    if not provider.repair_uri then
-        log.info("Provider " .. provider._provider_path .. " does not support repairing uris")
-        return uri
-    end
-    log.debug("Requesting " .. provider._provider_path .. " repair " .. uri)
-    return provider.repair_uri(uri, M._cwd)
-end
-
---- Write is the only entry to writing a buffers contents to a uri
---- Write reaches out to the appropriate provider associated with
---- the write_path. If the buffer does not have a matching
---- provider for the write_path, Write will auto initialize the
---- provider.
---- NOTE: Write is an asynchronous function and will return immediately
---- @param buffer_index integer
----     The index associated with the buffer being saved
---- @param write_path string
----     The string path to save to
---- @return nil
-function M:write(buffer_index, write_path)
-    log.debug("Saving contents of index: " .. buffer_index .. " to " .. write_path)
-    local provider_details = M:_get_buffer_cache_object(buffer_index, write_path)
-    log.debug("Pulled details object ", provider_details)
-    log.info("Calling provider: " .. provider_details.provider._provider_path .. ":" .. provider_details.provider.version .. " to handle write")
-    -- This should be done asynchronously
-    provider_details.provider:write(buffer_index, write_path, provider_details.provider_cache)
-end
-
---- Delete will reach out to the relevant provider for the delete_path
---- and call the providers `delete` function
---- @param delete_path string
----     The path to delete
---- @return nil
-function M:delete(delete_path)
-    local provider = _get_provider_for_path(delete_path)
-    if provider == nil then
-        notify.error("Unable to delete: " .. delete_path .. ". No provider was found to handle the delete!")
-        return
-    end
-    log.info("Calling provider: " .. provider._provider_path .. ":" .. provider.version .. " to delete " .. delete_path)
-    provider:delete(delete_path)
-end
-
---- Get Metadata is the function an explorer will call (via the shim) for fetching
---- metadata associated with a URI.
+--- Retrieves the provider details for a URI
 --- @param uri string
----     String path representation to resolve for metadata gathering location
---- @param metadata table
----     An table (as an array) with _valid netman.options.METADATA_ entries
---- @return table
----     A table will be returned. The table will consist of the metadata input table contents
----     as the keys and the metadata associated with the key as the value
-function M:get_metadata(uri, metadata)
-    if not uri then
-        notify.error("No uri provided!")
-        return nil
-    end
-    -- local sanitized_metadata = M._metadata_cache[uri]
-    -- if sanitized_metadata then
-    --     if sanitized_metadata['checkin'] >= os.time() - netman_options.api.METADATA_TIMEOUT then
-    --         return sanitized_metadata
-    --     else
-    --         M._metadata_cache[uri] = nil
-    --     end
-    -- end
-    local sanitized_metadata = {}
-    if not metadata or metadata == {} then
-        metadata = {}
-        for key, _ in pairs(require('netman.options').explorer.METADATA) do
-            metadata[key] = 1
-        end
-    end
-    local provider_details = M:_get_buffer_cache_object(nil, uri)
-    if not provider_details then
-        log.warn("No provider details returned for " .. uri)
-        return nil
-    end
-    log.debug("Reaching out for metadata for " .. uri, metadata)
-    local return_metadata = provider_details.provider.get_metadata(uri, metadata)
-    M._unclaimed_provider_details[M._unclaimed_id_table[uri]] = nil
-    M._unclaimed_id_table[uri] = nil
-    if not return_metadata then
-        log.warn("No metadata returned for " .. uri .. '!')
-        return nil
-    end
-    local atime     = {sec=0, nsec=0}
-    local birthtime = {sec=0, nsec=0}
-    local ctime     = {sec=0, nsec=0}
-    local mtime     = {sec=0, nsec=0}
-
-    if return_metadata[metadata_options.TYPE] == 'f' then
-        return_metadata[metadata_options.MODE] = 0x8000
-    else
-        return_metadata[metadata_options.MODE] = 0x4000
-    end
-    -- TODO: (Mike): this is kinda awful
-    for metadata_key, metadata_value in pairs(return_metadata) do
-        if not metadata_options[metadata_key] then
-            log.warn("Metadata Key" .. metadata_key .. ' is not valid. Removing...')
-        else
-            if metadata_key == metadata_options.ATIME_NSEC then
-                atime.nsec = metadata_value
-            elseif metadata_key == metadata_options.ATIME_SEC then
-                atime.sec = metadata_value
-            elseif metadata_key == metadata_options.BTIME_NSEC then
-                birthtime.nsec = metadata_value
-            elseif metadata_key == metadata_options.BTIME_SEC then
-                birthtime.sec = metadata_value
-            elseif metadata_key == metadata_options.CTIME_NSEC then
-                ctime.nsec = metadata_value
-            elseif metadata_key == metadata_options.CTIME_SEC then
-                ctime.sec = metadata_value
-            elseif metadata_key == metadata_options.MTIME_NSEC then
-                mtime.nsec = metadata_value
-            elseif metadata_key == metadata_options.MTIME_SEC then
-                mtime.sec = metadata_value
-            else
-                sanitized_metadata[metadata_key:lower()] = metadata_value
-            end
-        end
-    end
-    sanitized_metadata['atime'] = atime
-    sanitized_metadata['birthtime'] = birthtime
-    sanitized_metadata['ctime'] = ctime
-    sanitized_metadata['mtime'] = mtime
-    -- M._metadata_cache[uri] = sanitized_metadata
-    -- M._metadata_cache[uri]['checkin'] = os.time()
-    return sanitized_metadata
+---     The URI to extract the protocol (and thus the provider) from
+--- @return any, string/any, string/any
+---     Returns the provider, its import path, and the protocol associated with the provider
+--- @private
+local get_provider_for_uri = function(uri)
+    local protocol = uri:match(protocol_from_path_glob)
+    local provider, cache = get_provider_for_protocol(protocol)
+    return provider, cache, protocol
 end
 
---- Read is the main entry to resolving a uri and getting the contents
---- asso
---- Read is the main entry to resolving a uri and getting the contents
---- associated with it. Read reaches out to the appropriate provider
---- and retrieves valid contents.
---- Read does _not_ modify any vim buffers, nor does it modify anything
---- underneath the buffer. Modification/Displaying of data is
---- for the calling method to handle based on the return of Read
----@param buffer_index integer:
----     Vim associated integer pointing to the buffer to
----     load to. Useful for retrieving the relevant read cache
----@param path string:
----    The string path to load to resolve and load contents
----    into the buffer at the buffer_index provided
----@return string: the command to run to load the resolved contents from
----    the provided path into the buffer found at the provided buffer_index
--- TODO(Mike): Consider integration with "_claim_buf_details"
-function M:read(buffer_index, path)
-    if not path then
-        notify.error('No path provided!')
-        return nil
+local validate_uri = function(uri)
+    local is_shortcut = false
+    local provider, cache, protocol = get_provider_for_uri(uri)
+    uri, is_shortcut = M.check_if_path_is_shortcut(uri)
+    if not is_shortcut and not provider then
+        log.warn(tostring(uri) .. " is not ours to deal with")
+        return nil -- Nothing to do here, this isn't ours to handle
+    elseif is_shortcut and not provider then
+        log.trace("Searching for provider for " .. uri)
+        provider, cache, protocol = get_provider_for_uri(uri)
     end
-    local provider_details = M:_get_buffer_cache_object(buffer_index, path)
-    local read_data, read_type, read_cwd = provider_details.provider:read(path, provider_details.provider_cache)
+    return uri, provider, cache, protocol
+end
+
+--- Generates a vim command that can be run, which will display the stream contents
+--- @param read_data table
+---     Array of lines
+--- @param filetype string
+---         Optional: Defaults to "detect"
+---         If provided will set the filetype of the file to this.
+--- @return string
+---     vim command to run
+local _read_as_stream = function(read_data, filetype)
+    filetype = filetype or "detect"
+    local command = "0append! " .. table.concat(read_data, '\n') .. " | set nomodified | filetype " .. filetype
+    log.trace("Generated read stream command: " .. command:sub(1, 30))
+    return command
+end
+
+--- Generates a vim command to load the pulled file into vim
+--- @param read_data table
+---     Table containing the following key value pairs
+---     - origin_path
+---         The path (local to the provider) that the file came from. Its origin
+---     - local_path
+---         The path (local to the filesystem) that the file lives on. Its local path
+--- @param filetype string
+---         Optional: Defaults to "detect"
+---         If provided will set the filetype of the file to this.
+--- @return string
+---     vim command to run to load file into buffer
+local _read_as_file = function(read_data, filetype)
+    local origin_path = read_data.origin_path
+    local local_path  = read_data.local_path
+    filetype    = filetype or "detect"
+    log.trace("Processing details: ", {origin_path=origin_path, local_path=local_path})
+    local command = 'read ++edit ' .. local_path .. ' | set nomodified | filetype ' .. filetype
+    log.trace("Generated read file command: " .. command)
+    return command
+end
+
+local _read_as_explore = function(read_data)
+    local sanitized_data = {}
+    for _, data in pairs(read_data.remote_files) do
+        for key, value in ipairs(data) do
+            if netman_options.explorer.FIELDS[key] == nil then
+                log.warn("Removing " .. key .. " from directory data as it " ..
+                    "does not conform with netman.options.explorer.FIELDS...")
+                data[key] = nil
+            elseif key == netman_options.explorer.FIELDS.METADATA then
+                for _metadata_flag, _ in pairs(value) do
+                    if netman_options.explorer.METADATA[_metadata_flag] == nil then
+                        log.warn("Removing metadata flag " .. _metadata_flag .. " from items metadata as it " ..
+                            "does not conform with netman.options.explorer.METADATA...")
+                        value[_metadata_flag] = nil
+                    end
+                end
+            end
+        end
+        local acceptable_output = true
+        for _, field in ipairs(netman_options.explorer.FIELDS) do
+            if data[field] == nil then
+                log.warn("Explorer Data Missing Required Field: " .. field)
+                acceptable_output = false
+            end
+        end
+        if acceptable_output then
+            table.insert(sanitized_data, data)
+        end
+    end
+    return sanitized_data
+end
+
+--- Initializes the Netman Augroups, what did you think it does?
+local _init_augroups = function()
+    local read_callback = function(callback_details)
+        local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
+        if is_shortcut or not uri:match("^[/.]") then
+                require("netman").read(uri)
+            return
+        else
+            local command = 'edit'
+            if callback_details.event == 'FileReadCmd' then
+                command = 'read'
+            end
+            return vim.api.nvim_command(command .. ' ' .. uri .. ' | filetype detect')
+        end
+    end
+    local write_callback = function(callback_details)
+        local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
+        if is_shortcut or not uri:match("^[/.]") then
+            require("netman").write(uri)
+            return
+        else
+            return vim.api.nvim_command("w " .. uri)
+        end
+    end
+    local buf_focus_callback = function(callback_details)
+        if
+            callback_details.file
+            and callback_details.file:match(protocol_from_path_glob) then
+            log.trace("Setting Remote CWD To parent of " .. tostring(callback_details.file))
+            libruv.change_buffer(callback_details.file)
+        else
+            libruv.clear_rcwd()
+        end
+    end
+    local au_commands = {
+       {'BufEnter', {
+            group = 'Netman',
+            pattern = '*',
+            desc = '',
+            callback = buf_focus_callback
+            }
+        }
+        , {'FileReadCmd' , {
+            group = "Netman"
+            ,pattern = "*"
+            ,desc = "Netman FileReadCmd Autocommand"
+            ,callback = read_callback
+            }
+        }
+        , {'BufReadCmd' , {
+            group = "Netman"
+            ,pattern = "*"
+            ,desc = "Netman BufReadCmd Autocommand"
+            ,callback = read_callback
+            }
+        }
+        , {'FileWriteCmd', {
+            group = "Netman"
+            ,pattern = "*"
+            ,desc = "Netman FileWriteCmd Autocommand"
+            ,callback = write_callback
+            }
+        }
+        , {'BufWriteCmd', {
+            group = "Netman"
+            ,pattern = "*"
+            ,desc = "Netman BufWriteCmd Autocommand"
+            ,callback = write_callback
+            }
+        }
+        , {"BufUnload", {
+            group = "Netman"
+            ,pattern = "*"
+            ,desc = "Netman BufUnload Autocommand"
+            ,callback = function(callback_details) M.unload(callback_details.file, callback_details.buff) end
+            }
+        }
+    }
+
+    vim.api.nvim_create_augroup("Netman", {clear=true})
+    for _, au_command in ipairs(au_commands) do
+        vim.api.nvim_create_autocmd(au_command[1], au_command[2])
+    end
+end
+
+--- Checks if the path is a URI that netman can manage
+--- @param uri string
+---     The uri to check
+--- @return boolean
+---     Returns true/false depending on if Netman can handle the uri
+function M.is_path_netman_uri(uri)
+    if get_provider_for_uri(uri) then return true else return false end
+end
+
+--- Checks with the registered explorer (likely libruv)
+--- to see if the provided path is a shortcut path to
+--- a uri
+--- @param path string
+---     The path to compare
+--- @return string, boolean
+---     Returns the real path if it exists, or it returns the original path
+---     Returns True if the path was a shortcut and false if it isn't
+function M.check_if_path_is_shortcut(path, direction)
+    direction = direction or 'local_to_remote'
+    if direction == 'local_to_remote' then
+        return libruv.is_path_local_to_remote_map(path)
+    elseif direction == 'remote_to_local' then
+        return libruv.is_path_remote_to_local_map(path)
+    else
+        log.error('Unknown Shortcut Direction ' .. tostring(direction) .. ' for path ' .. path)
+        error('Invalid Netman Path Shortcut Direction Check')
+    end
+end
+
+function M.read(uri)
+    local provider, cache = nil, nil
+    uri, provider, cache = validate_uri(uri)
+    if not uri then return nil end
+    log.info("Reaching out to " .. provider.name .. " to read " .. uri)
+    local read_data, read_type, parent_details = provider.read(uri, cache)
     if read_type == nil then
         log.info("Setting read type to api.READ_TYPE.STREAM")
         log.debug("back in my day we didn't have optional return values...")
         read_type = netman_options.api.READ_TYPE.STREAM
     end
-    if read_cwd == nil then
-        log.warn("Received no cwd for " .. path .. '!')
-        notify.error("No CWD returned for " .. path .. ". See logs (:Nmlogs) for more details")
-        return nil
-    end
-    provider_details.cwd = read_cwd
     if netman_options.api.READ_TYPE[read_type] == nil then
-        notify.error("Unable to figure out how to display: " .. path .. '!')
+        notify.error("Unable to figure out how to display: " .. uri .. '!')
         log.warn("Received invalid read type: " .. read_type .. ". This should be either api.READ_TYPE.STREAM or api.READ_TYPE.FILE!")
         return nil
     end
@@ -420,88 +277,116 @@ function M:read(buffer_index, path)
         log.debug("grumble grumble, kids these days not following spec...")
         read_data = {read_data}
     end
-    provider_details.type = read_type
+    -- TODO: (Mike): Validate the parent object is correct
     if read_type == netman_options.api.READ_TYPE.STREAM then
-        log.debug("Getting stream command for path: " .. path)
+        log.info("Getting stream command for path: " .. uri)
+        libruv.clear_rcwd()
         return _read_as_stream(read_data)
     elseif read_type == netman_options.api.READ_TYPE.FILE then
-        provider_details.unique_name = read_data.unique_name or read_data.local_path
-        provider_details.local_path = read_data.local_path
-        log.debug("Setting unique name for path: " .. path .. " to " .. provider_details.unique_name)
-        log.debug("Getting file command for path: " .. path)
+        log.info("Getting file read command for path: " .. uri)
+        libruv.clear_rcwd()
+        libruv.rcd(parent_details.local_parent, parent_details.remote_parent)
         return _read_as_file(read_data)
     elseif read_type == netman_options.api.READ_TYPE.EXPLORE then
-        if not M.explorer then
-            log.error("No tree explorer loaded!")
-            return
-        end
-        log.debug("Calling explorer to handle path: " .. path)
-        return M.explorer:explore(path, _read_as_explore(read_data))
+        log.info("Getting directory contents for path: " .. uri)
+        return {
+            contents = _read_as_explore(read_data),
+            parent = {
+                display = parent_details.local_parent,
+                remote  = parent_details.remote_parent
+            },
+            current = {
+                display = uri
+            }
+        }
     end
     log.warn("Mismatched read_type. How on earth did you end up here???")
     log.debug("Ya I don't know what you want me to do here chief...")
     return nil
 end
 
---- Load Explorer is used to set the current remote explorer to whatever package
---- is associated with `explorer_path`.
---- @param explorer_path string
----     The string path to the explorer to use
---- @param force boolean
----     A boolean to tell us if we should force the use of this explorer or not
----     NOTE: Only respected if the explorer passes validation
---- @return nil
-function M:load_explorer(explorer_path, force)
-    force = force or false
-    local explorer = require(explorer_path)
-    log.debug("Validating explorer " .. explorer_path)
-
-    local missing_attrs = nil
-    for _, required_attr in ipairs(_explorer_required_attributes) do
-        if not explorer[required_attr] then
-            if missing_attrs then
-                missing_attrs = missing_attrs .. ', ' .. required_attr
-            else
-                missing_attrs = required_attr
-            end
+function M.write(buffer_index, uri)
+    local provider, cache = nil, nil
+    uri, provider, cache = validate_uri(uri)
+    if not uri then return nil end
+    log.info("Reaching out to " .. provider.name .. " to write " .. uri)
+    -- TODO: Do this asynchronously
+    local lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
+    for index, line in ipairs(lines) do
+        if not line:match('[\n\r]$') then
+            lines[index] = line .. '\n'
         end
     end
-    if missing_attrs then
-        log.error("Failed to initialize explorer: " .. explorer_path .. ". Missing the following required attributes (" .. missing_attrs .. ")")
-        M._unintialized_explorers[explorer_path] = {
-            reason = "Validation Failure"
-           ,name = explorer_path
-           ,version = "Unknown"
-        }
-        return
-    end
-    if M.explorer then
-        log.info("Received new explorer " .. explorer_path .. '. Attempting to override existing explorer ' .. M.explorer._explorer_path)
-        if explorer_path:find('^netman%.providers') and not force then
-            log.debug(
-                "Core explorer: "
-                .. explorer_path .. ':' .. explorer.version
-                .. ' attempted to overwrite third party'
-                .. ' ' .. M.explorer._explorer_path
-                .. '. Refusing...')
-                goto continue
-
-        end
-        M._unintialized_explorers[explorer_path] = {
-            reason = "Overriden by " .. explorer_path .. ":" .. explorer.version
-            ,name = M.explorer._explorer_path
-            ,version = M.explorer.version
-        }
-    end
-    M.explorer = explorer
-    if M.explorer['init'] then
-        M.explorer:init()
-    end
-    M.explorer._explorer_path = explorer_path
-    ::continue::
+    provider.write(uri, cache, lines)
 end
 
---- Unoad Provider is a function that is provided to allow a user (developer)
+function M.delete(uri)
+    local provider, cache = nil, nil
+    uri, provider, cache = validate_uri(uri)
+    if not uri then return nil end
+    log.info("Reaching out to " .. provider.name .. " to delete " .. uri)
+    -- Do this asynchronously
+    provider.delete(uri, cache)
+end
+
+function M.get_metadata(uri, metadata_keys)
+    local provider, cache = nil, nil
+    uri, provider, cache = validate_uri(uri)
+    if not uri then return nil end
+    if not metadata_keys then
+        metadata_keys = {}
+        for key, _ in pairs(netman_options.explorer.STANDARD_METADATA_FLAGS) do
+            table.insert(metadata_keys, key)
+        end
+    end
+    log.trace("Validating Metadata Request", uri)
+    local sanitized_metadata_keys = {}
+    for _, key in ipairs(metadata_keys) do
+        if not netman_options.explorer.METADATA[key] then
+            log.warn("Metadata Key: " .. tostring(key) .. " is not valid. Please check `https://github.com/miversen33/netman.nvim/wiki/API-Documentation#get_metadatarequested_metadata` for details on how to properly request metadata")
+        else
+            table.insert(sanitized_metadata_keys, key)
+        end
+    end
+    local provider_metadata = provider.get_metadata(uri, cache, sanitized_metadata_keys) or {}
+    local metadata = {}
+    for _, key in ipairs(sanitized_metadata_keys) do
+        metadata[key] = provider_metadata[key] or nil
+    end
+    return metadata
+end
+
+function M.unload(uri, buffer_handle)
+    if buffer_handle then
+        utils.remove_tracked_buffer(buffer_handle)
+    end
+end
+
+--- Registers an explorer package which will be used to determine
+--- what path to feed on cwd fetches
+--- See netman.tools.options.explorer.EXPLORER_PACKAGES for predefined
+--- packages that netman respects as explorers
+--- @param explorer_package string
+---     The name of the package to register
+--- @return nil
+function M.register_explorer_package(explorer_package)
+    log.info("Registering " .. tostring(explorer_package) .. " as an explorer package in netman!")
+    local sanitized_package = explorer_package:gsub(package_path_sanitizer_glob, '%%' .. '%1')
+    M._explorers[explorer_package] = sanitized_package
+end
+
+--- Gets a list of all registered explorer packages with netman
+--- See netman.api.register_explorer_packages for more details on how to
+--- register a package
+function M.get_explorer_packages()
+    local explorers = {}
+    for _, explorer in pairs(M._explorers) do
+        table.insert(explorers, explorer)
+    end
+    return explorers
+end
+
+--- Unload Provider is a function that is provided to allow a user (developer)
 --- to remove a provider from Netman. This is most useful when changes have been
 --- made to the provider and you wish to reflect those changes without
 --- restarting Neovim
@@ -509,7 +394,9 @@ end
 ---    The string path to the provider
 ---    EG: "netman.provider.ssh"
 --- @return nil
-function M:unload_provider(provider_path)
+function M.unload_provider(provider_path, justification)
+    local justified = false
+    if justification then justified = true end
     log.info("Attempting to unload provider: " .. provider_path)
     local status, provider = pcall(require, provider_path)
     package.loaded[provider_path] = nil
@@ -522,59 +409,23 @@ function M:unload_provider(provider_path)
         for _, pattern in ipairs(provider.protocol_patterns) do
             local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
             if M._providers[new_pattern] then
-                log.debug("Removing associated autocommands with " .. new_pattern .. " for provider " .. provider_path)
-                if not M._unitialized_providers[provider_path] then
-                    M._unitialized_providers[provider_path] = {
+                log.trace("Removing associated autocommands with " .. new_pattern .. " for provider " .. provider_path)
+                if not justified then
+                    justification {
                         reason = "Provider Unloaded"
                         ,name = provider_path
                         ,protocol = table.concat(provider.protocol_patterns, ', ')
                         ,version = provider.version
                     }
+                    justified = true
                 end
-                M._providers[new_pattern] = nil
-                vim.api.nvim_command('autocmd! Netman FileReadCmd '  .. new_pattern .. '://*')
-                vim.api.nvim_command('autocmd! Netman BufReadCmd '   .. new_pattern .. '://*')
-                vim.api.nvim_command('autocmd! Netman FileWriteCmd ' .. new_pattern .. '://*')
-                vim.api.nvim_command('autocmd! Netman BufWriteCmd '  .. new_pattern .. '://*')
-                vim.api.nvim_command('autocmd! Netman BufUnload '    .. new_pattern .. '://*')
-                vim.api.nvim_command('autocmd! Netman BufEnter '    .. new_pattern .. '://*')
+                M._providers.protocol_to_path[new_pattern] = nil
+                M._providers.path_to_provider[provider_path] = nil
             end
         end
     end
-    local provider_map = {}
-    for id, provider_details in pairs(M._unclaimed_provider_details) do
-        if provider_details.provider._provider_path == provider_path then
-            provider_map[provider_details.origin_path] = id
-        end
-    end
-    if next(provider_map) == nil then
-        log.info("Removing Provider " .. provider_path .. " from associated buffers")
-        for uri, id in pairs(provider_map) do
-            M._unclaimed_id_table[uri] = nil
-            M._unclaimed_id_table[id] = nil
-        end
-    end
+    M._providers.uninitialized[provider_path] = justification
     return true
-end
-
---- Reload Provider is a developer helper function that is provided for a developer
---- to quickly reload their provider into Netman without having to restart Neovim
---- @param provider_path string
----    The string path to the provider
----    EG: "netman.provider.ssh"
---- @return nil
-function M:reload_provider(provider_path)
-    M:unload_provider(provider_path)
-    M:load_provider(provider_path)
-end
-
-function M:_set_remote_cwd(buffer_index)
-    if buffer_index and M._buffer_provider_cache["" .. buffer_index] then
-        M._cwd = M._buffer_provider_cache["" .. buffer_index].cwd
-    else
-        M._cwd = vim.loop.cwd()
-    end
-    log.debug("Set remote cwd to " .. M._cwd .. ' for index ' .. tostring(buffer_index))
 end
 
 --- Load Provider is what a provider should call
@@ -585,18 +436,18 @@ end
 ---    The string path to the provider
 ---    EG: "netman.provider.ssh"
 --- @return nil
-function M:load_provider(provider_path)
+function M.load_provider(provider_path)
+    if M._providers.path_to_provider[provider_path] then
+        log.warn(provider_path .. " is already loaded! Consider calling require('netman.api').reload_provider('" .. provider_path .. "') if you want to reload this!")
+        return
+    end
     local status, provider = pcall(require, provider_path)
-    log.debug("Attempting to import provider: " .. provider_path, {status=status})
+    log.info("Attempting to import provider: " .. provider_path)
     if not status or provider == true or provider == false then
+        log.info("Received following info on attempted import", {status=tatus, provider=provider})
         notify.error("Failed to initialize provider: " .. tostring(provider_path) .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider")
         return
     end
-    if provider.protocol_patterns and provider.protocol_patterns == netman_options.protocol.EXPLORE then
-        log.info("Found explorer " .. provider_path .. ". Attempting load now")
-        return M:load_explorer(provider_path)
-    end
-    provider._provider_path = provider_path
     log.info("Validating Provider: " .. provider_path)
     local missing_attrs = nil
     for _, required_attr in ipairs(_provider_required_attributes) do
@@ -611,7 +462,7 @@ function M:load_provider(provider_path)
     log.info("Validation finished")
     if missing_attrs then
         log.error("Failed to initialize provider: " .. provider_path .. ". Missing the following required attributes (" .. missing_attrs .. ")")
-        M._unitialized_providers[provider_path] = {
+        M._providers.uninitialized[provider_path] = {
             reason = "Validation Failure"
            ,name = provider_path
            ,protocol = "Unknown"
@@ -619,231 +470,85 @@ function M:load_provider(provider_path)
        }
         return
     end
-
-    log.debug("Initializing " .. provider._provider_path .. ":" .. provider.version)
+    log.trace("Initializing " .. provider_path .. ":" .. provider.version)
+    M._providers.path_to_provider[provider_path] = {provider=provider, cache=cache_generator:new(cache_generator.MINUTE)}
     if provider.init then
-        log.debug("Found init function for provider!")
+        log.trace("Found init function for provider!")
             -- TODO(Mike): Figure out how to load configuration options for providers
         local provider_config = {}
-        local status, valid = pcall(provider.init, provider, provider_config)
+        -- Consider having this being a timeout based async job?
+        -- Bad actors will break the plugin altogether
+        local status, valid = pcall(
+            provider.init
+            ,provider_config
+            ,M._providers.path_to_provider[provider_path].cache
+        )
         if not status or valid ~= true then
-            log.warn(provider._provider_path .. ":" .. provider.version .. " refused to initialize. Discarding")
-            M._unitialized_providers[provider_path] = {
+            log.warn(provider_path .. ":" .. provider.version .. " refused to initialize. Discarding")
+            M.unload_provider(provider_path, {
                  reason = "Initialization Failed"
                 ,name = provider_path
                 ,protocol = table.concat(provider.protocol_patterns, ', ')
                 ,version = provider.version
-            }
+            })
             return
         end
     end
+
     for _, pattern in ipairs(provider.protocol_patterns) do
         local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
-        log.debug("Reducing " .. pattern .. " down to " .. new_pattern)
-        if M._providers[new_pattern] then
+        log.trace("Reducing " .. pattern .. " down to " .. new_pattern)
+        local existing_provider_path  = M._providers.protocol_to_path[new_pattern]
+        if existing_provider_path then
+            local existing_provider = M._providers.path_to_provider[existing_provider_path].provider
             if pattern:find('^netman%.providers') then
-                log.debug(
+                log.trace(
                     "Core provider: "
                     .. provider.name
                     .. ":" .. provider.version
-                    .. " attempted to overwrite third party provider: "
-                    .. M._providers[new_pattern].name
-                    .. ":" .. M._providers[new_pattern].version
+                    .. " attempted to override third party provider: "
+                    .. existing_provider.name
+                    .. ":" .. existing_provider.version
                     .. " for protocol pattern "
                     .. new_pattern .. ". Refusing...")
-                M._unitialized_providers[provider._provider_path] = {
-                    reason = "Overriden by " .. M._providers[new_pattern]._provider_path .. ":" .. M._providers[new_pattern].version
-                    ,name = provider._provider_path
+                M._providers.uninitialized[provider_path] = {
+                    reason = "Overriden by " .. existing_provider_path .. ":" .. existing_provider.version
+                    ,name = provider_path
                     ,protocol = table.concat(provider.protocol_patterns, ', ')
                     ,version = provider.version
                 }
                 goto continue
             end
-            log.info("Provider " .. M._providers[new_pattern]._provider_path .. " is being overriden by " .. provider_path)
-            M._unitialized_providers[M._providers[new_pattern]._provider_path] = {
-                reason = "Overriden by " .. provider._provider_path .. ":" .. provider.version
-                ,name = provider._provider_path
-                ,protocol = table.concat(provider.protocol_patterns, ', ')
-                ,version = provider.version
-            }
-            M._providers[new_pattern] = provider
-            goto continue
+            log.info("Provider " .. existing_provider_path .. " is being overriden by " .. provider_path)
+            M.unload_provider(existing_provider_path, {
+                reason = "Overriden by " .. provider_path .. ":" .. provider.version
+                ,name = existing_provider.name
+                ,protocol = table.concat(existing_provider.protocol_patterns, ', ')
+                ,version = existing_provider.version
+            })
         end
-        M._providers[new_pattern] = provider
-        local au_commands = {
-             'autocmd Netman FileReadCmd '  .. new_pattern .. '://* lua require("netman"):read(vim.fn.expand("<amatch>"))'
-            ,'autocmd Netman BufReadCmd '   .. new_pattern .. '://* lua require("netman"):read(vim.fn.expand("<amatch>"))'
-            ,'autocmd Netman FileWriteCmd ' .. new_pattern .. '://* lua require("netman"):write()'
-            ,'autocmd Netman BufWriteCmd '  .. new_pattern .. '://* lua require("netman"):write()'
-            ,'autocmd Netman BufUnload '    .. new_pattern .. '://* lua require("netman.api"):unload(vim.fn.expand("<abuf>"))'
-            ,'autocmd Netman BufEnter '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(vim.fn.expand("<abuf>"))'
-            ,'autocmd Netman WinEnter '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(vim.fn.expand("<abuf>"))'
-            ,'autocmd Netman BufLeave '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(nil))'
-            ,'autocmd Netman WinLeave '     .. '*' ..         ':lua require("netman.api"):_set_remote_cwd(nil))'
-        }
-        if not M._augroup_defined then
-            vim.api.nvim_command('augroup Netman')
-            vim.api.nvim_command('autocmd!')
-            vim.api.nvim_command('augroup END')
-            M._augroup_defined = true
-        else
-            log.debug("Augroup Netman already exists, not recreating augroup")
-        end
-        for _, command in ipairs(au_commands) do
-            log.debug("Setting Autocommand: " .. command)
-            vim.api.nvim_command(command)
-        end
+        M._providers.protocol_to_path[new_pattern] = provider_path
         ::continue::
     end
-    M._unitialized_providers[provider_path] = nil
+    M._providers.uninitialized[provider_path] = nil
     log.info("Initialized " .. provider_path .. " successfully!")
 end
 
---- Unload will inform relevant providers that a buffer is being
---- closed by the user. This will give the providers a chance
---- to close out any cache information it has associated with the
---- buffer. Additionally, Unload will clear out any cache information
---- associated with the buffer.
---- Note: this will expect the provider to handle whatever it needs
---- asynchronously (IE in the background)
---- Unload is called automatically by an autocommand
---- @param buffer_index string
----    The index of the buffer being closed
---- @return nil
-function M:unload(buffer_index)
-    log.info("Unload for index: " .. buffer_index .. " triggered")
-   local bp_cache_object = M._buffer_provider_cache["" .. buffer_index]
-   if bp_cache_object == nil then
-       return
-   end
-   local called_providers = {}
-   local provider
-   for _, provider_details in pairs(bp_cache_object) do
-        provider = provider_details.provider
-       if called_providers[provider.name] ~= nil then
-           goto continue
-       end
-       called_providers[provider.name] = provider
-       if provider_details.type == netman_options.api.READ_TYPE.FILE and provider_details.local_path then
-            utils.run_shell_command('rm ' .. provider_details.local_path)
-       end
-       log.info("Processing unload of " .. provider._provider_path .. ":" .. provider.version)
-       if provider.close_connection ~= nil then
-            log.debug("Closing connection with " .. provider._provider_path .. ":" .. provider.version)
-            provider:close_connection(buffer_index, provider_details, bp_cache_object.provider_cache)
-       end
-       ::continue::
-   end
-   M._buffer_provider_cache["" .. buffer_index] = nil
+function M.reload_provider(provider_path)
+    M.unload_provider(provider_path)
+    M.load_provider(provider_path)
 end
 
-function M:dump_info(output_path)
-    if output_path ~= 'memory' then
-        ---@diagnostic disable-next-line: ambiguity-1
-        output_path = output_path or "$HOME/" .. utils.generate_string(10)
-    end
-    local neovim_details = vim.version()
-    local headers = {
-        '----------------------------------------------------'
-        ,"Neovim Version: " .. neovim_details.major .. "." .. neovim_details.minor
-        ,"System: " .. vim.loop.os_uname().sysname
-        ,"Netman Version: " .. M.version
-        ,""
-        ,"Api Contents: " .. vim.inspect(M, {newline="\\n", indent="\\t"})
-        ,">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-    }
-    if M.explorer then
-        table.insert(headers, 'Registered Explorer Details')
-        table.insert(headers, "    " .. tostring(M.explorer._explorer_path) .. " --version " .. tostring(M.explorer.version))
-        table.insert(headers, '')
-    end
-    table.insert(headers, 'Not Registered Explorer Details')
-    for _, explorer_info in pairs(M._unintialized_explorers) do
-        table.insert(headers,
-        "    "
-        .. explorer_info.name
-        .. " --version "
-        .. tostring(explorer_info.version)
-        .. " --reason "
-        .. explorer_info.reason
-        )
-    end
-    table.insert(headers, '')
-    table.insert(headers, 'Running Provider Details')
-    for pattern, provider in pairs(M._providers) do
-        table.insert(headers, "    " .. tostring(provider._provider_path) .. " --pattern " .. pattern .. " --protocol " .. tostring(provider.name) .. " --version " .. tostring(provider.version))
-    end
-    table.insert(headers, "")
-    table.insert(headers, "Not Running Provider Details")
-    for provider, provider_info in pairs(M._unitialized_providers) do
-        table.insert(headers,
-            "    "
-            .. provider
-            .. " --protocol "
-            .. tostring(provider_info.name)
-            .. " --version "
-            .. tostring(provider_info.version)
-            .. " --reason "
-            .. tostring(provider_info.reason)
-        )
-    end
-    table.insert(headers, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-    table.insert(headers, "Overriden Explorers")
-    for _explorer, _ in pairs(require("netman.libuv-mask").overriden_callers) do
-        table.insert(headers, '    ' .. tostring(_explorer))
-    end
-    table.insert(headers, '----------------------------------------------------')
-    table.insert(headers, 'Logs:')
-    table.insert(headers, '')
-    local log_buffer = nil
-    for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.api.nvim_buf_get_option(buffer, 'filetype') ~= 'NetmanLogs' then
-            goto continue
-        else
-            log_buffer = buffer
-            break
-        end
-        ::continue::
-    end
-    if not log_buffer then
-        log_buffer = vim.api.nvim_create_buf(true, true)
-        vim.api.nvim_buf_set_option(log_buffer, 'filetype', 'NetmanLogs')
-    end
-
-    vim.api.nvim_buf_set_option(log_buffer, 'modifiable', true)
-    vim.api.nvim_set_current_buf(log_buffer)
-    local logs = utils.generate_session_log(output_path, headers)
-    vim.api.nvim_buf_set_lines(log_buffer, 0, -1, false, logs)
-    vim.api.nvim_command('%s%\\\\n%\r%g')
-    vim.api.nvim_command('%s%\\\\t%\t%g')
-    vim.api.nvim_buf_set_option(log_buffer, 'modifiable', false)
-    vim.api.nvim_buf_set_option(log_buffer, 'modified', false)
-    vim.api.nvim_command('0')
-end
-
-function M:init(core_providers)
-    if M._initialized then
+function M.init()
+    if M._inited then
         return
     end
-    local _core_providers = require('netman.providers')
-    core_providers = core_providers or _core_providers
+    _init_augroups()
+    local core_providers = require("netman.providers")
     log.info("Initializing Netman API")
-    for _, provider in ipairs(core_providers) do M:load_provider(provider) end
-    M._initialized = true
-    vim.g.netman_api_initialized = true
+    for _, provider in ipairs(core_providers) do M.load_provider(provider) end
+    log.info("--------------------Netman API initialization complete!--------------------")
 end
 
-
--- I am not super fond of this, but it is how the busted framework
--- says to handle unit testing of internal methods
--- http://olivinelabs.com/busted/#private
----@diagnostic disable-next-line: undefined-global
-if _UNIT_TESTING then
-    M._read_as_stream          = _read_as_stream
-    M._read_as_file            = _read_as_file
-    M._read_as_explore         = _read_as_explore
-    M._get_provider_for_path   = _get_provider_for_path
-end
-
-M:init()
+M.init()
 return M
