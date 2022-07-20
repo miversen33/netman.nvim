@@ -159,7 +159,7 @@ function libruv.fs_opendir(path, callback, entries)
            return file_id
        end
     end
-    if not require("netman.api").is_path_netman_uri(path) then
+    if require("netman.api").is_path_netman_uri(path) then
         file_id = libruv.fs_scandir(path)
         if callback then
             callback(nil, file_id)
