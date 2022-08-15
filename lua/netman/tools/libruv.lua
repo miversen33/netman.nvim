@@ -66,6 +66,18 @@ M.__rcwd = nil
 M.protocol_patterns = require('netman.tools.options').protocol.EXPLORE
 M.version = 0.1
 
+local is_caller_explorer = function()
+    -- TODO: Consider using this for local_to_remote maps from api?
+    local explorers = require("netman").api.get_explorer_packages()
+    local caller = utils.get_calling_source(1)
+    for _, explorer in ipairs(explorers) do
+        if caller:match(explorer) then
+            return true
+        end
+    end
+    return false
+end
+
 local stat_conversion = function(pre_metadata_table)
     local cache = {}
     local converted_key = nil
