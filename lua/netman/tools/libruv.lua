@@ -81,6 +81,29 @@ local stat_conversion = function(pre_metadata_table)
     return cache
 end
 
+local clean_path = function(path)
+    -- TODO: (Mike): Cache me outside, how bout dat?
+    if not path or path:match('^%s*$') then return "" end
+    local path_pieces = {}
+    for node in path:gmatch('[^/]+') do
+        if node == '.' then
+            goto continue
+        end
+        if node == '..' then
+            table.remove(path_pieces)
+        else
+            table.insert(path_pieces, node)
+        end
+        ::continue::
+    end
+    local new_path = ''
+    if path_pieces then
+        new_path = new_path .. table.concat(path_pieces, '/')
+    end
+    if path:sub(1,1) == '/' then new_path = '/' .. new_path end
+    return new_path
+end
+
 function libruv.fs_readlink(path, callback)
     local mapped_path = M.__cache:get_item('remote_to_local_map'):get_item(path) or libruv.__fs_readlink(path)
     if callback then
@@ -92,12 +115,25 @@ function libruv.fs_readlink(path, callback)
 end
 
 function libruv.fs_realpath(path, callback)
-    local mapped_path = M.__cache:get_item('remote_to_local_map'):get_item(path) or libruv.__fs_realpath(path)
-    if callback then
-        callback(nil, mapped_path)
-        return
-    else
-        return mapped_path
+    if libruv.__rcwd and (path == '.' or path == './') then
+        path = libruv.__rcwd
+        if callback then
+            callback(nil, path)
+            return
+        else
+            return path
+        end
+    end
+    local _mapped_path = M.__cache:get_item('remote_to_local_map'):get_item(path)
+    if require("netman").api.is_path_netman_uri(path) then
+        _mapped_path = _mapped_path or path
+        if callback then
+            callback(nil, _mapped_path.path)
+            return
+        else
+            return _mapped_path.path
+        end
+    end
     local _clean_path = clean_path(path)
     if M.__cache:get_item('local_to_remote_map'):get_item(_clean_path) then
         if callback then
