@@ -316,7 +316,7 @@ function libruv.fs_scandir(path, callback)
         return libruv.__fs_scandir(path, callback)
     end
     local parent_details = scandir_cache.parent
-    M.rcd(path, mapped_path)
+    -- M.rcd(path, mapped_path)
     local local_to_remote_map = M.__cache:get_item('local_to_remote_map')
     local remote_to_local_map = M.__cache:get_item('remote_to_local_map')
     local files_metadata      = M.__cache:get_item('file_metadata')
