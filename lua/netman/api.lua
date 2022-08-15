@@ -164,9 +164,7 @@ local _init_augroups = function()
         end
     end
     local buf_focus_callback = function(callback_details)
-        if
-            callback_details.file
-            and callback_details.file:match(protocol_from_path_glob) then
+        if get_provider_for_uri(callback_details.file) then
             log.trace("Setting Remote CWD To parent of " .. tostring(callback_details.file))
             libruv.change_buffer(callback_details.file)
         else
