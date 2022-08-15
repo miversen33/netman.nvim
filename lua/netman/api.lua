@@ -142,7 +142,8 @@ end
 local _init_augroups = function()
     local read_callback = function(callback_details)
         local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
-        if is_shortcut or not uri:match("^[/.]") then
+        log.debug("Read Details", {input_file=callback_details.match, uri=uri, is_shortcut=is_shortcut})
+        if is_shortcut or get_provider_for_uri(uri) then
                 require("netman").read(uri)
             return
         else
@@ -155,7 +156,7 @@ local _init_augroups = function()
     end
     local write_callback = function(callback_details)
         local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
-        if is_shortcut or not uri:match("^[/.]") then
+        if is_shortcut or get_provider_for_uri(uri) then
             require("netman").write(uri)
             return
         else
