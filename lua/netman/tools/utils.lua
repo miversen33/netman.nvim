@@ -158,10 +158,6 @@ local setup = function()
     end
     files_dir = files_dir .. pid .. '/'
     math.randomseed(os.time()) -- seeding for random strings
-    mkdir(cache_dir, 'p') -- Creating the cache dir
-    mkdir(data_dir,  'p') -- Creating the data dir
-    mkdir(files_dir, 'p') -- Creating the temp files dir
-    log_file = io.open(data_dir .. "logs.txt", "a+")
     session_id = generate_string(15)
     for level, levelnr in pairs(log.levels) do
         log[level] = levelnr
@@ -176,6 +172,11 @@ local setup = function()
             _log(level, true, ...)
         end
     end
+    mkdir(cache_dir, 'p') -- Creating the cache dir
+    mkdir(data_dir,  'p') -- Creating the data dir
+    mkdir(files_dir, 'p') -- Creating the temp files dir
+    log_file = io.open(data_dir .. "logs.txt", "a+")
+    log.info("Verifying Netman directories exist", {cache_dir=cache_dir, data_dir=data_dir, files_dir=files_dir})
     log.info("Generated Session ID: " .. session_id .. " for logging.")
     for _, child in ipairs(children) do
         if not is_process_alive(child) then
