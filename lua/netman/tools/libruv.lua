@@ -292,26 +292,18 @@ end
 
 function libruv.cwd()
     local cwd = nil
-    local explorers = require('netman.api').get_explorer_packages()
-    local is_caller_explorer = false
-    local caller1 = utils.get_calling_source()
-    for _, explorer in ipairs(explorers) do
-        if caller1:match(explorer) then
-            is_caller_explorer = true
-            break
-        end
-    end
-    if is_caller_explorer then
+    if is_caller_explorer() then
         if libruv.__rcwd then
             cwd = libruv.__rcwd
         else
             -- TODO: (Mike): Do this
-            log.warn("It looks like a call for cwd was made on a remote buffer from " .. tostring(caller2) .. " which is not a registered File Explorer...")
+            log.warn("It looks like a call for cwd was made on a remote buffer from which is not a registered File Explorer...")
             cwd = libruv.__cwd()
         end
     else
         cwd = libruv.__cwd()
     end
+    log.trace("Returning cwd " .. tostring(cwd) .. " for caller " .. utils.get_calling_source(), {cwd=cwd, rcwd=libruv.__rcwd})
     return cwd
 end
 
