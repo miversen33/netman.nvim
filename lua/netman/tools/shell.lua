@@ -1,4 +1,4 @@
--- Heavily inspired by 
+-- Heavily inspired by
 -- https://github.com/nvim-lua/plenary.nvim/blob/master/lua/plenary/job.lua
 -- This is a stripped down version of plenary's "job" api.
 -- Note: this is not guaranteed to be compatible with plenary.job.
@@ -24,7 +24,7 @@ local Shell = {}
 ---     async: boolean
 ---         If true, Shell:run will return immediately and process in the background
 ---         If false, will attempt to intelligently block until done processing.
----         Note: Shell:run can take a timeout param to deal with runaway trains
+---         Note: Shell:run can take a timeout param to deal with runaway trains 🚂🚂
 ---     netman.tools.options.STDOUT_JOIN: string
 ---         If provided, each entry in stdout will be joined with this string
 ---         Note: this converts stdout to a string as opposed to an array
