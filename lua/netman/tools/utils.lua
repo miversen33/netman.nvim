@@ -91,7 +91,7 @@ local is_process_alive = function(pid)
     local command_options = {}
     command_options[command_flags.STDOUT_JOIN] = ''
     command_options[command_flags.STDERR_JOIN] = ''
-    local command_output = require("netman.tools.shell"):new(command, nil, command_options):run()
+    local command_output = require("netman.tools.shell"):new(command, command_options):run()
     if command_output.stderr ~= '' or command_output.stdout ~= '' then
         return false
     end
