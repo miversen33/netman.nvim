@@ -104,9 +104,10 @@ local dump_callstack = function(callstack_offset)
     log_file:flush()
 end
 
-local get_calling_source = function()
-    -- Probably want to return level 3 and 4, as 3 may be a pcall
-    return debug.getinfo(3, 'S').source, debug.getinfo(4, 'S').source
+local get_calling_source = function(source_offset)
+    source_offset = source_offset or 0
+    local offset = 3 + source_offset
+    return debug.getinfo(offset, 'S').source
 end
 
 local _log = function(level, do_notify, ...)
