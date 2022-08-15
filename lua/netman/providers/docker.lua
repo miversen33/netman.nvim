@@ -278,7 +278,7 @@ local _read_directory = function(uri, path, container, cache)
         else
             cache:get_item('file_metadata'):add_item(child.URI, child)
         end
-        children:add_item(child.URI, {URI=child.URI, FIELD_TYPE=child.TYPE, NAME=child.NAME, ABSOLUTE_PATH=child.ABSOLUTE_PATH, METADATA=child})
+        children:add_item(child.URI, {URI=child.URI, FIELD_TYPE=child.FIELD_TYPE, NAME=child.NAME, ABSOLUTE_PATH=child.ABSOLUTE_PATH, METADATA=child})
         size = size + 1
     end
     return {remote_files = children:as_table()}
