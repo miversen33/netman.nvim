@@ -98,7 +98,16 @@ function libruv.fs_realpath(path, callback)
         return
     else
         return mapped_path
+    local _clean_path = clean_path(path)
+    if M.__cache:get_item('local_to_remote_map'):get_item(_clean_path) then
+        if callback then
+            callback(nil, _clean_path)
+            return
+        else
+            return _clean_path
+        end
     end
+    return libruv.__fs_realpath(path, callback)
 end
 
 function libruv.fs_access(path, mode, callback)
@@ -173,6 +182,7 @@ function libruv.fs_opendir(path, callback, entries)
 end
 
 function libruv.fs_stat(path, callback)
+    path = clean_path(path)
     local mapped_path = M.__cache:get_item('local_to_remote_map'):get_item(path)
     if mapped_path then path = mapped_path.path end
     if not require("netman.api").is_path_netman_uri(path) then
