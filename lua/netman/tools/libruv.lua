@@ -252,6 +252,11 @@ function libruv.fs_scandir(path, callback)
         scandir_cache = require('netman.api').read(mapped_path)
         M.__cache:get_item('scandir_cache')[file_id] = scandir_cache
     end
+    if not scandir_cache or not scandir_cache.parent then
+        log.warn("Unable to get details for " .. path)
+        log.info("Falling back to system call")
+        return libruv.__fs_scandir(path, callback)
+    end
     local parent_details = scandir_cache.parent
     M.rcd(path, mapped_path)
     local local_to_remote_map = M.__cache:get_item('local_to_remote_map')
