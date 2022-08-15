@@ -14,6 +14,7 @@ function M.read(...)
     for _, file in ipairs(files) do
         notify.info("Fetching file: ", file)
         local command = api.read(file)
+        log.trace("Received read command", command)
         if not command then
             log.warn("No command returned for read of " .. file)
             goto continue

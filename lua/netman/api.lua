@@ -443,7 +443,7 @@ function M.load_provider(provider_path)
     local status, provider = pcall(require, provider_path)
     log.info("Attempting to import provider: " .. provider_path)
     if not status or provider == true or provider == false then
-        log.info("Received following info on attempted import", {status=tatus, provider=provider})
+        log.info("Received following info on attempted import", {status=status, provider=provider})
         notify.error("Failed to initialize provider: " .. tostring(provider_path) .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider")
         return
     end
@@ -542,9 +542,9 @@ function M.init()
     if M._inited then
         return
     end
+    log.info("--------------------Netman API initialization started!---------------------")
     _init_augroups()
     local core_providers = require("netman.providers")
-    log.info("Initializing Netman API")
     for _, provider in ipairs(core_providers) do M.load_provider(provider) end
     log.info("--------------------Netman API initialization complete!--------------------")
 end
