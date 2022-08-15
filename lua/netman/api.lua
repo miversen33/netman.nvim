@@ -43,12 +43,13 @@ local function get_provider_for_protocol(protocol)
 end
 
 --- Retrieves the provider details for a URI
---- @param uri string
----     The URI to extract the protocol (and thus the provider) from
---- @return any, string/any, string/any
----     Returns the provider, its import path, and the protocol associated with the provider
---- @private
+---@param uri string
+--- The URI to extract the protocol (and thus the provider) from
+---@return any, string/any, string/any
+--- Returns the provider, its import path, and the protocol associated with the provider
+---@private
 local get_provider_for_uri = function(uri)
+    uri = uri or ''
     local protocol = uri:match(protocol_from_path_glob)
     local provider, cache = get_provider_for_protocol(protocol)
     return provider, cache, protocol
