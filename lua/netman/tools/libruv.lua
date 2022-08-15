@@ -283,7 +283,8 @@ function libruv.fs_scandir(path, callback)
     for _, item in ipairs(scandir_cache.contents) do
         table.insert(scandir_tmp, item)
         if item['METADATA'] then files_metadata:add_item(item['URI'], stat_conversion(item['METADATA'])) end
-        local i = {path = item['URI'], type=item['FIELD_TYPE']}
+        -- This seems to be the wrong type...?
+        local i = {path = item['URI'], type=item['TYPE']}
         local_to_remote_map:add_item(item['NAME'], i)
         local_to_remote_map:add_item(item['ABSOLUTE_PATH'], i)
         remote_to_local_map:add_item(item['URI'], item['NAME'])
