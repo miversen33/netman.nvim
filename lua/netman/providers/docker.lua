@@ -435,7 +435,6 @@ function M.delete(uri, cache)
     -- cache uri so we should verify the cache
     -- we were given has contents
     local details = _parse_uri(uri)
-    -- local path = shell_escape(details.path)
     local command = {'docker', 'exec', details.container, 'rm', '-rf', details.path}
 
     local command_options = {}
