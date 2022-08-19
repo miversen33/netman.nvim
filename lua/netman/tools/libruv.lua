@@ -316,7 +316,6 @@ function libruv.fs_scandir(path, callback)
         return libruv.__fs_scandir(path, callback)
     end
     local parent_details = scandir_cache.parent
-    -- M.rcd(path, mapped_path)
     local local_to_remote_map = M.__cache:get_item('local_to_remote_map')
     local remote_to_local_map = M.__cache:get_item('remote_to_local_map')
     local files_metadata      = M.__cache:get_item('file_metadata')
@@ -328,6 +327,9 @@ function libruv.fs_scandir(path, callback)
     local_to_remote_map:add_item('..', {path=parent_details.remote, type='directory'})
     local_to_remote_map:add_item('../', {path=parent_details.remote, type='directory'})
     local_to_remote_map:add_item(parent_details.display, {path=parent_details.remote, type='directory'})
+    if parent_details.display:len() > 1 and parent_details.display:sub(-1, -1) == '/' then
+        local_to_remote_map:add_item(parent_details.display:sub(1, -2), {path=parent_details.remote, type='directory'})
+    end
     for _, item in ipairs(scandir_cache.contents) do
         table.insert(scandir_tmp, item)
         if item['METADATA'] then files_metadata:add_item(item['URI'], stat_conversion(item['METADATA'])) end
@@ -464,8 +466,6 @@ function M.clear()
 end
 
 function M.init()
-    if M.__inited then return end
-    M.__inited = true
     M.__cache = CACHE:new()
     M.__cache:add_item('scandir_cache', CACHE:new(CACHE.SECOND * 5))
     M.__cache:add_item('scandir_tmp', {})
@@ -473,6 +473,8 @@ function M.init()
     M.__cache:add_item('remote_to_local_map', CACHE:new())
     M.__cache:add_item('rcwd_map', {})
     M.__cache:add_item('file_metadata', CACHE:new(CACHE.SECOND * 2))
+    if M.__inited or vim.g.netman_no_shim then return end
+    M.__inited = true
     libruv.init()
     -- M.__cache:add_item('metadata_cache', CACHE:new())
 end

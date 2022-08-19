@@ -271,6 +271,12 @@ local _read_directory = function(uri, path, container, cache)
     for result in stdout:gmatch('[.%Z]+') do
         child = _process_find_result(result)
         child.URI = uri .. child.NAME
+        if
+            child.FIELD_TYPE == metadata_options.LINK
+            and child.URI:sub(-1, -1) ~= '/'
+        then
+            child.URI = child.URI .. '/'
+        end
         if size == 0 then
             child.URI = uri
             cache:get_item('file_metadata'):add_item(uri, child)
@@ -491,7 +497,7 @@ function M.init(config_options, cache)
     return true
 end
 
-function M:close_connection(buffer_index, uri, cache)
+function M.close_connection(buffer_index, uri, cache)
 
 end
 

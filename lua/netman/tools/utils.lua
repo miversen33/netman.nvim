@@ -10,6 +10,7 @@ local _is_setup            = false
 local cache_dir            = vim.fn.stdpath('cache') .. '/netman/'
 local files_dir            = cache_dir .. 'remote_files/'
 local data_dir             = vim.fn.stdpath('data')  .. '/netman/'
+local socket_dir           = '/tmp/netman/'
 local session_id           = ''
 local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
 local shell_escape_pattern = [[([%s^&*()%]="'+.|,<>?%[{}%\])]]
@@ -175,6 +176,7 @@ local setup = function()
     mkdir(cache_dir, 'p') -- Creating the cache dir
     mkdir(data_dir,  'p') -- Creating the data dir
     mkdir(files_dir, 'p') -- Creating the temp files dir
+    mkdir(socket_dir, 'p') -- Creating the socket dir
     log_file = io.open(data_dir .. "logs.txt", "a+")
     log.info("Verifying Netman directories exist", {cache_dir=cache_dir, data_dir=data_dir, files_dir=files_dir})
     log.info("Generated Session ID: " .. session_id .. " for logging.")
@@ -199,6 +201,7 @@ return {
     cache_dir            = cache_dir,
     data_dir             = data_dir,
     files_dir            = files_dir,
+    socket_dir           = socket_dir,
     package_name_escape  = package_name_escape,
     generate_string      = generate_string,
     is_process_alive     = is_process_alive,

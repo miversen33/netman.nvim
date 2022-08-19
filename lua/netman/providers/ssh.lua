@@ -1,9 +1,15 @@
+-- BUG: I dont know why but for some reason this is breaking on the work servers???
+-- There is no errors being show within netman, but telescope just kinda falls over
+-- when trying to figure out what the parent directory is and how to display it.
+-- Consider adding even more trace logs here?????
+
 local log = require("netman.tools.utils").log
 local notify = require("netman.tools.utils").notify
 local command_flags = require("netman.tools.options").utils.command
 local api_flags = require("netman.tools.options").api
 local string_generator = require("netman.tools.utils").generate_string
 local local_files = require("netman.tools.utils").files_dir
+local socket_files = require("netman.tools.utils").socket_dir
 local metadata_options = require("netman.tools.options").explorer.METADATA
 local shell = require("netman.tools.shell")
 local CACHE = require("netman.tools.cache")
@@ -28,7 +34,7 @@ local PERSIST_SSH_OPTIONS = {
     '-o',
     'ControlMaster=auto',
     '-o',
-    string.format('ControlPath="%s', local_files) .. '%h-%p-%r"',
+    string.format('ControlPath="%s', socket_files) .. '%h-%p-%r"',
     '-o',
     string.format('ControlPersist=%s', SSH_CONNECTION_TIMEOUT)
 }
@@ -39,7 +45,7 @@ local SSH_COMMAND = {
     '-o',
     'ControlMaster=auto',
     '-o',
-    string.format('ControlPath="%s', local_files) .. '%h-%p-%r"',
+    string.format('ControlPath="%s', socket_files) .. '%h-%p-%r"',
     '-o',
     string.format('ControlPersist=%s', SSH_CONNECTION_TIMEOUT),
 }
@@ -328,6 +334,7 @@ local _read_directory = function(uri_details, cache)
             and child.URI:sub(-1, -1) ~= '/'
         then
             child.URI = child.URI .. '/'
+            child.NAME = child.NAME .. '/'
         end
         if size == 0 then
             child.URI = uri_details.base_uri
