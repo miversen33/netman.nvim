@@ -11,7 +11,7 @@ local compat = require("netman.tools.compat")
 local Shell = {}
 
 --- Creates a new shell object (but does not start it)
---- @param command array
+--- @param command table
 ---     Array (table that is not key,value pairs) of commands to run
 ---     Note: due to how libuv
 ---     https://github.com/luvit/luv/blob/master/docs.md#uvspawnpath-options-on_exit
@@ -33,7 +33,6 @@ local Shell = {}
 ---         Note: this converts stderr to a string as opposed to an array
 --- @param std_callbacks table
 ---     Table with the following (optional) key,value pairs
----     stdin: callback
 ---     stdout: callback
 ---     stderr: callback
 ---     Note, stdout and stderr callbacks are not provided, the output from
@@ -56,7 +55,6 @@ function Shell:new(command, options, std_callbacks)
     new_shell._stderr_joiner   = options[require("netman.tools.options").utils.command.STDERR_JOIN]
     new_shell._stdout_callback = std_callbacks.stdout
     new_shell._stderr_callback = std_callbacks.stderr
-    new_shell._stdin_callback  = std_callbacks.stdin
     new_shell._is_async = options.async
     new_shell._exit_callback = options.exit_callback
     new_shell._env = options.env
@@ -67,32 +65,42 @@ function Shell:new(command, options, std_callbacks)
     return new_shell
 end
 
+--- Writes the provided data to the stdin pipe of the process
+--- @param data string
+---     The data to write to stdin
+--- @throws "Please call Shell:run before trying to write to stdin!" if trying to write to stdin before calling Shell:run
+function Shell:write(data)
+    assert(self._starting, "Please call Shell:run before trying to write to stdin!")
+    self._stdin_pipe:write(data)
+end
+
 --- Runs the command information provided in new. Can be chained (EG Shell:new():run())
 --- @param timeout integer (milliseconds)
 ---     Default: 10 (seconds)
 ---     If provided, will restrict the run time to only the alloted timeout.
----     If not provided, will attempt to wait until command is complete.
---- @return return_info/nil
+---     If <= 0, will attempt to wait until command is complete.
+--- @return table/nil
 ---     Returns the following table or nil
 ---     {
 ---         stdout=stdout, -- may be nil if std_callbacks contains a callback for stdout
 ---         stderr=stderr, -- may be nil if std_callbacks contains a callback for stderr
 ---         exit_code=exit_code
 ---     }
----     If options contains an on_exit callback, we will return nothing
+---     If options contains an exit_callback, we will return nothing
 function Shell:run(timeout)
-    timeout = timeout or (10 * 10000)
+    timeout = timeout or (10 * 1000)
     assert(not self._starting, "Shell is already running!")
     self._starting = true
     self._handle = nil
+    self._pid    = nil
     self.stderr = nil
     self.stdout = nil
     self.exit_code = nil
     self._job_timeout = timeout
     self._job_timer = nil
-    self._stdout_pipe = vim.loop.new_pipe(false)
-    self._stderr_pipe = vim.loop.new_pipe(false)
-    self._stdin_pipe  = vim.loop.new_pipe(false)
+    self._stdout_pipe = vim.loop.new_pipe()
+    self._stderr_pipe = vim.loop.new_pipe()
+    self._stdin_pipe  = vim.loop.new_pipe()
     self._cmd_options = {
         args = self._args
         ,stdio = {
@@ -119,58 +127,73 @@ function Shell:run(timeout)
             table.insert(self._stderr, data)
         end
     end
+    local return_info = nil
     if self._is_async then
         self:_run_async()
     else
-        return self:_run_sync()
+        return_info = self:_run_sync()
     end
+    vim.loop.run('nowait')
+    return return_info
 end
 
 function Shell:_run_async()
     assert(self._starting, "Please call Shell:run()!")
-    require("netman.tools.utils").log.debug("HELLO FROM RUN ASYNC!", self._command, self._cmd_options)
-    local _async = nil
-    _async = vim.loop.new_async(function()
-        require("netman.tools.utils").log.warn("HELLO FROM ASYNC CALLBACK!", self._command, self._cmd_options)
-        self:_run()
-        _async:close()
-        require("netman.tools.utils").log.warn("ASYNC FINISHED!")
-    end)
-    _async:send()
-    -- vim.loop.run('nowait')
+    local exit_callback = function(exit_code, _)
+        if self._job_timer then
+            self._job_timer:stop()
+            self._job_timer:close()
+        end
+        if not self._handle:is_closing() then
+            self._handle:close()
+        end
+        self:_on_exit(exit_code, _)
+    end
+    self:_run(exit_callback)
 end
 
 function Shell:_run_sync()
     assert(self._starting, "Please call Shell:run()!")
     assert(self._job_timeout > 0, "Cannot have infinite timeout on synchronous job!")
-    self:_run()
+    local feedback_timer = nil
+    feedback_timer = vim.loop.new_timer()
+    local exit_callback = function(exit_code, _)
+        feedback_timer:stop()
+        feedback_timer:close()
+        if self._job_timer then
+            self._job_timer:stop()
+            self._job_timer:close()
+        end
+        self._handle:close()
+        self:_on_exit(exit_code, _)
+    end
+    self:_run(exit_callback)
+    while self._handle:is_active() do
+        feedback_timer:start(5, 5,
+            function()
+                if not self._handle:is_active() then
+                    feedback_timer:stop()
+                    feedback_timer:close()
+               end
+            end)
+        vim.loop.run('once')
+    end
     return {stdout=self.stdout, stderr=self.stderr, exit_code=self.exit_code}
 end
 
 --- Runs the command after setup by new() and run()
---- @return handle uv_process_t, pid integer
 --- Note: Do not call this
-function Shell:_run()
+function Shell:_run(exit_callback)
     assert(self._starting, "Please call Shell:run()!")
-    local feedback_timer, handle = nil, nil
-    feedback_timer = vim.loop.new_timer()
-    handle, _ =
+    local handle, pid =
         vim.loop.spawn(
             self._command
             ,self._cmd_options
-            ,function(exit_code, _)
-                feedback_timer:stop()
-                feedback_timer:close()
-                if self._job_timer then
-                    self._job_timer:stop()
-                    self._job_timer:close()
-                end
-                self._handle:close()
-                self:_on_exit(exit_code, _)
-            end
+            ,exit_callback
         )
     assert(handle, "Failed to start command: " .. tostring(self._command_as_string))
     self._handle = handle
+    self._pid = pid
     self._stdout_pipe:read_start(function(err, data)
         assert(not err, err)
         self._stdout_callback(data)
@@ -184,19 +207,10 @@ function Shell:_run()
         self._job_timer:start(self._job_timeout, 0, function()
             self._job_timer:stop()
             self._job_timer:close()
+            self._handle:close(exit_callback)
             self._job_timer = nil
-            error(self._command_as_string .. " timed out!")
+            require("netman.tools.utils").log.warn(self._command_as_string .. " timed out!")
         end)
-    end
-    while self._handle:is_active() do
-        feedback_timer:start(5, 5,
-            function()
-                if not self._handle:is_active() then
-                    feedback_timer:stop()
-                    feedback_timer:close()
-               end
-            end)
-        vim.loop.run('once')
     end
 end
 
@@ -228,8 +242,8 @@ function Shell:_on_exit(exit_code, _)
     self._tmp_stderr_callback = nil
     self._job_timer = nil
     self._starting = false
-    if self._on_exit_callback then
-        self._on_exit_callback(return_info)
+    if self._exit_callback then
+        self._exit_callback(return_info)
     else
         return return_info
     end
