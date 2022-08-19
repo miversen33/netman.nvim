@@ -284,7 +284,7 @@ function M.read(uri)
     elseif read_type == netman_options.api.READ_TYPE.FILE then
         log.info("Getting file read command for path: " .. uri)
         libruv.clear_rcwd()
-        libruv.rcd(parent_details.local_parent, parent_details.remote_parent)
+        libruv.rcd(parent_details.local_parent, parent_details.remote_parent, uri)
         return _read_as_file(read_data)
     elseif read_type == netman_options.api.READ_TYPE.EXPLORE then
         log.info("Getting directory contents for path: " .. uri)

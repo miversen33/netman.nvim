@@ -363,7 +363,7 @@ function libruv.cwd()
             cwd = libruv.__rcwd
         else
             -- TODO: (Mike): Do this
-            log.warn("It looks like a call for cwd was made on a remote buffer from which is not a registered File Explorer...")
+            log.warn("It looks like a call for cwd was made on a buffer that is not remote")
             cwd = libruv.__cwd()
         end
     else
@@ -411,7 +411,7 @@ function libruv.init()
     vim.fn.getcwd = vim.loop.cwd
 end
 
-function M.rcd(new_cwd, r_cwd)
+function M.rcd(new_cwd, r_cwd, current_file)
     if new_cwd:len() > 2 and new_cwd:match('/$') then
         new_cwd = new_cwd:sub(1,-2)
     end
@@ -422,6 +422,7 @@ function M.rcd(new_cwd, r_cwd)
         M.__cache:get_item('remote_to_local_map'):add_item(r_cwd, new_cwd)
         M.__cache:get_item('local_to_remote_map'):add_item('.', {path=r_cwd, type='directory'})
         M.__cache:get_item('local_to_remote_map'):add_item('./', {path=r_cwd, type='directory'})
+        M.__cache:get_item('rcwd_map'):add_item(current_file, {path=new_cwd, type='directory'})
     end
 end
 
@@ -444,11 +445,13 @@ function M.is_path_remote_to_local_map(path)
 end
 
 function M.change_buffer(new_current_buffer)
-    local parent = M.__cache:get_item('rcwd_map')[new_current_buffer]
+    local parent = M.__cache:get_item('rcwd_map'):get_item(new_current_buffer)
     local mapped_parent = nil
     if parent then
-        mapped_parent = M.__cache:get_item('local_to_remote_map'):get_item(parent)
-        M.rcd(parent, mapped_parent.path)
+        mapped_parent = M.__cache:get_item('local_to_remote_map'):get_item(parent.path)
+    end
+    if mapped_parent then
+        M.rcd(parent.path, mapped_parent.path, new_current_buffer)
     end
 end
 
@@ -471,7 +474,7 @@ function M.init()
     M.__cache:add_item('scandir_tmp', {})
     M.__cache:add_item('local_to_remote_map', CACHE:new())
     M.__cache:add_item('remote_to_local_map', CACHE:new())
-    M.__cache:add_item('rcwd_map', {})
+    M.__cache:add_item('rcwd_map', CACHE:new())
     M.__cache:add_item('file_metadata', CACHE:new(CACHE.SECOND * 2))
     if M.__inited or vim.g.netman_no_shim then return end
     M.__inited = true
