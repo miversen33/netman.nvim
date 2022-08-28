@@ -462,7 +462,7 @@ function M.load_provider(provider_path)
     if missing_attrs then
         log.error("Failed to initialize provider: " .. provider_path .. ". Missing the following required attributes (" .. missing_attrs .. ")")
         M._providers.uninitialized[provider_path] = {
-            reason = "Validation Failure"
+            reason = string.format("Validation Failure: Missing attribute(s) %s", missing_attrs)
            ,name = provider_path
            ,protocol = "Unknown"
            ,version = "Unknown"
