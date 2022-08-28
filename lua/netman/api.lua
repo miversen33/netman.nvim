@@ -500,7 +500,7 @@ function M.load_provider(provider_path)
         local existing_provider_path  = M._providers.protocol_to_path[new_pattern]
         if existing_provider_path then
             local existing_provider = M._providers.path_to_provider[existing_provider_path].provider
-            if pattern:find('^netman%.providers') then
+            if provider_path:find('^netman%.providers') then
                 log.trace(
                     "Core provider: "
                     .. provider.name
@@ -516,7 +516,7 @@ function M.load_provider(provider_path)
                     ,protocol = table.concat(provider.protocol_patterns, ', ')
                     ,version = provider.version
                 }
-                goto continue
+                goto exit
             end
             log.info("Provider " .. existing_provider_path .. " is being overriden by " .. provider_path)
             M.unload_provider(existing_provider_path, {
@@ -527,10 +527,10 @@ function M.load_provider(provider_path)
             })
         end
         M._providers.protocol_to_path[new_pattern] = provider_path
-        ::continue::
     end
     M._providers.uninitialized[provider_path] = nil
     log.info("Initialized " .. provider_path .. " successfully!")
+    ::exit::
 end
 
 function M.reload_provider(provider_path)
