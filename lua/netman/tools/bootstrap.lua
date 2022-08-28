@@ -130,6 +130,15 @@ function _G.vim.fn.resolve(path)
     return luv.fs_readlink(path)
 end
 
+function _G.vim.fn.getpid()
+    return luv.os_getppid()
+end
+
+function _G.vim.fn.delete(path, opts)
+    -- TODO: Mike: we should probably implement this sometime but there is no easy way
+    -- to recursively delete the contents of a directory and I'm lazy
+end
+
 -- Prints to screen your message instead of notifying the user via
 -- vim's notification modal. Ya know, since we aren't in vim anymore
 function _G.vim.api.nvim_notify(message, level, opts)
