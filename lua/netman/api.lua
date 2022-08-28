@@ -211,7 +211,7 @@ local _init_augroups = function()
             group = "Netman"
             ,pattern = "*"
             ,desc = "Netman BufUnload Autocommand"
-            ,callback = function(callback_details) M.unload(callback_details.file, callback_details.buff) end
+            ,callback = function(callback_details) M.unload_buffer(callback_details.file, callback_details.buff) end
             }
         }
     }
@@ -355,7 +355,7 @@ function M.get_metadata(uri, metadata_keys)
     return metadata
 end
 
-function M.unload(uri, buffer_handle)
+function M.unload_buffer(uri, buffer_handle)
     if buffer_handle then
         utils.remove_tracked_buffer(buffer_handle)
     end
