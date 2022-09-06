@@ -356,10 +356,9 @@ end
 
 function M.write(buffer_index, uri)
     local provider, cache = nil, nil
-    uri, provider, cache = validate_uri(uri)
-    if not uri then return nil end
-    log.info("Reaching out to " .. provider.name .. " to write " .. uri)
-    -- TODO: Do this asynchronously
+    uri, provider, cache = M.internal.validate_uri(uri)
+    if not uri or not provider then return nil end
+    log.info(string.format("Reaching out to %s to write %s", provider.name, uri))
     local lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
     for index, line in ipairs(lines) do
         if not line:match('[\n\r]$') then
