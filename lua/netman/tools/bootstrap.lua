@@ -1,3 +1,5 @@
+-- TODO: (Mike): Needs a compat layer for when new neovim features are added
+-- So we can "target" versions with bootstrap and not need to download/build each point version
 -- Should help protect against attacks that abuse any poorly written
 -- vim emulation code below. Additionally should prevent this from
 -- running while in a neovim environment
@@ -43,14 +45,18 @@ for key, _ in pairs(package.loaded) do
     preloaded_packages[key] = 1
 end
 
+local print = function(...)
+    -- quick way to allow for "hushing" the output
+    if not _G._QUIET then
+        _G.print(...)
+    end
+end
 local shell_escape_pattern = [[([%s^&*()%]="'+.|,<>?%[{}%\])]]
-
 _G.vim = { g = {}, inspect=inspect, loop=luv }
 _G.vim.fn = {}
 _G.vim.api = {}
 _G.inspect = inspect
 _G.uv = luv
-_G.vim.g.netman_log_level = 0 -- Setting netman log level to lowest possible
 _G.vim.log = {
     levels = {
         TRACE = 0,
