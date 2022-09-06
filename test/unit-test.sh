@@ -1,1 +1,8 @@
-$NEOVIM_DIRECTORY/bin/./nvim --headless -u $NEOVIM_PLUGIN_HOME/netman.nvim/test/minimal-testing-config.vim -c "PlenaryBustedDirectory $NEOVIM_PLUGIN_HOME/netman.nvim/test/core/ {minimal_init = '$NEOVIM_PLUGIN_HOME/netman.nvim/test/minimal-testing-config.vim'}"
+# For some reason flags (init and write?) cause a core dump
+i=1
+flags=""
+for flag in "$@"
+do
+    flags="$flags -t $flag"
+done
+busted -m "../?.lua" ./core $flags

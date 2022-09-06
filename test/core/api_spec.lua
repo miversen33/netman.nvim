@@ -1,13 +1,18 @@
+_G._QUIET = true -- This makes bootstrap shut up
+require("lua.netman.tools.bootstrap")
+vim.g.netman_log_level = 0
+
 local spy = require("luassert.spy")
 local describe = require('busted').describe
 local it = require('busted').it
 local before_each = require("busted").before_each
 local after_each = require("busted").after_each
 local pending = require("busted").pending
-local mock = require("busted").mock
 
-require('busted.runner')()
 describe("Netman API #netman-api", function()
+    before_each(function()
+        package.loaded['netman.api'] = nil
+    end)
     describe("#init_augroups", function()
         local api = nil
         local _nvim_create_augroup = nil
