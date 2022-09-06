@@ -17,7 +17,21 @@ local status, inspect = pcall(require, "inspect")
 if status == nil or status == false then
     error("Unable to run boostrapper without inspect. Please install inspect!", 2)
 end
-local netman_path = luv.os_homedir() .. "/.local/share/nvim/site/pack/packer/start/netman.nvim/lua/" -- Dynamically find this
+local known_paths = {
+    luv.os_homedir() .. "/.local/share/nvim/site/pack/packer/start/netman.nvim/lua/",
+    luv.os_homedir() .. "/.local/share/nvim/site/pack/plugins/opt/netman.nvim/lua/"
+}
+local netman_path = nil
+for _, path in ipairs(known_paths) do
+    if luv.fs_stat(path) then
+        netman_path = path
+        break
+    end
+end
+if not netman_path then
+    error("Unable to locate netman!")
+    return
+end
 package.path = netman_path .. "?.lua;" .. netman_path .. "?/init.lua;"  .. package.path
 -- package.path =  "../?.lua;" .. package.path
 
