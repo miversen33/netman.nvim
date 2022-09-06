@@ -1,3 +1,4 @@
+-- TODO: (Mike): MOAR LOGS
 local notify = require("netman.tools.utils").notify
 local log = require("netman.tools.utils").log
 local netman_options = require("netman.tools.options")
@@ -215,10 +216,10 @@ function M.internal.init_augroups()
     end
     local au_commands = {
        {'BufEnter', {
-            group = 'Netman',
-            pattern = '*',
-            desc = '',
-            callback = buf_focus_callback
+            group = 'Netman'
+            ,pattern = '*'
+            ,desc = 'Netman BufEnter Autocommand'
+            ,callback = buf_focus_callback
             }
         }
         , {'FileReadCmd' , {
@@ -260,6 +261,7 @@ function M.internal.init_augroups()
 
     vim.api.nvim_create_augroup("Netman", {clear=true})
     for _, au_command in ipairs(au_commands) do
+        log.info(string.format("Creating Auto Command %s|%s", au_command[1], au_command[2].desc))
         vim.api.nvim_create_autocmd(au_command[1], au_command[2])
     end
 end
@@ -273,9 +275,8 @@ function M.is_path_netman_uri(uri)
     if M.internal.get_provider_for_uri(uri) then return true else return false end
 end
 
---- Checks with the registered explorer (likely libruv)
---- to see if the provided path is a shortcut path to
---- a uri
+--- Checks with the libruv to see if the provided path 
+--- is a shortcut path to a uri
 --- @param path string
 ---     The path to compare
 --- @return string, boolean
@@ -293,6 +294,7 @@ function M.check_if_path_is_shortcut(path, direction)
     end
 end
 
+--- Where Doc?
 function M.read(uri)
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
@@ -323,10 +325,14 @@ function M.read(uri)
     -- TODO: (Mike): Validate the parent object is correct
     if read_type == netman_options.api.READ_TYPE.STREAM then
         log.info("Getting stream command for path: " .. uri)
+        -- This should only happen if libruv is being used, otherwise
+        -- its a useless call
         libruv.clear_rcwd()
         return M.internal.read_as_stream(read_data)
     elseif read_type == netman_options.api.READ_TYPE.FILE then
         log.info("Getting file read command for path: " .. uri)
+        -- This should only happen if libruv is being used, otherwise
+        -- its a useless call
         libruv.clear_rcwd()
         libruv.rcd(parent_details.local_parent, parent_details.remote_parent, uri)
         return M.internal.read_as_file(read_data)
@@ -360,6 +366,7 @@ function M.write(buffer_index, uri)
             lines[index] = line .. '\n'
         end
     end
+    -- TODO: Do this asynchronously
     provider.write(uri, cache, lines)
 end
 
@@ -404,6 +411,7 @@ function M.unload_buffer(uri, buffer_handle)
         utils.remove_tracked_buffer(buffer_handle)
     end
 end
+-- TODO: (Mike): Do a thing with this?
 
 --- Registers an explorer package which will be used to determine
 --- what path to feed on cwd fetches
@@ -586,6 +594,7 @@ end
 
 function M.init()
     if M._inited then
+        log.info("Netman API already initialized!")
         return
     end
     log.info("--------------------Netman API initialization started!---------------------")
