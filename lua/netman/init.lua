@@ -55,7 +55,7 @@ function M.write(uri)
         return
     end
     local buffer_index = vim.fn.bufnr(uri)
-    notify.debug("Saving File: " .. uri .. " on buffer: " .. buffer_index)
+    notify.info("Saving File: " .. uri .. " on buffer: " .. buffer_index)
     api.write(buffer_index, uri)
     vim.api.nvim_command('sil! set nomodified')
 end
