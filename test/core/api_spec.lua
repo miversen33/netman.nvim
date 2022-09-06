@@ -1,404 +1,589 @@
-local mock = require('luassert.mock')
-local stub = require('luassert.stub')
-local spy = require('luassert.spy')
-local netman_options = require("netman.options")
+local spy = require("luassert.spy")
+local describe = require('busted').describe
+local it = require('busted').it
+local before_each = require("busted").before_each
+local after_each = require("busted").after_each
+local pending = require("busted").pending
+local mock = require("busted").mock
 
--- TODO(Mike): Figure out how to Mock "vim." functions
--- so that we can use vanilla busted without needing
--- neovim for basic implementation unit testing
-
-describe("Netman Core #netman-core", function()
-    -- I am not super fond of this, but it is how the busted framework
-    -- says to handle unit testing of internal methods
-    -- http://olivinelabs.com/busted/#private
-    _G._UNIT_TESTING = true
-    
-    _G.mock_provider_path = "mock_provider"
-    -- Create dummy provider for junk uri.
-    -- Something like junk://file123
-    _G.mock_uri1 = "junk1://junk123"
-    _G.mock_uri2 = "junk2://junk123"
-    _G.invalid_mock_uri = "someuseless_uri://file"
-    _G.dummy_stream = { 'Some complete garbage' ,'literally useless junk' }
-    _G.dummy_file = "non-existent-file.txt"
-    vim.g.netman_log_level = 1
-    _G.api = require('netman.api')
-    _G.mock_provider1 = {
-        name = 'mock_provider1',
-        protocol_patterns = {'junk1'},
-        version = '0.0',
-        _provider_path = _G.mock_provider_path .. "1",
-        read = function() end,
-        write = function() end,
-        delete = function() end,
-        parse_uri = function() end,
-        get_metadata = function() end,
-        init = function() return true end
-    }
-    _G.mock_provider2 = {
-        name = 'mock_provider2',
-        protocol_patterns = {'junk2'},
-        version = '0.0',
-        _provider_path = _G.mock_provider_path .. "2",
-        read = function() end,
-        write = function() end,
-        delete = function() end,
-        parse_uri = function() end,
-        get_metadata = function() end,
-        init = function() return true end
-    }
-    package.loaded[_G.mock_provider1.name] =_G.mock_provider1
-    package.loaded[_G.mock_provider2.name] =_G.mock_provider1
-
-    describe("read", function()
+require('busted.runner')()
+describe("Netman API #netman-api", function()
+    describe("#init_augroups", function()
+        local api = nil
+        local _nvim_create_augroup = nil
+        local _nvim_create_autocmd = nil
         before_each(function()
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = _G.mock_provider1
-            _G.api._buffer_provider_cache["" .. 1] = nil
-            _G.cache_func = _G.mock_provider1.read
-            _G.api._unclaimed_id_table = {}
+            api = require("netman.api")
+            _nvim_create_augroup = vim.api.nvim_create_augroup
+            _nvim_create_autocmd = vim.api.nvim_create_autocmd
         end)
         after_each(function()
-            _G.mock_provider1.read = _G.cache_func
-            _G.cache_func = nil
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-            _G.api._buffer_provider_cache["" .. 1] = nil
-            _G.api._unclaimed_id_table = {}
+            api = nil
+            package.loaded['netman.api'] = nil
+            vim.api.nvim_create_augroup = _nvim_create_augroup
+            vim.api.nvim_create_autocmd = _nvim_create_autocmd
         end)
-        it("should attempt to read from mock provider", function()
-            local s = spy.on(_G.mock_provider1, 'read')
-            _G.api:read(1, _G.mock_uri1)
-            assert.spy(s).was_called()
-            _G.mock_provider1.read:revert()
-        end)
-        it("should not attempt to read from mock provider", function()
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-            local s = spy.on(_G.mock_provider1, 'read')
-            assert.has_error(function() _G.api:read(1, _G.mock_uri1) end, '"Error parsing path: ' .. _G.mock_uri1 .. ' -- Unable to establish provider"', "Netman loaded provider somehow!")
-            assert.spy(s).was_not_called()
-            _G.mock_provider1.read:revert()
-        end)
-        pending("should provide cache provider details for existing mock uri")
-        it("should complain but attempt to fix return file not being a table", function()
-            _G.mock_provider1.read = function()
-                return _G.dummy_file, _G.api.READ_TYPE.FILE
+        it("should create the Netman auto group", function()
+            local was_called = false
+            vim.api.nvim_create_augroup = function(group, _)
+                if group == 'Netman' then was_called = true end
             end
-            assert.has_no.errors(function() _G.api:read(1, _G.mock_uri1) end, "Failed to self correct string file return as table")
+            api.internal.init_augroups()
+            assert.is_true(was_called, "Netman Auto Group was not created")
         end)
-        it("should complain but attempt to fix return stream not being a table", function()
-            local read_cache = _G.mock_provider1.read
-            _G.mock_provider1.read = function()
-                return _G.dummy_file, _G.api.READ_TYPE.STREAM
+        it("should create all needed auto commands", function()
+            local required_au_groups = {
+                BufEnter = 1,
+                FileReadCmd = 1,
+                BufReadCmd = 1,
+                FileWriteCmd = 1,
+                BufWriteCmd = 1,
+                BufUnload = 1
+            }
+            vim.api.nvim_create_autocmd = function(group, _)
+                required_au_groups[group] = nil
             end
-            assert.has_no.errors(function() _G.api:read(1, _G.mock_uri1) end, "Failed to self correct string stream return as table")
-            _G.mock_provider1.read = read_cache
-            read_cache = nil
-        end)
-        it("return command should be for a file read type", function()
-            _G.mock_provider1.read = function()
-                return {origin_path=_G.dummy_file, local_path=_G.dummy_file}, netman_options.api.READ_TYPE.FILE
+
+            api.internal.init_augroups()
+            for key, _ in pairs(required_au_groups) do
+                assert.is_not_equal(1, _, string.format("%s auto command was not created", key))
             end
-            assert.is_equal(_G.api:read(1, _G.mock_uri1):match('^read %+%+edit'), 'read ++edit', "Failed to generate read to buffer command")
-        end)
-       it("read should return nil and accept nil read type", function()
-            assert.is_nil(_G.api:read(1, _G.mock_uri1), "Read Command didn't return nil on nil read type!")
-        end)
-        it("should create an append command (append!) followed by the input stream", function()
-            assert.is_equal(_G.api._read_as_stream(_G.dummy_stream), "0append! " .. table.concat(_G.dummy_stream, '\n'), "Failed to create append command")
-        end)
-        it("should create a read command (read ++edit) followed by the local file", function()
-            assert.is_equal(_G.api._read_as_file({origin_path=_G.dummy_file,local_path=_G.dummy_file}):match("^read %+%+edit"), "read ++edit", "Failed to create append command")
-        end)
-        it("should remove invalid entries from _read_as_explore", function()
-            local invalid_key1 = "INVALID_KEY1"
-            local invalid_key2 = "INVALID_KEY2"
-            local valid_key1 = netman_options.explorer.METADATA.NAME
-            local required_key1 = netman_options.explorer.FIELDS.FIELD_TYPE
-            local invalid_object = {}
-            invalid_object[invalid_key1]  = "something cool1"
-            invalid_object[invalid_key2]  = "something cool2"
-            invalid_object[valid_key1]    = "valid key1"
-            invalid_object[required_key1] = "required key1"
-            local valid_object = {}
-            valid_object[valid_key1]    = "valid key1"
-            valid_object[required_key1] = "required key1"
-            local sanitized_details = _G.api._read_as_explore({parent=1, remote_files = invalid_object})
-            assert.is_true(table.concat(sanitized_details.details) == table.concat(valid_object), "Failed to return correct formatted explore object")
-            assert.is_equal(sanitized_details.parent, 1, "Failed to return inputted parent!")
-        end)
-        describe("_get_provider_for_path", function()
-            after_each(function()
-                _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-            end)
-            it("should return the mock provider for mock uri", function()
-                _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = _G.mock_provider1
-                local provider = _G.api._get_provider_for_path(_G.mock_uri1)
-                assert.is_not_nil(provider, "Failed to load any provider!")
-                assert.is_equal(provider.name, _G.mock_provider1.name, "Returned incorrect provider!")
-            end)
-            it("should not return the mock provider for other uri", function()
-                local provider = nil
-                assert.has_error(function()
-                    _G.api._get_provider_for_path(_G.invalid_mock_uri)
-                end, "\"Error parsing path: " .. _G.invalid_mock_uri .. " -- Unable to establish provider\"", "Failed to throw error for invalid provider!")
-                assert.is_nil(provider, "Associated mock uri with invalid uri")
-            end)
         end)
     end)
-
-    describe("write", function()
+    describe("#is_path_netman_uri", function()
+        -- api.is_path_netman_uri
+        it("should return false if there are no registered providers",
+            function()
+                -- Stubing the netman.providers function as we dont want it to actually work
+                package.loaded['netman.providers'] = {}
+                local api = require("netman.api")
+                assert.is_false(api.is_path_netman_uri('ssh://somehost/somepath'), "SSH check failed to fail")
+                assert.is_false(api.is_path_netman_uri('docker://somecontainer/somepath'), "Docker check failed to fail")
+                assert.is_false(api.is_path_netman_uri('git://somerepo/somepath'), "Git check failed to fail")
+                assert.is_false(api.is_path_netman_uri('jankuri://jankpath'), "Jank check failed to fail")
+                assert.is_false(api.is_path_netman_uri('complete_absolute_gibberish'), "Gibberish check failed to fail")
+            end
+        )
+        it("should return false if the URI does not match a registered provider",
+            function()
+                package.loaded['netman.providers'] = {}
+                local api = require("netman.api")
+                assert.is_false(api.is_path_netman_uri('git://somerepo/somepath'), "Git check failed to fail")
+                assert.is_false(api.is_path_netman_uri('jankuri://jankpath'), "Jank check failed to fail")
+                assert.is_false(api.is_path_netman_uri('complete_absolute_gibberish'), "Gibberish check failed to fail")
+            end
+        )
+        it("should return true if the URI does match a registered provider",
+            function()
+                package.loaded['netman.providers'] = {}
+                local api = require("netman.api")
+                api._providers.protocol_to_path["dummyuri"] = 'dummy.test.provider'
+                api._providers.path_to_provider["dummy.test.provider"] = {
+                    provider = "dummy.test.provider",
+                    cache = {}
+                }
+                assert.is_true(api.is_path_netman_uri("dummyuri://somepath"), "Dummy URI failed to be read by registered provider")
+            end
+        )
+    end)
+    -- api.internal.validate_uri
+    describe("#validate_uri", function()
+        it("should return nil if the uri is not a shortcut and there is no provider for it", function()
+            package.loaded['netman.providers'] = {}
+            local api = require("netman.api")
+            assert.is_nil(api.internal.validate_uri("jankuri://somepath"))
+        end)
+    end)
+    -- api.load_provider
+    describe("#load_provider", function()
+        local required_attrs = {
+                'name'
+                ,'protocol_patterns'
+                ,'version'
+                ,'read'
+                ,'write'
+                ,'delete'
+                ,'get_metadata'
+        }
         before_each(function()
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = _G.mock_provider1
-            _G.api._buffer_provider_cache["" .. 1] = nil
-            _G.cache_func = _G.mock_provider1.write
+            package.loaded['netman.providers'] = {}
+            package.loaded['dummy.provider'] = nil
+            package.loaded['dummy.provider.1'] = nil
+            package.loaded['dummy.provider.2'] = nil
+            package.loaded['netman.api'] = nil
+        end)
+        -- We need to test the following things
+        it("should not attempt to load a provider that is already loaded", function()
+            local spied_importer = spy.new(function() end)
+            local api = require("netman.api")
+            api._providers.path_to_provider["jankprovider"] = { init = spied_importer }
+            api.load_provider("jankprovider")
+            assert.spy(spied_importer).was_not_called("Load provider attempted multiple loads of same provider")
+        end)
+        it("should notify the user when a provider doesn't exist", function()
+            local spied_notify = spy.on(require("netman.tools.utils").notify, 'error')
+            local api = require("netman.api")
+            api.load_provider("non-existent-provider")
+            assert.spy(spied_notify).was_called(1)
+        end)
+        it("should notify the user when a provider is invalid", function()
+            package.loaded['dummy.provider.1'] = true
+            package.loaded['dummy.provider.2'] = false
+            local spied_notify = spy.on(require("netman.tools.utils").notify, 'error')
+            local api = require("netman.api")
+            api.load_provider('dummy.provider.1')
+            assert.spy(spied_notify).was_called(1)
+            spied_notify:clear()
+            api.load_provider('dummy.provider.2')
+            assert.spy(spied_notify).was_called(1)
+        end)
+        it("should fail to validate an invalid provider", function()
+            local dummy_provider = {}
+            package.loaded['dummy.provider'] = dummy_provider
+            local api = require("netman.api")
+            for index, _ in ipairs(required_attrs) do
+                for _, attr in ipairs({table.unpack(required_attrs, 1, index)}) do
+                    local val = nil
+                    if attr == 'name' then val = "dummy_provider"
+                    elseif attr == 'version' then val = '0.0'
+                    elseif attr == 'protocol_patterns' then val = {'jankuri'}
+                    else val = function() end end
+                    dummy_provider[attr] = val
+                end
+                local missing_attrs = unpack(required_attrs, index + 1, #required_attrs)
+                api.load_provider('dummy.provider')
+                if type(missing_attrs) == 'string' then missing_attrs = {missing_attrs} end
+                if missing_attrs then
+                    for _, missing_attr in ipairs(missing_attrs) do
+                        assert(api._providers.uninitialized["dummy.provider"].reason:find(missing_attr), string.format("Load Provider did not fail for missing attribute %s", missing_attr))
+                    end
+                end
+            end
+        end)
+        it("should call init if its provided", function()
+            local dummy_provider = {}
+            for index, _ in ipairs(required_attrs) do
+                for _, attr in ipairs({table.unpack(required_attrs, 1, index)}) do
+                    local val = nil
+                    if attr == 'name' then val = "dummy_provider"
+                    elseif attr == 'version' then val = '0.0'
+                    elseif attr == 'protocol_patterns' then val = {'jankuri'}
+                    else val = function() end end
+                    dummy_provider[attr] = val
+                end
+            end
+            package.loaded['dummy.provider'] = dummy_provider
+            local api = require("netman.api")
+
+            -- luassert's spy functionality is quite lacking.
+            -- Instead of making my own altogether, I am just going
+            -- to piece together what I need as I need them
+            local _unload_provider = api.unload_provider
+            local call_count = 0
+            local spied_unload_provider = function(...)
+                call_count = call_count + 1
+                _unload_provider(...)
+                package.loaded['dummy.provider'] = dummy_provider
+            end
+            api.unload_provider = spied_unload_provider
+            dummy_provider.init = function()
+                error("DED!")
+            end
+            api.load_provider('dummy.provider')
+            assert.is_equal(1, call_count, "Load Provider did not unload failed provider init!")
+
+            call_count = 0
+            dummy_provider.init = function() return false end
+            api.load_provider('dummy.provider')
+            assert.is_equal(1, call_count, "Load provider did not unload provider with unsafe init")
+
+            call_count = 0
+            dummy_provider.init = function() end
+            api.load_provider('dummy.provider')
+            assert.is_equal(1, call_count, "Load Provider did not unload provider with no init return")
+
+            call_count = 0
+            dummy_provider.init = function() return true end
+            assert.is_equal(0, call_count, "Load Provider unloaded properly inited provider")
+            api.unload_provider = _unload_provider
+        end)
+        it("should override existing provider of same protocol pattern", function()
+            local dummy_provider1 = {}
+            local dummy_provider2 = {}
+            for index, _ in ipairs(required_attrs) do
+                for _, attr in ipairs({table.unpack(required_attrs, 1, index)}) do
+                    local val = nil
+                    if attr == 'name' then val = "dummy_provider"
+                    elseif attr == 'version' then val = '0.0'
+                    elseif attr == 'protocol_patterns' then val = {'jankuri'}
+                    else val = function() end end
+                    dummy_provider1[attr] = val
+                    dummy_provider2[attr] = val
+                end
+            end
+            package.loaded['dummy.provider.1'] = dummy_provider1
+            package.loaded['dummy.provider.2'] = dummy_provider2
+            local api = require("netman.api")
+            api.load_provider('dummy.provider.1')
+
+            local call_count = 0
+            local overriden_name = nil
+            local _unload_provider = api.unload_provider
+            api.unload_provider = function(...)
+                call_count = call_count + 1
+                overriden_name = select(1, ...)
+                _unload_provider(...)
+            end
+            api.load_provider('dummy.provider.2')
+            assert.is_equal(1, call_count, "Load Provider did not unload overriden provider!")
+            assert.is_equal('dummy.provider.1', overriden_name, "Load Provider did not unload the correct provider on override")
+        end)
+        it("should prevent core providers for overriding third party providers", function()
+            local dummy_provider1 = {}
+            local dummy_provider2 = {}
+            for index, _ in ipairs(required_attrs) do
+                for _, attr in ipairs({table.unpack(required_attrs, 1, index)}) do
+                    local val = nil
+                    if attr == 'name' then val = "dummy_provider"
+                    elseif attr == 'version' then val = '0.0'
+                    elseif attr == 'protocol_patterns' then val = {'jankuri'}
+                    else val = function() end end
+                    dummy_provider1[attr] = val
+                    dummy_provider2[attr] = val
+                end
+            end
+            package.loaded['dummy.provider.1'] = dummy_provider1
+            package.loaded['netman.providers.dummy_provider'] = dummy_provider2
+            local api = require("netman.api")
+            api.load_provider('dummy.provider.1')
+            api.load_provider('netman.providers.dummy_provider')
+            assert.is_not_nil(api._providers.uninitialized['netman.providers.dummy_provider'], "Load Provider allowed core provider to override third party provider")
+        end)
+    end)
+    -- api.unload_provider
+    describe("#unload_provider", function()
+        before_each(function()
+            package.loaded['netman.providers'] = {}
+            package.loaded['dummy.provider.1'] = nil
+            package.loaded['dummy.provider.2'] = nil
+            package.loaded['netman.api'] = nil
+        end)
+        it("should silently fail when unloading an invalid provider", function()
+            assert.has_no.errors(
+                function() require("netman.api").unload_provider("dummy.provider") end,
+                "Unload Provider failed to safely unload invalid provider"
+            )
+        end)
+        it("should unload all hooks for a provider", function()
+            local dummy_provider1 = {}
+            dummy_provider1.protocol_patterns = { "junkuri" }
+            package.loaded['dummy.provider.1']= dummy_provider1
+            local api = require("netman.api")
+            api._providers.protocol_to_path['junkuri'] = 'dummy.provider.1'
+            api._providers.path_to_provider['dummy.provider.1'] = dummy_provider1
+            api.unload_provider('dummy.provider.1')
+            assert.is_nil(api._providers.protocol_to_path['junkuri'], "Unload Provider failed to remove protocol to path map")
+            assert.is_nil(api._providers.path_to_provider['dummy.provider.1'], "Unload Provider failed to remove provider path map")
+        end)
+        it("should burn all traces of the provider for memory", function()
+            local dummy_provider1 = {}
+            dummy_provider1.protocol_patterns = { "junkuri" }
+            package.loaded['dummy.provider.1']= dummy_provider1
+            local api = require("netman.api")
+            api._providers.protocol_to_path['junkuri'] = 'dummy.provider.1'
+            api._providers.path_to_provider['dummy.provider.1'] = dummy_provider1
+            api.unload_provider('dummy.provider.1')
+            assert.is_nil(api._providers.protocol_to_path['junkuri'], "Unload Provider failed to remove protocol to path map")
+            assert.is_nil(api._providers.path_to_provider['dummy.provider.1'], "Unload Provider failed to remove provider path map")
+            assert.is_nil(package.loaded['dummy.provider.1'], "Unload Provider failed to remove provider from lua memory")
+        end)
+        it("should justify the removal of the provider for later viewing", function()
+            local dummy_provider1 = {}
+            dummy_provider1.protocol_patterns = { "junkuri" }
+            package.loaded['dummy.provider.1']= dummy_provider1
+            local api = require("netman.api")
+            api._providers.protocol_to_path['junkuri'] = 'dummy.provider.1'
+            api._providers.path_to_provider['dummy.provider.1'] = dummy_provider1
+            api.unload_provider('dummy.provider.1')
+            assert.is_not_nil(api._providers.uninitialized['dummy.provider.1'], "Unload Provider did _not_ justify the removal of the provider")
+        end)
+    end)
+    describe("#unload_buffer", function()
+        before_each(function()
+        -- "Load" a provider and uri into memory to verify that things work as expected
+        end)
+        pending("should call \"close_connection\" on an associated provider after buffer is closed", function()
+        end)
+    end)
+    -- api.internal.read_as_stream
+    describe("#read_as_stream", function()
+        it("should create valid read command from input data, with approriate filetype", function()
+            local read_data = {"line1", "line2", "line3"}
+            local command = require("netman.api").internal.read_as_stream(read_data, "netman-test")
+            local comp_command = string.format("0append! %s | set nomodified | filetype netman-test", table.concat(read_data, "\n"))
+            assert.is_equal(command, comp_command, "Read As Stream failed to generated approriate command with filetype")
+        end)
+        it("should create valid read command from input data, with \"detect\" filetype", function()
+            local read_data = {"line1", "line2", "line3"}
+            local command = require("netman.api").internal.read_as_stream(read_data)
+            local comp_command = string.format("0append! %s | set nomodified | filetype detect", table.concat(read_data, "\n"))
+            assert.is_equal(command, comp_command, "Read As Stream failed to generated approriate command with detect filetype")
+        end)
+    end)
+    -- api.internal.read_as_file
+    describe('#read_as_file', function()
+        it("should create valid read command from input data, with approriate filetype", function()
+            local read_data = {local_path="local_path"}
+            local command = require("netman.api").internal.read_as_file(read_data, "netman-test")
+            local comp_command = string.format("read ++edit %s | set nomodified | filetype netman-test", read_data.local_path)
+            assert.is_equal(command, comp_command, "Read As File failed to generated approriate command with filetype")
+        end)
+        it("should create valid read command from input data, with \"detect\" filetype", function()
+            local read_data = {local_path="local_path"}
+            local command = require("netman.api").internal.read_as_file(read_data)
+            local comp_command = string.format("read ++edit %s | set nomodified | filetype detect", read_data.local_path)
+            assert.is_equal(command, comp_command, "Read As Stream failed to generated approriate command with detect filetype")
+        end)
+    end)
+    -- api.read
+    describe('#read', function()
+        local api = nil
+        local api_options = require("netman.tools.options").api
+        local provider = nil
+        local read_as_stream_spy = nil
+        local read_as_file_spy = nil
+        local read_as_explore_spy = nil
+        before_each(function()
+            api = require("netman.api")
+            provider = nil
+            api.internal.validate_uri = function(uri) return uri, provider end
+
+            read_as_stream_spy = spy.on(api.internal, 'read_as_stream')
+            read_as_file_spy = spy.on(api.internal, 'read_as_file')
+            read_as_explore_spy = spy.on(api.internal, 'read_as_explore')
         end)
         after_each(function()
-            _G.mock_provider1.write = _G.cache_func
-            _G.cache_func = nil
-            _G.api._buffer_provider_cache["" .. 1] = nil
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
+            package.loaded['netman.api'] = nil
         end)
-        it("should attempt to write to mock uri", function()
-            local s = spy.on(_G.mock_provider1, 'write')
-            _G.api:write(1, _G.mock_uri1)
-            assert.spy(s).was_called()
-            _G.mock_provider1.write:revert()
+        it("should call read_as_stream if no type is returned by provider", function()
+            provider = {
+                read = function() return "" end
+            }
+            api.read('')
+            assert.spy(read_as_stream_spy).was_called()
         end)
-        pending("should not attempt to write to mock uri")
+        it("should return nil if an invalid read type was returned by provider", function()
+            provider = {
+                read = function() return '', 'invalid read type' end
+            }
+            assert.is_nil(api.read(''))
+        end)
+        it("should return nil if no data was returned by the provider", function()
+            provider = {
+                read = function() end
+            }
+            assert.is_nil(api.read(''))
+        end)
+        it("should call read_as_stream if the provider said its a stream", function()
+            provider = {
+                read = function() return '', api_options.READ_TYPE.STREAM end
+            }
+            api.read('')
+            assert.spy(read_as_stream_spy).was_called()
+        end)
+        it("should call read_as_file if the provider said its a file", function()
+            provider = {
+                read = function()
+                    return
+                        {local_path='', origin_path=''},
+                        api_options.READ_TYPE.FILE,
+                        {local_parent='', remote_parent=''}
+                end
+            }
+            api.read('')
+            assert.spy(read_as_file_spy).was_called()
+        end)
+        it("should call read_as_explore if the provider said its a link", function()
+            provider = {
+                read = function()
+                    return
+                        {remote_files={}},
+                        api_options.READ_TYPE.EXPLORE,
+                        {local_parent='', remote_parent=''}
+                end
+            }
+            api.read('')
+            assert.spy(read_as_explore_spy).was_called()
+        end)
     end)
-
-    describe("delete", function()
+    -- api.write
+    describe('#write', function()
+        -- Figure out a way to verify that an action is happening asychronously?
+        -- A reasonable way to do this would be to have our provider's 
+        -- "write" function do a sleep for some (very short) amount of time.
+        -- Anything longer than nothing would mean that it should still be running
+        -- when api.write finishes and thus we can verify that it is asynchronous.
+        -- If the "long running" write function is complete by the time api.write
+        -- finishes, that means it was _not_ async. Das bad
+        local api = nil
+        local provider = nil
+        local _nvim_buf_get_lines = nil
         before_each(function()
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = _G.mock_provider1
-            _G.api._buffer_provider_cache["" .. 1] = nil
-            _G.cache_func = _G.mock_provider1.delete
+            api = require("netman.api")
+            provider = nil
+            api.internal.validate_uri = function(uri) return uri, provider end
+            _nvim_buf_get_lines = vim.api.nvim_buf_get_lines
+            -- Adding the empty params because sumneko complains like a ass
+            -- when other things are using the _real_ vim.api.nvim_buf_get_lines
+            vim.api.nvim_buf_get_lines = function(_, _, _, _) return {"line1"} end
         end)
         after_each(function()
-            _G.mock_provider1.delete = _G.cache_func
-            _G.cache_func = nil
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-            _G.api._buffer_provider_cache["" .. 1] = nil
+            vim.api.nvim_buf_get_lines = _nvim_buf_get_lines
+            package.loaded['netman.api'] = nil
         end)
-        it("should attempt to delete to mock uri", function()
-            local s = spy.on(_G.mock_provider1, 'delete')
-            _G.api:delete(_G.mock_uri1)
-            assert.spy(s).was_called()
-            _G.mock_provider1.delete:revert()
-        end)
-        pending("should not attempt to delete to mock uri")
-    end)
+        pending("should call write asynchronously", function()
 
-    describe("init", function()
+        end)
+        it("should call the provider's write function", function()
+            local ran = false
+            provider = {
+                write = function()
+                    ran = true
+                end
+            }
+            api.write(0, '')
+            assert.is_true(ran, "Write did not call provider's write function")
+        end)
+        it("should return nil and do nothing if there is no provider for the uri", function()
+            assert.is_nil(api.write(0, ''), "Write somehow got a provider to use?")
+        end)
+    end)
+--     -- api.delete
+    describe('#delete', function()
+        -- Figure out a way to verify that an action is happening asychronously?
+        -- A reasonable way to do this would be to have our provider's 
+        -- "delete" function do a sleep for some (very short) amount of time.
+        -- Anything longer than nothing would mean that it should still be running
+        -- when api.delete finishes and thus we can verify that it is asynchronous.
+        -- If the "long running" delete function is complete by the time api.delete
+        -- finishes, that means it was _not_ async. Das bad
+        local api = nil
+        local provider = nil
         before_each(function()
-            _G.cache_func = _G.api.init
-            _G.api._initialized = false
-            -- TODO(Mike): Figure out how to clear this out without using vim
-            vim.api.nvim_command('comclear')
+            api = require("netman.api")
+            provider = nil
+            api.internal.validate_uri = function(uri) return uri, provider end
         end)
         after_each(function()
-            _G.api.init = _G.cache_func
-            _G.cache_func = nil
-            _G.api._initialized = false
-            -- TODO(Mike): Figure out how to clear this out without using vim
-            vim.api.nvim_command('comclear')
+            package.loaded['netman.api'] = nil
         end)
-        it("should load the core providers", function()
-            local s = spy.on(_G.api, 'load_provider')
-            _G.api:init({_G.mock_provider1.name})
-            assert.spy(s).was_called()
-            _G.api.load_provider:revert()
+        pending("should call delete asychronously", function()
+        
+        end)
+        it("should call the provider's delete function", function()
+            local ran = false
+            provider = {
+                delete = function()
+                    ran = true
+                end
+            }
+            api.delete(0, '')
+            assert.is_true(ran, "Delete did not call provider's delete function")
+        end)
+        it("should return nil and do nothing if there is no provider for the uri", function()
+            assert.is_nil(api.delete(0, ''), "Delete somehow got a provider to use?")
         end)
     end)
-
-    describe("buffer_cache_object", function()
+    -- api.register_explorer_package
+    describe('#register_explorer_package', function()
+        local api = nil
+        local package_name = 'netman-unittest-package'
         before_each(function()
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = _G.mock_provider1
-            _G.api._providers[_G.mock_provider2.protocol_patterns[1]] = _G.mock_provider2
-            _G.cache_buf = _G.api._buffer_provider_cache["" .. 1]
-            _G.api._buffer_provider_cache["" .. 1] = {}
-            _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
-                provider = _G.mock_provider1
-            }
-            _G.api._buffer_provider_cache["" .. 1][_G.mock_provider2.protocol_patterns[1]] = {
-                provider = _G.mock_provider2
-            }
+            api = require("netman.api")
         end)
         after_each(function()
-            _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-            _G.api._providers[_G.mock_provider2.protocol_patterns[1]] = nil
-            _G.api._buffer_provider_cache["" .. 1] = _G.cache_buf
-            _G.cache_buf = nil
+            package.loaded['netman.api'] = nil
         end)
-        it("should throw error on missing path", function()
-            assert.has_error(function() _G.api:_get_buffer_cache_object(1) end, '"No path was provided with index: 1!"', "Failed to throw expected missing path error!")
+        it("should not register a nil package", function()
+            api.register_explorer_package()
+            assert.is_nil(api._explorers[package_name], "API somehow registered no package name??")
         end)
-        it("should throw error about invalid path", function()
-            assert.has_error(function() _G.api:_get_buffer_cache_object(1, 'useless_file') end, '"Unable to parse path: useless_file to get protocol!"', "Failed to throw expected invalid path error!")
+        it("should sanitize the package name", function()
+            local t_package = "netman.unitest.package"
+            api.register_explorer_package(t_package)
+            assert.is_equal(api._explorers[t_package], 'netman%.unitest%.package', "Sanitization failed")
         end)
-        it("should throw error on missing provider for path", function()
-            assert.has_error(function() _G.api:_get_buffer_cache_object(1, "junk3://somefile") end, '"Error parsing path: junk3://somefile -- Unable to establish provider"', "Failed to throw expected missing provider error!")
-        end)
-        it("should return mock_provider1 for uri junk1:// on index 1", function()
-            assert.is_equal(_G.api:_get_buffer_cache_object(1, _G.mock_uri1).provider.name, _G.mock_provider1.name, "Failed to return mock_provider1!")
-        end)
-        it("should return mock_provider2 for uri junk2:// on index 1", function()
-            assert.is_equal(_G.api:_get_buffer_cache_object(1, _G.mock_uri2).provider.name, _G.mock_provider2.name, "Failed to return mock_provider2!")
+        it("should save the package as an explorer", function()
+            local t_package = "netman.unitest.package"
+            api.register_explorer_package(t_package)
+            assert.is_not_nil(api._explorers[t_package], "Failed to register explorer")
         end)
     end)
-    
-    describe("load_provider", function()
-        describe("valid provider", function()
-            after_each(function()
-                _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-                _G.api._augroup_defined = false
-                vim.api.nvim_command('augroup Netman')
-                vim.api.nvim_command('autocmd!')
-                vim.api.nvim_command('augroup END')
-            end)
-            it("should not fail require check", function()
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Error during load of provider!")
-                assert.is_not_nil(_G.api._providers[_G.mock_provider1.protocol_patterns[1]], "Failed to load provider!")
-            end)
-            it("should add auto group to netman for the provider", function()
-                local file_read_command = 'autocmd Netman FileReadCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_read_command = 'autocmd Netman BufReadCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local file_write_command = 'autocmd Netman FileWriteCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_write_command = 'autocmd Netman BufWriteCmd ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_unload_command = 'autocmd Netman BufUnload ' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Failed to load provider!")
-                assert.is_not_nil(vim.api.nvim_exec(file_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set FileReadCmd Autocommand!")
-                assert.is_not_nil(vim.api.nvim_exec(buf_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set BufReadCmd Autocommand!")
-                assert.is_not_nil(vim.api.nvim_exec(file_write_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set FileWriteCmd Autocommand!")
-                assert.is_not_nil(vim.api.nvim_exec(buf_write_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set BufWriteCmd Autocommand!")
-                assert.is_not_nil(vim.api.nvim_exec(buf_unload_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman failed to set BufUnload Autocommand!")
-            end)
-            it("should not call init as there is none", function()
-                _G.cache_func = _G.mock_provider1.init
-                _G.mock_provider1.init = nil
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Init was called even though it doesn't exist!")
-                _G.mock_provider1.init = _G.cache_func
-                _G.cache_func = nil
-            end)
-            it("should call init as there is one", function()
-                local g = spy.on(_G.mock_provider1, 'init')
-                assert.has_no.errors(function() _G.api:load_provider(_G.mock_provider1.name) end, "Failed to load provider!")
-                assert.spy(g).was_called()
-                _G.mock_provider1.init:revert()
-            end)
+    -- api.init
+    describe('#init', function()
+        require("netman.tools.utils").log.debug("Starting init stuff")
+        after_each(function()
+            package.loaded['netman.api'] = nil
         end)
-        describe("invalid provider", function()
-            before_each(function()
-                _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-                package.loaded[_G.mock_provider1.name] = nil
-            end)
-            after_each(function()
-                package.loaded[_G.mock_provider1.name] =_G.mock_provider1
-                _G.api._providers[_G.mock_provider1.protocol_patterns[1]] = nil
-            end)
-            it("should fail require check", function()
-                assert.has_error(function() _G.api:load_provider(_G.mock_provider1.name) end, "\"Failed to initialize provider: " .. _G.mock_provider1.name .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider\"", "Failed to throw error for invalid provider!")
-            end)
-            it("should not add auto group to netman for the provider", function()
-                assert.has_error(function() _G.api:load_provider(_G.mock_provider1.name) end, "\"Failed to initialize provider: " .. _G.mock_provider1.name .. ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider\"", "Failed to throw error for invalid provider!")
-                local file_read_command = 'autocmd Netman FileReadCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_read_command = 'autocmd Netman BufReadCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local file_write_command = 'autocmd Netman FileWriteCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_write_command = 'autocmd Netman BufWriteCmd ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                local buf_unload_command = 'autocmd Netman BufUnload ^' .. _G.mock_provider1.protocol_patterns[1] .. "://*"
-                assert.is_nil(vim.api.nvim_exec(file_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman set FileReadCmd Autocommand!")
-                assert.is_nil(vim.api.nvim_exec(buf_read_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman set BufReadCmd Autocommand!")
-                assert.is_nil(vim.api.nvim_exec(file_write_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman set FileWriteCmd Autocommand!")
-                assert.is_nil(vim.api.nvim_exec(buf_write_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman set BufWriteCmd Autocommand!")
-                assert.is_nil(vim.api.nvim_exec(buf_unload_command, true):match(_G.mock_provider1.protocol_patterns[1]), "Netman set BufUnload Autocommand!")
-                _G.api._augroup_defined = false
-                vim.api.nvim_command('augroup Netman')
-                vim.api.nvim_command('autocmd!')
-                vim.api.nvim_command('augroup END')
-            end)
+        it("should init the auto groups", function()
+            local was_called = false
+            local api = require("netman.api")
+            api.internal.init_augroups = function() was_called = true end
+            api._inited = nil
+            api.init()
+            assert.is_true(was_called, "API init did not reach out to create au groups")
+        end)
+        it("should should load system providers", function()
+            local system_providers = require("netman.providers")
+            local api = require("netman.api")
+            for _, provider in ipairs(system_providers) do
+                assert.is_not_nil(api._providers.path_to_provider[provider], string.format("API did not load system provider %s", provider))
+            end
         end)
     end)
-
-    describe("unload", function()
+    -- api.get_metadata
+    describe("#get_metadata", function()
+        local api = nil
+        local was_called = nil
         before_each(function()
-            _G.api._buffer_provider_cache["" .. 1] = nil
+            api = require("netman.api")
+            was_called = false
+            local provider = {
+                get_metadata = function(_, _, keys)
+                    was_called = true
+                    local metadata = {}
+                    for _, key in ipairs(keys) do
+                        metadata[key] = 1
+                    end
+                    return metadata
+                end
+            }
+            api.internal.validate_uri = function(_)
+                return _, provider
+            end
         end)
         after_each(function()
-            _G.api._buffer_provider_cache["" .. 1] = nil
+            was_called = false
+            package.loaded['netman.api'] = nil
         end)
-        it("should not unload either provider", function()
-            local s1 = spy.on(_G.mock_provider1, 'close_connection')
-            local s2 = spy.on(_G.mock_provider2, 'close_connection')
-            _G.api:unload(1)
-            assert.spy(s1).was_not_called()
-            assert.spy(s2).was_not_called()
+        it("should have a default set of metadata keys to return if you don't provide any", function()
+            local metadata = api.get_metadata('')
+            assert.is_not_nil(metadata, "API did not return a default keyset for metadata")
         end)
-        it("should only unload provider1", function()
-            local s1 = spy.on(_G.mock_provider1, 'close_connection')
-            local s2 = spy.on(_G.mock_provider2, 'close_connection')
-            _G.api._buffer_provider_cache["" .. 1] = {}
-            _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
-                provider = _G.mock_provider1
-                ,origin_path = _G.mock_uri
-            }
-            _G.api:unload(1)
-            assert.spy(s1).was_called()
-            assert.spy(s2).was_not_called()
+        it("should return the metadata for the provided keys", function()
+            local metadata_keys = {'ATIME_SEC'}
+            local metadata = api.get_metadata('', metadata_keys)
+            assert.is_not_nil(metadata[metadata_keys[1]], string.format("API did not return the requested valid metadata for %s", metadata_keys[1]))
         end)
-        it("should only unload provider2", function()
-            local s1 = spy.on(_G.mock_provider1, 'close_connection')
-            local s2 = spy.on(_G.mock_provider2, 'close_connection')
-            _G.api._buffer_provider_cache["" .. 1] = {}
-            _G.api._buffer_provider_cache["" .. 1][_G.mock_provider2.protocol_patterns[1]] = {
-                provider = _G.mock_provider2
-                ,origin_path = _G.mock_uri
-            }
-            _G.api:unload(1)
-            assert.spy(s1).was_not_called()
-            assert.spy(s2).was_called()
+        it("should reach out to the provider to get metadata", function()
+            api.get_metadata('')
+            assert.is_true(was_called, "API did not reach out to the provider")
         end)
-        it("should unload both providers", function()
-            local s1 = spy.on(_G.mock_provider1, 'close_connection')
-            local s2 = spy.on(_G.mock_provider2, 'close_connection')
-            _G.api._buffer_provider_cache["" .. 1] = {}
-            _G.api._buffer_provider_cache["" .. 1][_G.mock_provider1.protocol_patterns[1]] = {
-                provider = _G.mock_provider1
-                ,origin_path = _G.mock_uri
-            }
-            _G.api._buffer_provider_cache["" .. 1][_G.mock_provider2.protocol_patterns[1]] = {
-                provider = _G.mock_provider2
-                ,origin_path = _G.mock_uri
-            }
-            _G.api:unload(1)
-            assert.spy(s1).was_called()
-            assert.spy(s2).was_called()
-        end)
-    end)
-
-    describe("claim_buf_details", function()
-        local unclaimed_id = '1234'
-        before_each(function()
-            _G.api._unclaimed_provider_details = {}
-            _G.api._unclaimed_provider_details[unclaimed_id] = {
-                provider = _G.mock_provider1
-                ,protocol = _G.mock_provider1.protocol_patterns[1]
-                ,origin_path = _G.invalid_mock_uri
-            }
-            _G.api._buffer_provider_cache["" .. 1] = {}
-        end)
-        after_each(function()
-            _G.api._unclaimed_provider_details = {
-                
-            }
-            _G.api._buffer_provider_cache["" .. 1] = {}
-        end)
-        it("should remove claim id from unclaimed queue", function()
-            _G.api:_claim_buf_details(1, unclaimed_id)
-            assert.is_nil(_G.api._unclaimed_provider_details[unclaimed_id])
-            assert.is_not_nil(_G.api._buffer_provider_cache["1"])
-        end)
-        it("should not modify unclaimed queue for invalid claim id", function()
-            local invalid_unclaimed_id = "1234111"
-            _G.api:_claim_buf_details(1, invalid_unclaimed_id)
-            assert.is_not_nil(_G.api._unclaimed_provider_details[unclaimed_id])
+        it("should sanitize the provider's returned metadata keys to ensure consistency", function()
+            local metadata_keys = {'ATIME_SEC', 'INVALID_KEY'}
+            local metadata = api.get_metadata('', metadata_keys)
+            assert.is_not_nil(metadata[metadata_keys[1]], string.format("API did not return metadata for valid metadata key %s", metadata_keys[1]))
+            assert.is_nil(metadata[metadata_keys[2]], string.format("API returned metadata for invalid metadata key %s", metadata_keys[2]))
         end)
     end)
 end)
