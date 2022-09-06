@@ -98,9 +98,9 @@ function Shell:run(timeout)
     self.exit_code = nil
     self._job_timeout = timeout
     self._job_timer = nil
-    self._stdout_pipe = vim.loop.new_pipe()
-    self._stderr_pipe = vim.loop.new_pipe()
-    self._stdin_pipe  = vim.loop.new_pipe()
+    self._stdout_pipe = vim.loop.new_pipe(false)
+    self._stderr_pipe = vim.loop.new_pipe(false)
+    self._stdin_pipe  = vim.loop.new_pipe(false)
     self._cmd_options = {
         args = self._args
         ,stdio = {
