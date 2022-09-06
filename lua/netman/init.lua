@@ -47,9 +47,7 @@ function M.read(...)
 end
 
 function M.write(uri)
-    if uri == nil then
-        uri = uri or vim.fn.expand('%')
-    end
+    uri = uri or vim.fn.expand('%')
     if uri == nil then
         notify.error("Write Incomplete! Unable to parse uri for buffer!")
         return
