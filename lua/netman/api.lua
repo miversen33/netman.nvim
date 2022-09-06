@@ -6,9 +6,16 @@ local utils = require("netman.tools.utils")
 local libruv = require('netman.tools.libruv')
 
 local M = {}
+
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
+M.internal = {}
+
 -- Gets set to true after init is complete
 M._inited = false
-
 M._providers = {
     protocol_to_path = {},
     path_to_provider = {},
@@ -30,45 +37,65 @@ local _provider_required_attributes = {
     ,'get_metadata'
 }
 
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
 --- Retrieves the provider and its cache for a protocol
 --- @param protocol string
 ---     The protocol to check against
 --- @return any, netman.tools.cache
 ---     Will return nil if we are unable to find a matching provider
-local function get_provider_for_protocol(protocol)
+function M.internal.get_provider_for_protocol(protocol)
     local provider_path = M._providers.protocol_to_path[protocol]
     if not provider_path then return nil end
     local provider_details = M._providers.path_to_provider[provider_path]
     return provider_details.provider, provider_details.cache
 end
 
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
 --- Retrieves the provider details for a URI
 ---@param uri string
 --- The URI to extract the protocol (and thus the provider) from
 ---@return any, string/any, string/any
 --- Returns the provider, its import path, and the protocol associated with the provider
 ---@private
-local get_provider_for_uri = function(uri)
+function M.internal.get_provider_for_uri(uri)
     uri = uri or ''
     local protocol = uri:match(protocol_from_path_glob)
-    local provider, cache = get_provider_for_protocol(protocol)
+    local provider, cache = M.internal.get_provider_for_protocol(protocol)
     return provider, cache, protocol
 end
 
-local validate_uri = function(uri)
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
+function M.internal.validate_uri(uri)
     local is_shortcut = false
-    local provider, cache, protocol = get_provider_for_uri(uri)
+    local provider, cache, protocol = M.internal.get_provider_for_uri(uri)
     uri, is_shortcut = M.check_if_path_is_shortcut(uri)
     if not is_shortcut and not provider then
         log.warn(tostring(uri) .. " is not ours to deal with")
         return nil -- Nothing to do here, this isn't ours to handle
     elseif is_shortcut and not provider then
         log.trace("Searching for provider for " .. uri)
-        provider, cache, protocol = get_provider_for_uri(uri)
+        provider, cache, protocol = M.internal.get_provider_for_uri(uri)
     end
     return uri, provider, cache, protocol
 end
 
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
 --- Generates a vim command that can be run, which will display the stream contents
 --- @param read_data table
 ---     Array of lines
@@ -77,13 +104,18 @@ end
 ---         If provided will set the filetype of the file to this.
 --- @return string
 ---     vim command to run
-local _read_as_stream = function(read_data, filetype)
+function M.internal.read_as_stream(read_data, filetype)
     filetype = filetype or "detect"
     local command = "0append! " .. table.concat(read_data, '\n') .. " | set nomodified | filetype " .. filetype
     log.trace("Generated read stream command: " .. command:sub(1, 30))
     return command
 end
 
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
 --- Generates a vim command to load the pulled file into vim
 --- @param read_data table
 ---     Table containing the following key value pairs
@@ -96,7 +128,8 @@ end
 ---         If provided will set the filetype of the file to this.
 --- @return string
 ---     vim command to run to load file into buffer
-local _read_as_file = function(read_data, filetype)
+function M.internal.read_as_file(read_data, filetype)
+    -- TODO: (Mike): Why do we have this? \/
     local origin_path = read_data.origin_path
     local local_path  = read_data.local_path
     filetype    = filetype or "detect"
@@ -106,7 +139,16 @@ local _read_as_file = function(read_data, filetype)
     return command
 end
 
-local _read_as_explore = function(read_data)
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
+--- @param read_data table
+---     A table which should contain the following keys
+---         remote_files: 1 dimensional table
+--- @return table
+function M.internal.read_as_explore(read_data)
     local sanitized_data = {}
     for _, data in pairs(read_data.remote_files) do
         for key, value in ipairs(data) do
@@ -139,11 +181,11 @@ local _read_as_explore = function(read_data)
 end
 
 --- Initializes the Netman Augroups, what did you think it does?
-local _init_augroups = function()
+function M.internal.init_augroups()
     local read_callback = function(callback_details)
         local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
         log.debug("Read Details", {input_file=callback_details.match, uri=uri, is_shortcut=is_shortcut})
-        if is_shortcut or get_provider_for_uri(uri) then
+        if is_shortcut or M.internal.get_provider_for_uri(uri) then
                 require("netman").read(uri)
             return
         else
@@ -156,7 +198,7 @@ local _init_augroups = function()
     end
     local write_callback = function(callback_details)
         local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
-        if is_shortcut or get_provider_for_uri(uri) then
+        if is_shortcut or M.internal.get_provider_for_uri(uri) then
             require("netman").write(uri)
             return
         else
@@ -164,7 +206,7 @@ local _init_augroups = function()
         end
     end
     local buf_focus_callback = function(callback_details)
-        if get_provider_for_uri(callback_details.file) then
+        if M.internal.get_provider_for_uri(callback_details.file) then
             log.trace("Setting Remote CWD To parent of " .. tostring(callback_details.file))
             libruv.change_buffer(callback_details.file)
         else
@@ -228,7 +270,7 @@ end
 --- @return boolean
 ---     Returns true/false depending on if Netman can handle the uri
 function M.is_path_netman_uri(uri)
-    if get_provider_for_uri(uri) then return true else return false end
+    if M.internal.get_provider_for_uri(uri) then return true else return false end
 end
 
 --- Checks with the registered explorer (likely libruv)
@@ -253,9 +295,11 @@ end
 
 function M.read(uri)
     local provider, cache = nil, nil
-    uri, provider, cache = validate_uri(uri)
-    if not uri then return nil end
-    log.info("Reaching out to " .. provider.name .. " to read " .. uri)
+    uri, provider, cache = M.internal.validate_uri(uri)
+    if not uri or not provider then return nil end
+    log.info(
+        string.format("Reaching out to %s to read %s", provider.name, uri)
+    )
     local read_data, read_type, parent_details = provider.read(uri, cache)
     if read_type == nil then
         log.info("Setting read type to api.READ_TYPE.STREAM")
@@ -280,16 +324,16 @@ function M.read(uri)
     if read_type == netman_options.api.READ_TYPE.STREAM then
         log.info("Getting stream command for path: " .. uri)
         libruv.clear_rcwd()
-        return _read_as_stream(read_data)
+        return M.internal.read_as_stream(read_data)
     elseif read_type == netman_options.api.READ_TYPE.FILE then
         log.info("Getting file read command for path: " .. uri)
         libruv.clear_rcwd()
         libruv.rcd(parent_details.local_parent, parent_details.remote_parent, uri)
-        return _read_as_file(read_data)
+        return M.internal.read_as_file(read_data)
     elseif read_type == netman_options.api.READ_TYPE.EXPLORE then
         log.info("Getting directory contents for path: " .. uri)
         return {
-            contents = _read_as_explore(read_data),
+            contents = M.internal.read_as_explore(read_data),
             parent = {
                 display = parent_details.local_parent,
                 remote  = parent_details.remote_parent
@@ -321,16 +365,16 @@ end
 
 function M.delete(uri)
     local provider, cache = nil, nil
-    uri, provider, cache = validate_uri(uri)
-    if not uri then return nil end
-    log.info("Reaching out to " .. provider.name .. " to delete " .. uri)
+    uri, provider, cache = M.internal.validate_uri(uri)
+    if not uri or not provider then return nil end
+    log.info(string.format("Reaching out to %s to delete %s", provider.name,uri))
     -- Do this asynchronously
     provider.delete(uri, cache)
 end
 
 function M.get_metadata(uri, metadata_keys)
     local provider, cache = nil, nil
-    uri, provider, cache = validate_uri(uri)
+    uri, provider, cache = M.internal.validate_uri(uri)
     if not uri then return nil end
     if not metadata_keys then
         metadata_keys = {}
@@ -369,7 +413,10 @@ end
 ---     The name of the package to register
 --- @return nil
 function M.register_explorer_package(explorer_package)
-    log.info("Registering " .. tostring(explorer_package) .. " as an explorer package in netman!")
+    if not explorer_package then return end
+    log.info(
+        string.format("Registering %s an explorer package in netman!", explorer_package)
+    )
     local sanitized_package = explorer_package:gsub(package_path_sanitizer_glob, '%%' .. '%1')
     M._explorers[explorer_package] = sanitized_package
 end
@@ -398,19 +445,19 @@ function M.unload_provider(provider_path, justification)
     if justification then justified = true end
     log.info("Attempting to unload provider: " .. provider_path)
     local status, provider = pcall(require, provider_path)
-    package.loaded[provider_path] = nil
     if not status or provider == true or provider == false then
         log.warn("Failed to fetch provider " .. provider_path .. " for unload!")
         return
     end
+    package.loaded[provider_path] = nil
     if provider.protocol_patterns then
         log.info("Disassociating Protocol Patterns and Autocommands with provider: " .. provider_path)
         for _, pattern in ipairs(provider.protocol_patterns) do
             local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
-            if M._providers[new_pattern] then
+            if M._providers.protocol_to_path[new_pattern] then
                 log.trace("Removing associated autocommands with " .. new_pattern .. " for provider " .. provider_path)
                 if not justified then
-                    justification {
+                    justification = {
                         reason = "Provider Unloaded"
                         ,name = provider_path
                         ,protocol = table.concat(provider.protocol_patterns, ', ')
@@ -419,12 +466,11 @@ function M.unload_provider(provider_path, justification)
                     justified = true
                 end
                 M._providers.protocol_to_path[new_pattern] = nil
-                M._providers.path_to_provider[provider_path] = nil
             end
         end
     end
+    M._providers.path_to_provider[provider_path] = nil
     M._providers.uninitialized[provider_path] = justification
-    return true
 end
 
 --- Load Provider is what a provider should call
@@ -543,9 +589,12 @@ function M.init()
         return
     end
     log.info("--------------------Netman API initialization started!---------------------")
-    _init_augroups()
+    M.internal.init_augroups()
     local core_providers = require("netman.providers")
-    for _, provider in ipairs(core_providers) do M.load_provider(provider) end
+    for _, provider in ipairs(core_providers) do
+        M.load_provider(provider)
+    end
+    M._inited = true
     log.info("--------------------Netman API initialization complete!--------------------")
 end
 
