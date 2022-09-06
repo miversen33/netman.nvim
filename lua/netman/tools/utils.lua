@@ -149,6 +149,10 @@ local setup = function()
     if _is_setup then
         return
     end
+    -- Making sure these exist as we do filesystem operations on them. IE, they
+    -- MUST exist before we do stuff with them
+    mkdir(cache_dir, 'p') -- Creating the cache dir
+    mkdir(files_dir, 'p') -- Creating the temp files dir
     local parent_dir = files_dir
     local _parent_dir_id = vim.loop.fs_scandir(parent_dir)
     local child = {}
@@ -173,7 +177,6 @@ local setup = function()
             _log(level, true, ...)
         end
     end
-    mkdir(cache_dir, 'p') -- Creating the cache dir
     mkdir(data_dir,  'p') -- Creating the data dir
     mkdir(files_dir, 'p') -- Creating the temp files dir
     mkdir(socket_dir, 'p') -- Creating the socket dir
