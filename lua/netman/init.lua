@@ -15,11 +15,12 @@ local M = {}
 function M.read(...)
     local files = { f = select("#", ...), ... }
     for _, file in ipairs(files) do
+        if not file then goto continue end
         notify.info("Fetching file: ", file)
         local command = api.read(file)
-        log.trace("Received read command", command)
+        log.trace(string.format("Received read command: %s", command))
         if not command then
-            log.warn("No command returned for read of " .. file)
+            log.warn(string.format("No command returned for read of %s", file))
             goto continue
         end
         local mapped_file, is_shortcut = api.check_if_path_is_shortcut(file, 'remote_to_local')
@@ -65,11 +66,6 @@ function M.delete(uri)
         return
     end
     api.delete(uri)
-end
-
-function M.close_uri(uri)
-    local bufnr = vim.uri_to_bufnr(uri)
-    vim.api.nvim_buf_delete(bufnr, {force=false})
 end
 
 function M.init()
