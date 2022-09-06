@@ -406,12 +406,8 @@ function M.get_metadata(uri, metadata_keys)
     return metadata
 end
 
-function M.unload_buffer(uri, buffer_handle)
-    if buffer_handle then
-        utils.remove_tracked_buffer(buffer_handle)
-    end
-end
 -- TODO: (Mike): Do a thing with this?
+function M.unload_buffer(uri, buffer_handle) end
 
 --- Registers an explorer package which will be used to determine
 --- what path to feed on cwd fetches
