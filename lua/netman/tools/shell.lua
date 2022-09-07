@@ -142,7 +142,9 @@ function Shell:_run_async()
     local exit_callback = function(exit_code, _)
         if self._job_timer then
             self._job_timer:stop()
-            self._job_timer:close()
+            if not self._job_timer:is_closing() then
+                self._job_timer:close()
+            end
         end
         if not self._handle:is_closing() then
             self._handle:close()
@@ -159,12 +161,18 @@ function Shell:_run_sync()
     feedback_timer = vim.loop.new_timer()
     local exit_callback = function(exit_code, _)
         feedback_timer:stop()
-        feedback_timer:close()
+        if not feedback_timer:is_closing() then
+            feedback_timer:close()
+        end
         if self._job_timer then
             self._job_timer:stop()
-            self._job_timer:close()
+            if not self._job_timer:is_closing() then
+                self._job_timer:close()
+            end
         end
-        self._handle:close()
+        if not self._handle:is_closing() then
+            self._handle:close()
+        end
         self:_on_exit(exit_code, _)
     end
     self:_run(exit_callback)
@@ -173,7 +181,9 @@ function Shell:_run_sync()
             function()
                 if not self._handle:is_active() then
                     feedback_timer:stop()
-                    feedback_timer:close()
+                    if not feedback_timer:is_closing() then
+                        feedback_timer:close()
+                    end
                end
             end)
         vim.loop.run('once')
@@ -206,8 +216,12 @@ function Shell:_run(exit_callback)
         self._job_timer = vim.loop.new_timer()
         self._job_timer:start(self._job_timeout, 0, function()
             self._job_timer:stop()
-            self._job_timer:close()
-            self._handle:close(exit_callback)
+            if not self._job_timer:is_closing() then
+                self._job_timer:close()
+            end
+            if not self._handle:is_closing() then
+                self._handle:close(exit_callback)
+            end
             self._job_timer = nil
             require("netman.tools.utils").log.warn(self._command_as_string .. " timed out!")
         end)
@@ -233,9 +247,15 @@ function Shell:_on_exit(exit_code, _)
     self.exit_code = exit_code
     self.stdout = stdout
     self.stderr = stderr
-    self._stdout_pipe:close()
-    self._stderr_pipe:close()
-    self._stdin_pipe:close()
+    if not self._stdout_pipe:is_closing() then
+        self._stdout_pipe:close()
+    end
+    if not self._stderr_pipe:is_closing() then
+        self._stderr_pipe:close()
+    end
+    if not self._stdin_pipe:is_closing() then
+        self._stdin_pipe:close()
+    end
     if self._tmp_stdout_callback then self._stdout_callback = nil end
     if self._tmp_stderr_callback then self._stderr_callback = nil end
     self._tmp_stdout_callback = nil
