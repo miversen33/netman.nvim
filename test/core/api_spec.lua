@@ -463,7 +463,7 @@ describe("Netman API #netman-api", function()
             assert.is_nil(api.write(0, ''), "Write somehow got a provider to use?")
         end)
     end)
---     -- api.delete
+    -- api.delete
     describe('#delete', function()
         -- Figure out a way to verify that an action is happening asychronously?
         -- A reasonable way to do this would be to have our provider's 
@@ -526,7 +526,6 @@ describe("Netman API #netman-api", function()
     end)
     -- api.init
     describe('#init', function()
-        require("netman.tools.utils").log.debug("Starting init stuff")
         after_each(function()
             package.loaded['netman.api'] = nil
         end)
