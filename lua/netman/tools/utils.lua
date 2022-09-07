@@ -181,6 +181,7 @@ local setup = function()
     mkdir(files_dir, 'p') -- Creating the temp files dir
     mkdir(socket_dir, 'p') -- Creating the socket dir
     log_file = io.open(data_dir .. "logs.txt", "a+")
+    log.info("--------------------Netman Utils initialization started!---------------------")
     log.info("Verifying Netman directories exist", {cache_dir=cache_dir, data_dir=data_dir, files_dir=files_dir})
     log.info("Generated Session ID: " .. session_id .. " for logging.")
     for _, child in ipairs(children) do
@@ -189,6 +190,7 @@ local setup = function()
             vim.fn.delete(parent_dir .. child, 'rf')
         end
     end
+    log.info("--------------------Netman Utils initialization complete!---------------------")
     _is_setup = true
 end
 
