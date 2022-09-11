@@ -231,3 +231,5 @@ end
 function _G.clear()
     os.execute("clear")
 end
+
+luv.run()
