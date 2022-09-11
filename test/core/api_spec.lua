@@ -1,5 +1,4 @@
 _G._QUIET = true -- This makes bootstrap shut up
-require("lua.netman.tools.bootstrap")
 vim.g.netman_log_level = 0
 
 local spy = require("luassert.spy")

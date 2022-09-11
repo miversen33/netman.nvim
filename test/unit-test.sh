@@ -5,4 +5,4 @@ for flag in "$@"
 do
     flags="$flags -t $flag"
 done
-busted -m "../?.lua" ./core $flags
+busted -m "../?.lua" --helper lua.netman.tools.bootstrap * $flags

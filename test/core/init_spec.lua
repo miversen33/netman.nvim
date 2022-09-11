@@ -1,5 +1,4 @@
 _G._QUIET = true -- This makes bootstrap shut up
-require("lua.netman.tools.bootstrap")
 vim.g.netman_log_level = 0
 
 local describe = require("busted").describe
@@ -7,7 +6,7 @@ local it = require("busted").it
 local before_each = require("busted").before_each
 local after_each = require("busted").after_each
 
-describe('Netman init #netman-init', function()
+describe('Netman init #netman_init', function()
     before_each(function()
         package.loaded['netman.api'] = nil
         package.loaded['netman'] = nil
