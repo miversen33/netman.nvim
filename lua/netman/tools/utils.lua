@@ -149,6 +149,7 @@ local setup = function()
     if _is_setup then
         return
     end
+
     -- Making sure these exist as we do filesystem operations on them. IE, they
     -- MUST exist before we do stuff with them
     mkdir(cache_dir, 'p') -- Creating the cache dir
@@ -185,6 +186,7 @@ local setup = function()
     log.info("Verifying Netman directories exist", {cache_dir=cache_dir, data_dir=data_dir, files_dir=files_dir})
     log.info("Generated Session ID: " .. session_id .. " for logging.")
     for _, child in ipairs(children) do
+        log.trace(string.format("Checking if %s is alive", child))
         if not is_process_alive(child) then
             log.trace("Removing Orphaned Files Directory " .. parent_dir .. tostring(child))
             vim.fn.delete(parent_dir .. child, 'rf')
