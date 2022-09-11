@@ -1,5 +1,6 @@
 -- TODO: (Mike): Needs a compat layer for when new neovim features are added
 -- So we can "target" versions with bootstrap and not need to download/build each point version
+
 -- Should help protect against attacks that abuse any poorly written
 -- vim emulation code below. Additionally should prevent this from
 -- running while in a neovim environment
@@ -35,7 +36,6 @@ if not netman_path then
     return
 end
 package.path = netman_path .. "?.lua;" .. netman_path .. "?/init.lua;"  .. package.path
--- package.path =  "../?.lua;" .. package.path
 
 local preloaded_packages = {}
 preloaded_packages[self_name] = 1
