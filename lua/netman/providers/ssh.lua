@@ -129,7 +129,11 @@ local _parse_uri = function(uri)
     local path_head, path_body = uri:match(path_pattern)
     path_head = path_head or "/"
     path_body = path_body or ""
-    if (path_head:len() ~= 1) then
+    if(path_head:len() == 3) then
+        details.is_relative = false
+    elseif (path_head:len() == 1) then
+        details.is_relative = true
+    else
         notify.error("Error parsing path: Unable to parse path from uri: " .. details.base_uri .. '. Path should begin with / but path begins with ' .. path_head)
         return {}
     end
@@ -165,7 +169,7 @@ local _parse_uri = function(uri)
         and details.user:len() > 1 then
             details.auth_uri = details.user .. "@" .. details.host
     end
-    log.debug("Parsed URI Details", details)
+    log.trace({details=details})
     return details
 end
 
@@ -201,9 +205,9 @@ end
 -- @return cache, string or nil, nil
 local _validate_cache = function(provider_cache, uri)
     local cached_details = provider_cache:get_item(uri)
-    if cached_details then return cached_details.cache, cached_details.uri_details end
+    if cached_details then return cached_details.cache, cached_details.details end
 
-    local uri_details = _parse_uri(uri, provider_cache)
+    local uri_details = _parse_uri(uri)
     if not uri_details then
         log.warn("Unable to parse URI details!")
         return nil, nil
@@ -211,7 +215,6 @@ local _validate_cache = function(provider_cache, uri)
     local cache = provider_cache:get_item(uri_details.host)
     if not cache then
         cache = CACHE:new()
-        cache:add_item('details', uri_details)
         provider_cache:add_item(uri_details.host, cache)
     end
     if not cache:get_item('files') then
@@ -220,11 +223,11 @@ local _validate_cache = function(provider_cache, uri)
     if not cache:get_item('file_metadata') then
         cache:add_item('file_metadata', CACHE:new(METADATA_TIMEOUT), CACHE.FOREVER)
     end
-    provider_cache:add_item(uri, {cache=cache, uri_details=uri_details}, CACHE.FOREVER)
+    provider_cache:add_item(uri, {cache=cache, details=uri_details}, CACHE.FOREVER)
     return cache, uri_details
 end
 
-local _read_file = function(uri_details, host_cache)
+local _read_file = function(uri_details)
     local command = {}
     if uri_details.protocol == 'sftp' or uri_details.protocol == 'scp' then
         command = {uri_details.protocol}
@@ -232,12 +235,9 @@ local _read_file = function(uri_details, host_cache)
             table.insert(command, '-P')
             table.insert(command, uri_details.port)
         end
-        -- if host_cache:get_item('compression') then
-        --     table.insert(command, '-C')
-        -- end
         local _auth_uri = uri_details.auth_uri .. ':'
         if uri_details.is_relative then
-            _auth_uri = _auth_uri .. './' .. uri_details.path
+            _auth_uri = _auth_uri .. '.' .. uri_details.path
         else
             _auth_uri = _auth_uri .. uri_details.path
         end
@@ -281,7 +281,6 @@ local _read_file = function(uri_details, host_cache)
         local_parent = uri_details.parent,
         remote_parent = remote_parent
     }
-
     return return_info, parent_info
 end
 
@@ -303,9 +302,13 @@ local _read_directory = function(uri_details, cache)
         table.insert(command, item)
     end
     table.insert(command, uri_details.auth_uri)
+    local path = uri_details.path
+    if uri_details.is_relative then
+        path = "~" .. path
+    end
     local _find_command =
         "find -L "
-        .. uri_details.path
+        .. path
         .. ' -maxdepth 1 -exec '
         .. table.concat(STAT_COMMAND, ' ')
         .. ' {} +'
@@ -319,9 +322,9 @@ local _read_directory = function(uri_details, cache)
     command_options[command_flags.STDERR_JOIN] = ''
     log.trace(string.format('Running ssh command %s', table.concat(command, ' ')))
     command_output = shell:new(command, command_options):run()
-    stderr, stdout = command_output.stderr, command_output.stdout
+    stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
     log.trace('SSH Directory Command and output', {command=command, options=command_options, output=command_output})
-    if stderr and stderr ~= '' and not stderr:match('No such file or directory$') then
+    if exit_code ~= 0 then
         notify.warn("Error trying to get contents of " .. tostring(uri_details.base_uri))
         return nil
     end
@@ -349,8 +352,7 @@ local _read_directory = function(uri_details, cache)
     return {remote_files = children:as_table()}
 end
 
-local _write_file = function(cache, lines)
-    local uri_details = cache:get_item('details')
+local _write_file = function(uri_details, lines)
     -- WARN: (Mike): The mode 664 here isn't actually 664 for some reason? Maybe it needs to be an octal, who knows
     local local_file = vim.loop.fs_open(uri_details.local_file, 'w', 664)
     assert(local_file, "Unable to write to " .. tostring(local_file))
@@ -372,10 +374,9 @@ local _write_file = function(cache, lines)
             table.insert(command, option)
         end
         table.insert(command, uri_details.local_file)
-
         local _auth_uri = uri_details.auth_uri .. ':'
         if uri_details.is_relative then
-            _auth_uri = _auth_uri .. './' .. uri_details.path
+            _auth_uri = _auth_uri .. '.' .. uri_details.path
         else
             _auth_uri = _auth_uri .. uri_details.path
         end
@@ -403,8 +404,7 @@ local _write_file = function(cache, lines)
     return true
 end
 
-local _create_directory = function(cache, directory)
-    local uri_details = cache:get_item('details')
+local _create_directory = function(uri_details, directory)
     local command = {}
     for _, item in ipairs(SSH_COMMAND) do
         table.insert(command, item)
@@ -445,14 +445,14 @@ function M.read(uri, provider_cache)
         remote_parent = parsed_uri_details.protocol .. '://' .. parsed_uri_details.auth_uri .. '' .. parsed_uri_details.parent
     }
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        if _read_file(parsed_uri_details, cache) then
+        if _read_file(parsed_uri_details) then
             return {
                 local_path = parsed_uri_details.local_file
                 ,origin_path = uri
             }, api_flags.READ_TYPE.FILE, parent_details
         else
-            log.warn("Failed to read remote file " .. cache.path .. '!')
-            notify.info("Failed to access remote file " .. cache.path .. " on remote host " .. cache.host)
+            log.warn(string.format("Failed to read remote file %s !", parsed_uri_details.path))
+            notify.info(string.format("Failed to access remote file %s on remote host %s", parsed_uri_details.path, parsed_uri_details.host))
             return nil
         end
     else
@@ -480,7 +480,7 @@ function M.write(uri, provider_cache, data)
         return nil
     end
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        _write_file(cache, data)
+        _write_file(parsed_uri_details, data)
     else
         -- TODO: Mike: Get the name of the directory to create
         -- _create_directory(cache, )
@@ -566,7 +566,11 @@ function M.get_metadata(uri, provider_cache, requested_metadata, forced)
     for _, flag in ipairs(STAT_COMMAND) do
         table.insert(command, flag)
     end
-    table.insert(command, parsed_uri_details.path)
+    local path = parsed_uri_details.path
+    if parsed_uri_details.is_relative then
+        path = "~" .. path
+    end
+    table.insert(command, path)
 
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
