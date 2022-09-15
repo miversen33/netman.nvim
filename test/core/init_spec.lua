@@ -38,12 +38,8 @@ describe('Netman init #netman_init', function()
             require("netman").read('dummy-file')
             assert.is_false(was_opened, "Read tried to open nonexistent file off api command")
         end)
-        -- What happens when you try to open a uri that is already open?
-        -- it("should 
     end)
     describe('#write', function()
-        -- There is some weirdness with shell:run that is causing seg faults in unit testing, but _only_
-        -- when you run this tag on its own. Why? ¯\_(ツ)_/¯
         it("should use the buffer filename if no uri is provided", function()
             local was_called = false
             vim.fn.expand = function(_)
@@ -99,8 +95,6 @@ describe('Netman init #netman_init', function()
         end)
     end)
     describe('#init', function()
-        -- There is some weirdness with shell:run that is causing seg faults in unit testing, but _only_
-        -- when you run this tag on its own. Why? ¯\_(ツ)_/¯
         local _nvim_command = nil
         before_each(function()
             package.loaded['netman'] = nil
@@ -133,8 +127,6 @@ describe('Netman init #netman_init', function()
         end)
     end)
     describe('#misc', function()
-        -- There is some weirdness with shell:run that is causing seg faults in unit testing, but _only_
-        -- when you run this tag on its own. Why? ¯\_(ツ)_/¯
         local netman = require("netman")
         it("should expose api", function()
             assert.is_not_nil(netman.api, "Netman init didn't expose API")
