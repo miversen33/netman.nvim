@@ -54,6 +54,7 @@ end
 local shell_escape_pattern = [[([%s^&*()%]="'+.|,<>?%[{}%\])]]
 _G.vim = { g = {}, inspect=inspect, loop=luv }
 _G.vim.fn = {}
+_G.vim.ui = {}
 _G.vim.api = {}
 _G.inspect = inspect
 _G.uv = luv
@@ -173,6 +174,12 @@ end
 -- Returns an empty array. This is _basically_ a stub function
 function _G.vim.api.buf_get_lines(buffer_index, start_line, end_line, strict_indexing)
     return {}
+end
+
+function _G.vim.ui.input(opts, callback)
+    print(opts.prompt)
+    local response = io.stdin:read()
+    callback(response)
 end
 
 function _G.vim.api.nvim_create_autocmd(event, opts)
