@@ -94,7 +94,7 @@ function Cache:len()
     self:validate()
     -- Pretty ick but there may not be a better way to do this?
     local size = 0
-    for key, _ in ipairs(self._cache) do
+    for _, _ in pairs(self._cache) do
         size = size + 1
     end
     return size
