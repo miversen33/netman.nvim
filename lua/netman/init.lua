@@ -2,6 +2,7 @@ vim.g.netman_log_level = 0
 vim.g.loaded_netrwPlugin = 1
 vim.g.loaded_netrw = 1
 
+-- vim.g.netman_no_shim = true
 
 local api    = require('netman.api')
 local utils  = require("netman.tools.utils")
@@ -13,6 +14,9 @@ local netman_enums = require("netman.tools.options")
 local M = {}
 
 function M.read(...)
+    -- This seems to be executing a lazy read, I am not sure I want that,
+    -- and even if I do, I should figure out _why_ its doing a lazy
+    -- read when that is not the design
     local files = { f = select("#", ...), ... }
     for _, file in ipairs(files) do
         if not file then goto continue end
@@ -37,7 +41,7 @@ function M.read(...)
         local undo_levels = vim.api.nvim_get_option('undolevels')
         vim.api.nvim_command('keepjumps sil! 0')
         vim.api.nvim_command('keepjumps sil! setlocal ul=-1 | ' .. command)
-        -- TODO: (Mike): This actually adds the empty line to the default register. consider a way to get 
+        -- TODO: (Mike): This actually adds the empty line to the default register. consider a way to get
         -- 0"_dd to work instead?
         vim.api.nvim_command('keepjumps sil! 0d')
         vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
@@ -92,6 +96,32 @@ function M.init()
         local end_time = vim.loop.hrtime() - start_time
         log.info("Netman Initialization Complete: Took approximately " .. (end_time / 1000000) .. "ms")
     end
+end
+
+-- Some helper objects attached to the M object that is returned on
+-- require('netman') so you can chain things on setup
+M.api = api
+M.log = utils.log
+M.notify = utils.notify
+M.libruv = libruv
+M.utils = utils
+
+M.do_test = function()
+
+    local stdout = vim.loop.new_pipe()
+    local stderr = vim.loop.new_pipe()
+    local stdin = vim.loop.new_pipe()
+    vim.loop.read_start(stdout, function(data)
+        -- Not sure why but stdout is not getting called here for this command?
+        print(string.format("STDOUT: %s", data))
+    end)
+    vim.loop.read_start(stderr, function(data)
+        print(string.format("STDERR: %s", data))
+    end)
+    vim.loop.spawn("ssh", {
+        args = {"piserver"},
+        stdio = {stdin, stdout, stderr}
+    })
 end
 
 -- Some helper objects attached to the M object that is returned on
