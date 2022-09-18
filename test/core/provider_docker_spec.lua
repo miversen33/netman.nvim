@@ -5,7 +5,6 @@ local describe = require("busted").describe
 local it = require("busted").it
 local before_each = require("busted").before_each
 local after_each = require("busted").after_each
-local pending = require("busted").pending
 
 describe("Netman Provider #docker", function()
     describe("#_parse_uri", function()
