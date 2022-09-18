@@ -70,6 +70,7 @@ local M = {}
 M.protocol_patterns = {'ssh', 'scp', 'sftp'}
 M.name = 'ssh'
 M.version = 0.1
+M.internal = {}
 
 --- _parse_uri will take a string uri and return an object containing details about
 --- the uri provided.
@@ -85,7 +86,7 @@ M.version = 0.1
 ---        ,type
 ---        ,return_type
 ---        ,parent
-local _parse_uri = function(uri)
+function M.internal._parse_uri(uri)
     local details = {
         base_uri     = uri
         ,command     = nil
@@ -173,7 +174,7 @@ local _parse_uri = function(uri)
     return details
 end
 
-local _process_find_result = function(preprocessed_result)
+function M.internal._process_find_result(preprocessed_result)
     local result = {raw=preprocessed_result}
     for _, pattern in ipairs(find_pattern_globs) do
         local key, value = preprocessed_result:match(pattern)
@@ -203,11 +204,11 @@ end
 -- @param uri string
 --      The uri to validate
 -- @return cache, string or nil, nil
-local _validate_cache = function(provider_cache, uri)
+function M.internal._validate_cache(provider_cache, uri)
     local cached_details = provider_cache:get_item(uri)
     if cached_details then return cached_details.cache, cached_details.details end
 
-    local uri_details = _parse_uri(uri)
+    local uri_details = M.internal._parse_uri(uri)
     if not uri_details then
         log.warn("Unable to parse URI details!")
         return nil, nil
@@ -227,7 +228,7 @@ local _validate_cache = function(provider_cache, uri)
     return cache, uri_details
 end
 
-local _read_file = function(uri_details)
+function M.internal._read_file(uri_details)
     local command = {}
     if uri_details.protocol == 'sftp' or uri_details.protocol == 'scp' then
         command = {uri_details.protocol}
@@ -284,7 +285,7 @@ local _read_file = function(uri_details)
     return return_info, parent_info
 end
 
-local _read_directory = function(uri_details, cache)
+function M.internal._read_directory(uri_details, cache)
     local results =  cache:get_item('files'):get_item(uri_details.base_uri)
     if results and results:len() > 0 then
         return {remote_files = results:as_table(), parent = 1}
@@ -314,7 +315,7 @@ local _read_directory = function(uri_details, cache)
         .. ' {} +'
     table.insert(command, _find_command)
     local command_output = {}
-    local stderr, stdout = nil, nil
+    local stderr, stdout, exit_code = nil, nil, nil
     local command_options = {}
     local child = {}
     local size = 0
@@ -330,7 +331,7 @@ local _read_directory = function(uri_details, cache)
     end
     stdout = stdout:gsub('\\0', string.char(0))
     for result in stdout:gmatch('[.%Z]+') do
-        child = _process_find_result(result)
+        child = M.internal._process_find_result(result)
         child.URI = uri_details.base_uri .. child.NAME
         if
             child.FIELD_TYPE == metadata_options.LINK
@@ -352,7 +353,7 @@ local _read_directory = function(uri_details, cache)
     return {remote_files = children:as_table()}
 end
 
-local _write_file = function(uri_details, lines)
+function M.internal._write_file(uri_details, lines)
     -- WARN: (Mike): The mode 664 here isn't actually 664 for some reason? Maybe it needs to be an octal, who knows
     local local_file = vim.loop.fs_open(uri_details.local_file, 'w', 664)
     assert(local_file, "Unable to write to " .. tostring(local_file))
@@ -404,7 +405,7 @@ local _write_file = function(uri_details, lines)
     return true
 end
 
-local _create_directory = function(uri_details, directory)
+function M.internal._create_directory(uri_details, directory)
     local command = {}
     for _, item in ipairs(SSH_COMMAND) do
         table.insert(command, item)
@@ -425,7 +426,7 @@ local _create_directory = function(uri_details, directory)
 end
 
 function M.read(uri, provider_cache)
-    local cache, parsed_uri_details = _validate_cache(provider_cache, uri)
+    local cache, parsed_uri_details = M.internal._validate_cache(provider_cache, uri)
     local valid_protocol = false
     for _, protocol in ipairs(M.protocol_patterns) do
         if parsed_uri_details and parsed_uri_details.protocol == protocol then
@@ -445,7 +446,7 @@ function M.read(uri, provider_cache)
         remote_parent = parsed_uri_details.protocol .. '://' .. parsed_uri_details.auth_uri .. '' .. parsed_uri_details.parent
     }
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        if _read_file(parsed_uri_details) then
+        if M.internal._read_file(parsed_uri_details) then
             return {
                 local_path = parsed_uri_details.local_file
                 ,origin_path = uri
@@ -457,14 +458,14 @@ function M.read(uri, provider_cache)
         end
     else
         -- Consider sending the global cache and the uri along with the request and letting _read_directory manage adding stuff to the cache
-        local directory_contents = _read_directory(parsed_uri_details, cache)
+        local directory_contents = M.internal._read_directory(parsed_uri_details, cache)
         if not directory_contents then return nil end
         return directory_contents, api_flags.READ_TYPE.EXPLORE, parent_details
     end
 end
 
 function M.write(uri, provider_cache, data)
-    local cache, parsed_uri_details = _validate_cache(provider_cache, uri)
+    local cache, parsed_uri_details = M.internal._validate_cache(provider_cache, uri)
     local valid_protocol = false
     for _, protocol in ipairs(M.protocol_patterns) do
         if parsed_uri_details and parsed_uri_details.protocol == protocol then
@@ -480,15 +481,15 @@ function M.write(uri, provider_cache, data)
         return nil
     end
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        _write_file(parsed_uri_details, data)
+        M.internal._write_file(parsed_uri_details, data)
     else
         -- TODO: Mike: Get the name of the directory to create
-        -- _create_directory(cache, )
+        M.internal._create_directory(parsed_uri_details, data)
     end
 end
 
 function M.delete(uri, provider_cache)
-    local cache, parsed_uri_details = _validate_cache(provider_cache, uri)
+    local cache, parsed_uri_details = M.internal._validate_cache(provider_cache, uri)
     local valid_protocol = false
     for _, protocol in ipairs(M.protocol_patterns) do
         if parsed_uri_details and parsed_uri_details.protocol == protocol then
@@ -532,11 +533,11 @@ function M.init(config_options, cache)
 end
 
 function M.close_connection(buffer_index, uri, cache)
-
+-- TODO:
 end
 
 function M.get_metadata(uri, provider_cache, requested_metadata, forced)
-    local cache, parsed_uri_details = _validate_cache(provider_cache, uri)
+    local cache, parsed_uri_details = M.internal._validate_cache(provider_cache, uri)
     if not parsed_uri_details then
         log.warn("Invalid URI: " .. uri .. " provided!")
         return nil
@@ -587,7 +588,7 @@ function M.get_metadata(uri, provider_cache, requested_metadata, forced)
     end
     stdout = stdout:gsub('\\0', string.char(0))
     for result in stdout:gmatch('[.%Z]+') do
-        child = _process_find_result(result)
+        child = M.internal._process_find_result(result)
         child.URI = uri
         cache:add_item(uri, child)
     end
