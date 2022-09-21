@@ -101,6 +101,15 @@ function M.internal._parse_uri(uri)
     log.info("Parsing URI: " .. tostring(uri))
     log.trace("Searching for protocol")
     details.protocol = uri:match(protocol_pattern)
+    local valid_protocol = false
+    log.trace(string.format("Validating protocol: %s", details.protocol))
+    for _, protocol in ipairs(M.protocol_patterns) do
+        if details.protocol == protocol then
+            valid_protocol = true
+            break
+        end
+    end
+    if not valid_protocol then details.protocol = nil end
     if not details.protocol then
         log.warn("Unable to find matching protocol for " .. tostring(uri))
         return nil
