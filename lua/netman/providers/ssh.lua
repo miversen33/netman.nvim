@@ -136,7 +136,7 @@ function M.internal._parse_uri(uri)
         details.is_relative = true
     else
         notify.error("Error parsing path: Unable to parse path from uri: " .. details.base_uri .. '. Path should begin with / but path begins with ' .. path_head)
-        return {}
+        return nil
     end
     details.path = "/" .. path_body
     if details.path:sub(-1) == '/' then
