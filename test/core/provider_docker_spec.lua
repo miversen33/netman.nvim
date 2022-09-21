@@ -7,6 +7,62 @@ local before_each = require("busted").before_each
 local after_each = require("busted").after_each
 
 describe("Netman Provider #docker", function()
+    describe("#init", function()
+        after_each(function ()
+            package.loaded['netman.tools.shell'] = nil
+        end)
+        it("should complain if docker isn't available for use", function()
+            local shell = {
+                new = function() return
+                    {
+                        run = function()
+                            return {
+                                stderr = "SUPER DUPER MEGA ERR",
+                                exit_code = 9001,
+                                stdout = "MUH DED"
+                            }
+                        end
+                    }
+                end
+            }
+            package.loaded['netman.tools.shell'] = shell
+            assert.is_false(require("netman.providers.docker").init(), "Docker failed to fail on failure to find docker in path")
+        end)
+        it("should complain if the user doesn't have permission to use docker", function()
+            local shell = {
+                new = function() return
+                    {
+                        run = function()
+                            return {
+                                stderr = "",
+                                exit_code = 0,
+                                stdout = "Got permission denied while trying to connect to the Docker daemon socket at"
+                            }
+                        end
+                    }
+                end
+            }
+            package.loaded['netman.tools.shell'] = shell
+            assert.is_false(require("netman.providers.docker").init(), "Docker failed to fail on invalid permissions for docker")
+        end)
+        it("should be happy if docker is available for use", function ()
+             local shell = {
+                new = function() return
+                    {
+                        run = function()
+                            return {
+                                stderr = "",
+                                exit_code = 0,
+                                stdout = ""
+                            }
+                        end
+                    }
+                end
+            }
+            package.loaded['netman.tools.shell'] = shell
+            assert.is_true(require("netman.providers.docker").init(), "Docker failed to accept that docker was found")
+        end)
+    end)
     describe("#_parse_uri", function()
         after_each(function()
             package.loaded['netman.providers.docker'] = nil
