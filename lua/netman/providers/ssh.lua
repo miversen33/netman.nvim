@@ -14,7 +14,7 @@ local metadata_options = require("netman.tools.options").explorer.METADATA
 local shell = require("netman.tools.shell")
 local CACHE = require("netman.tools.cache")
 
-local host_pattern          = "^([%a%c%d%s%-_%.]*)"
+local host_pattern          = "^([%a%c%d%s%-_%.]+)"
 local name_parse_pattern    = "[^/]+"
 local user_pattern          = "^(.*)@"
 local port_pattern          = '^:([%d]+)'
