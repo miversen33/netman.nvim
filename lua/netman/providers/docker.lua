@@ -493,7 +493,7 @@ function M.init(config_options, cache)
 
     local command_output =
         require("netman.tools.shell"):new(command, command_options):run()
-    if command_output.stderr ~= '' then
+    if command_output.exit_code ~= 0 then
         log.warn("Unable to verify docker is available to run!")
         log.info("Received error: " .. tostring(command_output.stderr))
         return false
