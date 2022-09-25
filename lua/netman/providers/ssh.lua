@@ -253,7 +253,7 @@ function M.internal._read_file(uri_details)
         log.warn("SSH as a protocol is not yet supported!")
         return nil
     else
-        log.warn("Unable to process " .. uri_details.protocol .. ' protocol')
+        log.warn(string.format("Unable to process %s protocol", uri_details.protocol))
         return nil
     end
     log.info("Generated read command " .. table.concat(command, ' '))
