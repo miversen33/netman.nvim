@@ -222,11 +222,7 @@ function M.internal._validate_cache(provider_cache, uri)
         log.warn("Unable to parse URI details!")
         return nil, nil
     end
-    local cache = provider_cache:get_item(uri_details.host)
-    if not cache then
-        cache = CACHE:new()
-        provider_cache:add_item(uri_details.host, cache)
-    end
+    local cache = CACHE:new()
     if not cache:get_item('files') then
         cache:add_item('files', CACHE:new(CACHE.FOREVER), CACHE.FOREVER)
     end
