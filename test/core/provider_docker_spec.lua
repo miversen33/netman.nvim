@@ -8,6 +8,9 @@ local after_each = require("busted").after_each
 
 describe("Netman Provider #docker", function()
     describe("#init", function()
+        before_each(function ()
+            package.loaded['netman.providers.docker'] = nil
+        end)
         after_each(function ()
             package.loaded['netman.tools.shell'] = nil
         end)
@@ -64,6 +67,7 @@ describe("Netman Provider #docker", function()
         end)
     end)
     describe("#_parse_uri", function()
+        -- WARN: Missing Failure Conditions!
         after_each(function()
             package.loaded['netman.providers.docker'] = nil
         end)
