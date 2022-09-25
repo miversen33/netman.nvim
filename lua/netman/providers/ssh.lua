@@ -255,7 +255,6 @@ function M.internal._read_file(uri_details)
         table.insert(command, uri_details.local_file)
     elseif uri_details.protocol == 'ssh' then
         log.warn("SSH as a protocol is not yet supported!")
-        command = {}
         return nil
     else
         log.warn("Unable to process " .. uri_details.protocol .. ' protocol')
