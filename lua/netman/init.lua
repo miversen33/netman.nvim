@@ -124,13 +124,5 @@ M.do_test = function()
     })
 end
 
--- Some helper objects attached to the M object that is returned on
--- require('netman') so you can chain things on setup
-M.api = api
-M.log = utils.log
-M.notify = utils.notify
-M.libruv = libruv
-M.utils = utils
-
 M.init()
 return M
