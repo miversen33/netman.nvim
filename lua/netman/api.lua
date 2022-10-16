@@ -194,7 +194,8 @@ function M.internal.init_augroups()
             if callback_details.event == 'FileReadCmd' then
                 command = 'read'
             end
-            return vim.api.nvim_command(command .. ' ' .. uri .. ' | filetype detect')
+            -- WARN: This may be an issue with opening files with swap already open...?
+            pcall(vim.api.nvim_command, string.format('%s %s | filetype detect', command, uri))
         end
     end
     local write_callback = function(callback_details)
