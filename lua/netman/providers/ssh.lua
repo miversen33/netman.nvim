@@ -277,11 +277,7 @@ function M.internal._read_file(uri_details)
         unique_name = uri_details.unique_name
     }
     local remote_parent = uri_details.protocol .. '://' .. uri_details.auth_uri
-    -- if uri_details.is_relative then
     remote_parent = remote_parent .. uri_details.parent
-    -- else
-    --     remote_parent = remote_parent .. '//' .. uri_details.parent
-    -- end
     local parent_info = {
         local_parent = uri_details.parent,
         remote_parent = remote_parent
