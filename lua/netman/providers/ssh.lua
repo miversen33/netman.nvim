@@ -20,6 +20,7 @@ local user_pattern          = "^(.*)@"
 local port_pattern          = '^:([%d]+)'
 local path_pattern          = '^([/]+)(.*)$'
 local protocol_pattern      = '^(.*)://'
+local NO_SUCH_FILE_OR_DIRECTORY_ERROR_GLOB = 'No such file or directory$'
 
 local SSH_CONNECTION_TIMEOUT = 10
 
@@ -268,6 +269,12 @@ function M.internal._read_file(uri_details)
     -- if a file is missing, instead prompt for if the user wants us
     -- to create it for them
     if command_output.exit_code ~= 0 then
+        if command_output.stderr:match(NO_SUCH_FILE_OR_DIRECTORY_ERROR_GLOB) then
+            vim.ui.input({
+                prompt = string.format("%s doesn't currently exist. Create? [Y/n] ", uri_details.local_file),
+                default = 'Y'
+            })
+        end
         log.warn("Received error while trying to fetch file " .. uri_details.base_uri, {command_output.stderr, command_output.exit_code})
         return nil, nil
     end
