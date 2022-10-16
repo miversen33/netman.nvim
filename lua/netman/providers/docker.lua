@@ -351,7 +351,7 @@ function M.internal._validate_container(uri, container, cache)
     elseif container_status == _docker_status.NOT_RUNNING then
         vim.ui.input({
             prompt = string.format('Container %s is not running, would you like to start it? [y/N] ', container),
-            default = 'Y'
+            default = 'N'
         }
         , function(input)
             if input:match('^[yYeEsS]$') then
