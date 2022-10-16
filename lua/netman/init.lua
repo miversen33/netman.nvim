@@ -72,7 +72,6 @@ end
 
 function M.init()
     if not M._setup_commands then
-        local start_time = vim.loop.hrtime()
         log.trace("Setting Commands")
         local commands = {
             'command -nargs=1 NmloadProvider lua require("netman.api").load_provider(<f-args>)'
@@ -93,8 +92,6 @@ function M.init()
             api.register_explorer_package(_package)
         end
         M._setup_commands = true
-        local end_time = vim.loop.hrtime() - start_time
-        log.info("Netman Initialization Complete: Took approximately " .. (end_time / 1000000) .. "ms")
     end
 end
 
