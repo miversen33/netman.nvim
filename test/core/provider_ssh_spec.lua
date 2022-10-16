@@ -279,7 +279,183 @@ describe("Netman Provider #ssh", function()
             assert.is_not_nil(cached_item:get_item("file_metadata"), "SSH did not create an entry in cache for metadata")
         end)
     end)
-    describe("#_read_file #debug", function()
+    describe("#_read_file", function()
+        before_each(function()
+            package.loaded['netman.providers.ssh'] = nil
+            package.loaded['netman.tools.shell'] = nil
+        end)
+        after_each(function ()
+            package.loaded['netman.tools.shell'] = nil
+            package.loaded['netman.providers.ssh'] = nil
+        end)
+        it("should complain if you aren't using sftp or scp protocol", function()
+            assert.is_nil(require("netman.providers.ssh").internal._read_file({protocol = 'ssh'}))
+            assert.is_nil(require("netman.providers.ssh").internal._read_file({protocol = 'badprotocol'}))
+        end)
+        it("should include the port in the generated command", function()
+            local port = "1111"
+            local matching_command = false
+            local shell = {
+                new = function(_, command)
+                    local matching_port1 = string.format('--port=%s', port)
+                    local found_port = false
+                    for _, item in ipairs(command) do
+                        if item == matching_port1 then
+                            matching_command = true
+                            break
+                        end
+                        if item == '-P' or item == '--port' then
+                            found_port = true
+                        elseif item == port and found_port then
+                            matching_command = true
+                        else
+                            found_port = false
+                        end
+                    end
+                        return
+                    {
+                        run = function()
+                            return {
+                                stderr = "",
+                                exit_code = 0,
+                                stdout = ""
+                            }
+                        end
+                    }
+                end
+            }
+            package.loaded['netman.tools.shell'] = shell
+            require("netman.providers.ssh").internal._read_file(
+                {
+                    protocol = "sftp",
+                    port = "1111",
+                    path = "",
+                    local_file = "",
+                    auth_uri = "",
+                    base_uri = '',
+                    unique_name = '',
+                    parent = ''
+                }
+            )
+            assert.is_true(matching_command, "SSH was unable to properly handle port input")
+        end)
+        it("should properly handle relative pathing", function()
+            local path = "/somefile.txt"
+            local matching_command = false
+            local shell = {
+                new = function(_, command)
+                    for _, item in ipairs(command) do
+                        if item and item:match('%./somefile%.txt') then
+                            matching_command = true
+                            break
+                        end
+                    end
+                       return
+                    {
+                        run = function()
+                            return {
+                                stderr = "",
+                                exit_code = 0,
+                                stdout = ""
+                            }
+                        end
+                    }
+                end
+            }
+            package.loaded['netman.tools.shell'] = shell
+            require("netman.providers.ssh").internal._read_file(
+                {
+                    protocol = "sftp",
+                    port = "",
+                    path = path,
+                    local_file = "",
+                    auth_uri = "",
+                    base_uri = '',
+                    unique_name = '',
+                    parent = '',
+                    is_relative = true
+                }
+            )
+            assert.is_true(matching_command, "SSH was unable to properly handle relative path input")
+        end)
+        it("should properly handle absolute pathing", function()
+            local path = "/somefile.txt"
+            local matching_command = false
+            local shell = {
+                new = function(_, command)
+                    for _, item in ipairs(command) do
+                        if item and item:match('/somefile%.txt') and not item:match("%./somefile%.txt") then
+                            matching_command = true
+                            break
+                        end
+                    end
+                       return
+                    {
+                        run = function()
+                            return {
+                                stderr = "",
+                                exit_code = 0,
+                                stdout = ""
+                            }
+                        end
+                    }
+                end
+            }
+            package.loaded['netman.tools.shell'] = shell
+            require("netman.providers.ssh").internal._read_file(
+                {
+                    protocol = "sftp",
+                    port = "",
+                    path = path,
+                    local_file = "",
+                    auth_uri = "",
+                    base_uri = '',
+                    unique_name = '',
+                    parent = '',
+                    is_relative = false
+                }
+            )
+            assert.is_true(matching_command, "SSH was unable to properly handle absolute path input")
+        end)
+        it("should complain if a non-0 exit code is provided", function()
+            local path = "/somefile.txt"
+            local shell = {
+                new = function()
+                    return {
+                        run = function()
+                            return {
+                                stderr = "",
+                                exit_code = 1,
+                                stdout = ""
+                            }
+                        end
+                    }
+                end
+            }
+            package.loaded['netman.tools.shell'] = shell
+            assert.is_nil(require("netman.providers.ssh").internal._read_file(
+                {
+                    protocol = "sftp",
+                    port = "",
+                    path = path,
+                    local_file = "",
+                    auth_uri = "",
+                    base_uri = '',
+                    unique_name = '',
+                    parent = '',
+                    is_relative = false
+                }
+            ), "SSH did not die on non-0 return code")
+        end)
+        pending("should prompt to create missing file #debug", function()
+
+        end)
+        pending("should create the missing file #debug", function()
+
+        end)
+        pending("should not create the missing file #debug", function()
+
+        end)
     end)
     describe("#_read_directory", function() end)
     describe("#_write_file", function() end)
