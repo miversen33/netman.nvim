@@ -3,7 +3,6 @@ local notify = require("netman.tools.utils").notify
 local log = require("netman.tools.utils").log
 local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
-local utils = require("netman.tools.utils")
 local libruv = require('netman.tools.libruv')
 
 local M = {}
@@ -13,7 +12,25 @@ local M = {}
 --- WARN: If you put an issue in saying anything about using
 --- these functions is not working in your plugin, you will
 --- be laughed at and ridiculed
-M.internal = {}
+M.internal = {
+    config = require("netman.tools.configuration"):new(),
+    -- This will be used to help track unused configurations
+    boot_timestamp = vim.loop.now()
+}
+
+--- The default function that any provider configuration will have associated with its 
+--- :save function.
+M.internal.config.save = function(self)
+    local _config = io.open(require("netman.tools.utils").netman_config_path, 'w+')
+    if not _config then
+        error(string.format("Unable to write to netman configuration: %s", require("netman.tools.utils").netman_config_path))
+        return
+    end
+    local _data = self:serialize()
+    _config:write(_data)
+    _config:flush()
+    _config:close()
+end
 
 -- Gets set to true after init is complete
 M._inited = false
@@ -37,6 +54,45 @@ local _provider_required_attributes = {
     ,'delete'
     ,'get_metadata'
 }
+
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
+function M.internal.init_config()
+    local _lines = {}
+    local _config = io.open(require("netman.tools.utils").netman_config_path, 'r')
+    if not _config then
+        error(string.format("Unable to read netman configuration file: %s", require("netman.tools.utils").netman_config_path))
+    end
+    for line in _config:lines() do table.insert(_lines, line) end
+    _config:close()
+    if next(_lines) then
+        log.trace("Decoding Netman Configuration")
+        local success = false
+        success, _config = pcall(vim.fn.json_decode, _lines)
+        if not success then
+            _config = {}
+        end
+    else
+        _config = {}
+    end
+    for key, value in pairs(_config) do
+        local new_config = require("netman.tools.configuration"):new(value)
+        new_config.save = function(_) M.internal.config:save() end
+        M.internal.config:set(key, new_config)
+    end
+    if not M.internal.config:get('netman.core') then
+        local new_config = require("netman.tools.configuration"):new()
+        new_config.save = function(_) M.internal.config:save() end
+        new_config:set('_last_loaded', vim.loop.now())
+        M.internal.config:set('netman.core', new_config)
+        M.internal.config:save()
+    end
+
+    log.trace(string.format("Loaded Configuration: %s", M.internal.config:serialize()))
+end
 
 --- WARN: Do not rely on these functions existing
 --- WARN: Do not use these functions in your code
@@ -265,6 +321,44 @@ function M.internal.init_augroups()
         log.info(string.format("Creating Auto Command %s|%s", au_command[1], au_command[2].desc))
         vim.api.nvim_create_autocmd(au_command[1], au_command[2])
     end
+end
+
+function M.remove_config(provider)
+    if provider and provider:match('^netman%.') then
+        print('i BeT iT wOuLd Be FuNnY tO rEmOvE a CoRe CoNfiGuRaTiOn ( ͡°Ĺ̯ ͡° )')
+        return
+    end
+    M.internal.config:del(provider)
+    M.internal.config:save()
+end
+
+function M.clear_unused_configs(assume_yes)
+    local ran = false
+    for key, value in pairs(M.internal.config.__data) do
+        if key:match('^netman%.') then goto continue end
+        ran = true
+        local last_loaded = value:get('_last_loaded')
+        if not last_loaded or last_loaded < M.internal.boot_timestamp then
+            -- Potentially remove the configuration
+            if not assume_yes then
+                vim.ui.input({
+                    prompt = string.format("Remove Stored Configuration For Provider: %s? y/N", key),
+                    default = 'N',
+                }, function(option)
+                    if option == 'y' or option == 'Y' then
+                        print(string.format("Removing Netman Configuration: %s", key))
+                        M.remove_config(key)
+                    else
+                        print(string.format("Preserving Netman Configuration: %s", key))
+                    end
+                end)
+            else
+                M.remove_config(key)
+            end
+        end
+        ::continue::
+    end
+    if not ran then print("There are currently no unused netman provider configurations") end
 end
 
 --- Checks if the path is a URI that netman can manage
@@ -524,10 +618,18 @@ function M.load_provider(provider_path)
     if provider.init then
         log.trace("Found init function for provider!")
             -- TODO(Mike): Figure out how to load configuration options for providers
-        local provider_config = {}
+        local provider_config = M.internal.config:get(provider_path)
+        if not provider_config then
+            provider_config = require("netman.tools.configuration"):new()
+            provider_config.save = function(_) M.internal.config:save() end
+            M.internal.config:set(provider_path, provider_config)
+        end
+        provider_config:set('_last_loaded', vim.loop.now())
+        M.internal.config:save()
         -- Consider having this being a timeout based async job?
         -- Bad actors will break the plugin altogether
-        local status, valid = pcall(
+        local valid = nil
+        status, valid = pcall(
             provider.init
             ,provider_config
             ,M._providers.path_to_provider[provider_path].cache
@@ -595,6 +697,7 @@ function M.init()
     end
     log.info("--------------------Netman API initialization started!---------------------")
     M.internal.init_augroups()
+    M.internal.init_config()
     local core_providers = require("netman.providers")
     for _, provider in ipairs(core_providers) do
         M.load_provider(provider)

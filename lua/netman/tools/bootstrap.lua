@@ -20,6 +20,11 @@ local status, inspect = pcall(require, "inspect")
 if status == nil or status == false then
     error("Unable to run boostrapper without inspect. Please install inspect!", 2)
 end
+
+local status, json = pcall(require, "JSON")
+if status == nil or status == false then
+    error("Unable to run bootstrapper without json. Please install json", 2)
+end
 local known_paths = {
     luv.os_homedir() .. "/.local/share/nvim/site/pack/packer/start/netman.nvim/lua/",
     luv.os_homedir() .. "/.local/share/nvim/site/pack/plugins/opt/netman.nvim/lua/"
@@ -237,6 +242,14 @@ end
 
 function _G.clear()
     os.execute("clear")
+end
+
+function _G.vim.fn.json_encode(...)
+    return json:encode(...)
+end
+
+function _G.vim.fn.json_decode(...)
+    return json:decode(...)
 end
 
 luv.run()

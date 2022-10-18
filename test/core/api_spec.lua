@@ -12,6 +12,46 @@ describe("Netman API #netman-api", function()
     before_each(function()
         package.loaded['netman.api'] = nil
     end)
+    describe("#init_config", function()
+        local _io = {}
+        local _json = {}
+        local api = nil
+        before_each(function()
+            _io.open = _G.io.open
+            api = nil
+            package.loaded['netman.tools.utils'] = nil
+            _json.decode = _G.vim.fn.json_decode
+        end)
+        after_each(function()
+            _G.io.open = _io.open
+            api = nil
+            _G.vim.fn.json_decode = _json.decode
+        end)
+
+        it("should complain that it cant open the configuration", function()
+            api = require("netman.api")
+            package.loaded['netman.tools.utils'].netman_config_path = ''
+            _G.io.open = function() return false end
+            assert.has_error(function()
+                api.internal.init_config() end,
+                "Unable to read netman configuration file: "
+            )
+        end)
+        it("should not try to decode json if there is nothing to decode", function()
+            api = require("netman.api")
+            package.loaded['netman.tools.utils'].netman_config_path = ''
+            _G.io.open = function()
+                return {
+                    lines = function() return function() return nil end end,
+                    close = function() end
+                }
+            end
+            local called = false
+            _G.vim.fn.json_decode = function() called = true end
+            api.internal.init_config()
+            assert.is_false(called, "API attempted to decode invalid lines of configuration")
+        end)
+    end)
     describe("#init_augroups", function()
         local api = nil
         local _nvim_create_augroup = nil
