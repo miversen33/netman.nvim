@@ -20,6 +20,7 @@ local log_file             = nil
 local log                  = {}
 local notify               = {}
 local pid                  = vim.fn.getpid()
+local netman_config_path   = vim.fn.stdpath('data') .. '/netman/providers.json'
 local log_level_map        = {
     ERROR = 4,
     WARN = 3,
@@ -149,7 +150,6 @@ local setup = function()
     if _is_setup then
         return
     end
-
     -- Making sure these exist as we do filesystem operations on them. IE, they
     -- MUST exist before we do stuff with them
     mkdir(cache_dir, 'p') -- Creating the cache dir
@@ -181,6 +181,11 @@ local setup = function()
     mkdir(data_dir,  'p') -- Creating the data dir
     mkdir(files_dir, 'p') -- Creating the temp files dir
     mkdir(socket_dir, 'p') -- Creating the socket dir
+    local _ = io.open(netman_config_path, 'a+')
+    if not _ then
+        error(string.format("Unable to open netman configuration: %s", netman_config_path))
+    end
+    _:close()
     log_file = io.open(data_dir .. "logs.txt", "a+")
     log.info("--------------------Netman Utils initialization started!---------------------")
     log.info("Verifying Netman directories exist", {cache_dir=cache_dir, data_dir=data_dir, files_dir=files_dir})
@@ -216,4 +221,5 @@ return {
     escape_shell_command = escape_shell_command,
     dump_callstack       = dump_callstack,
     get_calling_source   = get_calling_source,
+    netman_config_path   = netman_config_path,
 }
