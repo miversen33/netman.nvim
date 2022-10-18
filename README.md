@@ -1,5 +1,5 @@
 STOP! Don't try to integrate with Netman yet!
-There be breaking changes coming with [support for file browsers](https://github.com/miversen33/netman.nvim/issues/28). For details, check out [the current development branch](https://github.com/miversen33/netman.nvim/tree/issue-28-libuv-shenanigans) until it is merged back with main!
+There be breaking changes coming with [support for file browsers](https://github.com/miversen33/netman.nvim/issues/28). For details, check out [the current development branch](https://github.com/miversen33/netman.nvim/tree/v1.1) until it is merged back with main!
 
 # Neovim (Lua Powered) Network Resource Manager
 
