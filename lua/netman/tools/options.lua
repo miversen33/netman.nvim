@@ -95,4 +95,12 @@ return {
             USER = "USER",
         }
     }
+    ,ui = {
+        ENTRY_SCHEMA = {
+            NAME = "NAME",
+            STATE = "STATE",
+            LAST_ACCESSED = "LAST_ACCESSED",
+            URI = "URI"
+        }
+    }
 }

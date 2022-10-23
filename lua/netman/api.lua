@@ -39,6 +39,7 @@ M._providers = {
     path_to_provider = {},
     uninitialized    = {}
 }
+
 M._explorers = {}
 
 local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
@@ -321,6 +322,45 @@ function M.internal.init_augroups()
         log.info(string.format("Creating Auto Command %s|%s", au_command[1], au_command[2].desc))
         vim.api.nvim_create_autocmd(au_command[1], au_command[2])
     end
+end
+
+--- Reaches out to the provided provider and gets a list of
+--- the entries it wants displayed
+--- @param provider string
+---    The string path of the provider in question. This should
+---    likely be provided via netman.api.internal.get_providers()
+--- @return table/nil
+---    Returns a table with data or nil.
+---    nil is returned if the provider is not valid or if the provider
+---    doesn't have the `get_hosts` function implemented
+---    NOTE: Does _not_ validate the schema, you do that yourself, whatever
+---    is calling this
+function M.internal.get_provider_entries(provider)
+    local _provider = M._providers.path_to_provider[provider]
+    local data = nil
+    if not _provider then
+        log.warn(string.format("%s is not a valid provider", provider))
+        return data
+    end
+    _provider = _provider.provider
+    if not _provider.get_hosts then
+        log.info(string.format("%s has not implemented the get_hosts function", provider))
+    else
+        data = _provider.get_hosts()
+    end
+    return data
+end
+
+--- Returns a 1 dimensional table of strings which are registered
+--- netman providers. Intended to be used with netman.api.get_provider_entries (but
+--- I'm not the police, you do what you want with this).
+--- @return table
+function M.internal.get_providers()
+    local _providers = {}
+    for provider, _ in pairs(M._providers.path_to_provider) do
+        table.insert(_providers, provider)
+    end
+    return _providers
 end
 
 function M.remove_config(provider)
