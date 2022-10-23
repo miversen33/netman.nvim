@@ -511,7 +511,35 @@ function M.close_connection(buffer_index, uri, cache)
 
 end
 
---- Retrieves the metadata for the provided URI (as long as the URI is one that 
+--- Returns the various containers that are currently available on the system
+--- @param config Configuration
+---     The Netman provided (provider managed) configuration
+--- @return table
+---     Returns a 1 dimensional table with various container info such as
+---     - NAME
+---     - URI
+---     - STATUS
+---     - LAST_ACCESSED
+function M.get_hosts(config)
+    local containers = M.internal._get_containers()
+    local hosts = {}
+    for _, container in ipairs(containers) do
+        local _host = {}
+        _host.NAME  = container.name
+        _host.URI   = string.format("docker://%s/", container.name)
+        if not container.status then
+            _host.STATE = _docker_status.ERROR
+        elseif container.status:match('^Up') then
+            _host.STATE = _docker_status.RUNNING
+        else
+            _host.STATE = _docker_status.NOT_RUNNING
+        end
+        table.insert(hosts, _host)
+    end
+    return hosts
+end
+
+--- Retrieves the metadata for the provided URI (as long as the URI is one that
 --- we can handle).
 --- @param uri string
 ---     The URI to get metadata for
