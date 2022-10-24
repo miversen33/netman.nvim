@@ -4,6 +4,7 @@
 local renderer = require("neo-tree.ui.renderer")
 local events = require("neo-tree.events")
 local neo_tree_utils = require("neo-tree.utils")
+local defaults = require("netman.ui.neo-tree.defaults")
 
 local M = {
     name = "remote",
@@ -198,5 +199,7 @@ end
 M.setup = function(config, global_config)
 
 end
+
+M.default_config = defaults
 
 return M
