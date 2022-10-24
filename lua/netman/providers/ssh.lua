@@ -50,6 +50,7 @@ local SSH_COMMAND = {
     '-o',
     string.format('ControlPersist=%s', SSH_CONNECTION_TIMEOUT),
 }
+local HOST_MATCH_GLOB = "^[%s]*Host[%s=](.*)"
 
 local METADATA_TIMEOUT = 5 * require("netman.tools.cache").SECOND
 
@@ -72,6 +73,32 @@ M.protocol_patterns = {'ssh', 'scp', 'sftp'}
 M.name = 'ssh'
 M.version = 0.1
 M.internal = {}
+M.icon = ""
+
+function M.internal.prepare_config(config)
+    if not config:get('hosts') then
+        config:set('hosts', {})
+        config:save()
+    end
+end
+
+function M.internal.parse_user_sshconfig(config)
+    local config_location = string.format("%s/.ssh/config", vim.loop.os_homedir())
+    local _config = io.open(config_location, 'r')
+    if not _config then
+        log.warn(string.format("Unable to open user ssh config: %s", config_location))
+        return
+    end
+
+    local hosts = config:get('hosts')
+    for line in _config:lines() do
+        local host = line:match(HOST_MATCH_GLOB)
+        if host and not hosts[host] then
+            hosts[host] = {}
+        end
+    end
+    config:save()
+end
 
 --- _parse_uri will take a string uri and return an object containing details about
 --- the uri provided.
@@ -317,7 +344,7 @@ function M.internal._read_directory(uri_details, cache)
     local _find_command =
         "find -L "
         .. path
-        .. ' -maxdepth 1 -exec '
+        .. ' -maxdepth 1 -mindepth 1 -exec '
         .. table.concat(STAT_COMMAND, ' ')
         .. ' {} +'
     table.insert(command, _find_command)
@@ -332,10 +359,11 @@ function M.internal._read_directory(uri_details, cache)
     command_output = shell:new(command, command_options):run()
     stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
     log.trace('SSH Directory Command and output', {command=command, options=command_options, output=command_output})
-    if exit_code ~= 0 then
-        notify.warn("Error trying to get contents of " .. tostring(uri_details.base_uri))
-        return nil
-    end
+    
+    -- if exit_code ~= 0 then
+    --     notify.warn("Error trying to get contents of " .. tostring(uri_details.base_uri))
+    --     return nil
+    -- end
     stdout = stdout:gsub('\\0', string.char(0))
     for result in stdout:gmatch('[.%Z]+') do
         child = M.internal._process_find_result(result)
@@ -347,13 +375,13 @@ function M.internal._read_directory(uri_details, cache)
             child.URI = child.URI .. '/'
             child.NAME = child.NAME .. '/'
         end
-        if size == 0 then
-            child.URI = uri_details.base_uri
-            cache:get_item('file_metadata'):add_item(uri_details.base_uri, child)
-            child.NAME = './'
-        else
-            cache:get_item('file_metadata'):add_item(child.URI, child)
-        end
+        -- if size == 0 then
+        --     child.URI = uri_details.base_uri
+        --     cache:get_item('file_metadata'):add_item(uri_details.base_uri, child)
+        --     child.NAME = './'
+        -- else
+        cache:get_item('file_metadata'):add_item(child.URI, child)
+        -- end
         children:add_item(child.URI, {URI=child.URI, FIELD_TYPE=child.FIELD_TYPE, NAME=child.NAME, ABSOLUTE_PATH=child.ABSOLUTE_PATH, METADATA=child})
         size = size + 1
     end
@@ -523,7 +551,23 @@ function M.delete(uri, provider_cache)
     end
 end
 
-function M.init(config_options, cache)
+function M.get_hosts(config)
+    local hosts = {}
+    for host, _ in pairs(config:get('hosts')) do
+        local _host = {}
+        _host.NAME = host
+        _host.URI  = string.format("sftp://%s///", host)
+        _host.STATE = ''
+        table.insert(hosts, _host)
+    end
+    return hosts
+end
+
+function M.init(config, cache)
+    M.internal.prepare_config(config)
+
+    -- Read in the local user ssh config?
+    M.internal.parse_user_sshconfig(config)
     log.info("Attempting to initialize ssh provider")
     local command = {'ssh', '-V'}
     local command_options = {
