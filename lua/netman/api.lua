@@ -622,7 +622,7 @@ end
 --- @return nil
 function M.load_provider(provider_path)
     if M._providers.path_to_provider[provider_path] then
-        log.warn(provider_path .. " is already loaded! Consider calling require('netman.api').reload_provider('" .. provider_path .. "') if you want to reload this!")
+        log.warn(string.format("%s is already loaded! Consider calling require('netman.api').reload_provider('%s') if you want to reload it", provider_path, provider_path))
         return
     end
     local status, provider = pcall(require, provider_path)
@@ -676,12 +676,13 @@ function M.load_provider(provider_path)
             ,M._providers.path_to_provider[provider_path].cache
         )
         if not status or valid ~= true then
-            log.warn(provider_path .. ":" .. provider.version .. " refused to initialize. Discarding")
+            log.warn(string.format("%s:%s refused to initialize. Discarding", provider_path, provider.version), valid)
             M.unload_provider(provider_path, {
                  reason = "Initialization Failed"
                 ,name = provider_path
                 ,protocol = table.concat(provider.protocol_patterns, ', ')
                 ,version = provider.version
+                ,error   = valid
             })
             return
         end
