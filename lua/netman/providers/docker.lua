@@ -48,6 +48,13 @@ local M = {
 M.protocol_patterns = {'docker'}
 M.name = 'docker'
 M.version = 0.1
+-- Check if devicons exists. If not, unicode boi!
+M.icon = "🐋"
+local success, web_devicons = pcall(require, "nvim-web-devicons")
+if success then
+    local devicon, _ = web_devicons.get_icon('dockerfile')
+    M.icon = devicon or M.icon
+end
 
 --- _parse_uri will take a string uri and return an object containing details about
 --- the uri provided.
@@ -189,6 +196,31 @@ function M.internal._is_container_running(container)
     end
 end
 
+function M.internal._get_containers()
+    -- -- This hurts, but might be the better way of doing this?
+    -- local command = { 'docker', 'container', 'ls', '--all', '--format', '{{json .}}'}
+    local command = { 'docker', 'container', 'ls', '--all', '--format',
+        '{\"name\": {{json .Names}},\"status\": {{json .Status}}}' }
+    local command_options = {}
+    command_options[command_flags.STDERR_JOIN] = ''
+    local command_output = shell:new(command, command_options):run()
+    local stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
+    log.trace('Container Fetching Output', { command = command, output = command_output })
+    if stderr ~= '' then
+        log.warn(string.format("Received error while fetching containers: %s", stderr))
+    end
+    if exit_code ~= 0 then
+        log.warn(string.format("Received Error Code: %s", exit_code))
+        return {}
+    end
+    local _containers = {}
+    for _, item in ipairs(stdout) do
+        local parsed_output = vim.fn.json_decode(item)
+        table.insert(_containers, parsed_output)
+    end
+    return _containers
+end
+
 function M.internal._start_container(container_name)
     local command = {'docker', 'container', 'start', container_name}
 
@@ -249,6 +281,8 @@ function M.internal._read_directory(uri, path, container, cache)
         path,
         '-maxdepth',
         '1',
+        '-mindepth',
+        '1',
         '-exec',
     }
     for _, flag in ipairs(STAT_COMMAND) do
@@ -269,7 +303,7 @@ function M.internal._read_directory(uri, path, container, cache)
     if stderr and stderr ~= '' and not stderr:match('No such file or directory$') then
         log.warn(string.format("Received STDERR output: %s", stderr))
     end
-    if exit_code then
+    if exit_code ~= 0 then
         notify.warn(string.format("Error trying to get contents of %s", uri))
         return nil
     end
@@ -350,15 +384,15 @@ function M.internal._validate_container(uri, container, cache)
         return nil
     elseif container_status == _docker_status.NOT_RUNNING then
         vim.ui.input({
-            prompt = string.format('Container %s is not running, would you like to start it? [y/N] ', container),
+            prompt = string.format('Start %s? [y/N] ', container),
             default = 'N'
         }
-        , function(input)
+            , function(input)
             if input:match('^[yYeEsS]$') then
                 local started_container = M.internal._start_container(container)
                 if started_container then
                     cache:add_item('container_status', _docker_status.RUNNING)
-                    require("netman").read(uri)
+                    notify.info(string.format("%s successfully started!", container))
                 end
             elseif input:match('^[nNoO]$') then
                 log.info("Not starting container " .. tostring(container))
@@ -528,11 +562,11 @@ function M.get_hosts(config)
         _host.NAME  = container.name
         _host.URI   = string.format("docker://%s/", container.name)
         if not container.status then
-            _host.STATE = _docker_status.ERROR
+            _host.STATE = "🔴"
         elseif container.status:match('^Up') then
-            _host.STATE = _docker_status.RUNNING
+            _host.STATE = "⬆"
         else
-            _host.STATE = _docker_status.NOT_RUNNING
+            _host.STATE = "⬇"
         end
         table.insert(hosts, _host)
     end
