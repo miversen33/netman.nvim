@@ -337,6 +337,7 @@ end
 ---    is calling this
 function M.internal.get_provider_entries(provider)
     local _provider = M._providers.path_to_provider[provider]
+    local _config   = M.internal.config:get(provider)
     local data = nil
     if not _provider then
         log.warn(string.format("%s is not a valid provider", provider))
@@ -346,7 +347,7 @@ function M.internal.get_provider_entries(provider)
     if not _provider.get_hosts then
         log.info(string.format("%s has not implemented the get_hosts function", provider))
     else
-        data = _provider.get_hosts()
+        data = _provider.get_hosts(_config)
     end
     return data
 end
