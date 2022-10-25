@@ -13,8 +13,17 @@
 local highlights = require("neo-tree.ui.highlights")
 local common = require("neo-tree.sources.common.components")
 local netman = require("netman.ui.neo-tree")
+local netman_host_states = require("netman.tools.options").ui.STATES
 
-local M = {}
+local M = {
+    internal = {}
+}
+
+M.internal.state_map = {
+    [netman_host_states.UNKNOWN] = {text=" ", highlight=""},
+    [netman_host_states.AVAILABLE] = {text=" ", highlight="NeoTreeGitAdded"},
+    [netman_host_states.ERROR] = {text="❗", highlight="NeoTreeGitDeleted"},
+}
 
 
 M.icon = function(config, node, state)
@@ -35,13 +44,16 @@ end
 M.state = function(config, node, state)
     local internal_node = netman.internal.get_internal_node(node:get_id())
 
-    local _state = "  "
-    if internal_node and internal_node.state then
-        _state = string.format("%s ", internal_node.state)
+    local icon = "  "
+    local hl = nil
+    if internal_node and internal_node.state and M.internal.state_map[internal_node.state] then
+        local _state = M.internal.state_map[internal_node.state].text
+        hl = M.internal.state_map[internal_node.state].highlight
+        icon = string.format("%s", _state)
     end
     return {
-        text = _state,
-        highlight = nil
+        text = icon,
+        highlight = hl
     }
 end
 

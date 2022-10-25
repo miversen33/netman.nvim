@@ -80,7 +80,7 @@ function M.internal.init_config()
         _config = {}
     end
     ---@diagnostic disable-next-line: need-check-nil
-    if not _config.ui then _config['netman.ui'] = {} end
+    if not _config['netman.ui'] then _config['netman.ui'] = {} end
     for key, value in pairs(_config) do
         local new_config = require("netman.tools.configuration"):new(value)
         new_config.save = function(_) M.internal.config:save() end

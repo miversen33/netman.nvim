@@ -17,6 +17,12 @@ local M = {
 
 M.internal.sorter = function(a, b) return a.name < b.name end
 
+--- Reaches out to the generic Netman UI tool to fetch our config
+--- @return Configuration
+M.internal.get_netman_config = function() return
+    require("netman.ui").get_config("netman.ui.neo-tree")
+end
+
 --- Invalidates the internally cached provider tree. This will be called
 --- anytime a provider is unloaded or loaded into netman
 M.internal.invalidate_provider_cache = function()
@@ -59,7 +65,7 @@ M.internal.generate_root_tree = function()
             name     = name,
             type     = "netman_provider",
             provider = provider,
-            icon     = _provider.icon,
+            icon     = _provider.ui.icon,
             hl       = _provider.icon_highlight
         }
         M.internal.set_internal_node(entry.id, entry)
@@ -142,7 +148,8 @@ M.internal.navigate_host = function(state, node)
         local entry = {
             id = string.format("%s", M.internal.last_id + 1),
             name = item.NAME,
-            uri = item.URI
+            uri = item.URI,
+            host = internal_node.host
         }
         if item.FIELD_TYPE == 'LINK' then
             entry.type = 'directory'
@@ -162,7 +169,22 @@ M.internal.navigate_host = function(state, node)
 end
 
 --- Navigate to the given path.
-M.navigate = function(state)
+--- @param state table
+---     I'll be honest, I have absolutely no idea what state is, its
+---     an object that comes from neo-tree. Any usage of it in this file
+---     is due to reflection shenanigans to figure out what is in it
+--- @param window_state string
+---     If provided, this is the state the open window needs to be in
+---     when a new file is opened.
+---     Default: nil
+---     Valid Options:
+---         - split
+---         - vsplit
+---         - tab
+---         - tab drop
+---         - drop
+--- @return nil
+M.navigate = function(state, window_state)
     local tree, neo_tree_node, internal_node
     tree = state.tree
 
