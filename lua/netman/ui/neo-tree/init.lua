@@ -15,6 +15,52 @@ local M = {
     },
 }
 
+--- Will add the host to the "recents" node
+M.add_recent_host = function(provider, host)
+    local config = M.internal.get_netman_config()
+    local provider_recents = config:get('recents')[provider]
+    if not provider_recents then
+        provider_recents = {}
+        config:get('recents')[provider] = provider_recents
+    end
+    provider_recents[host] = vim.loop.now()
+    config:save()
+end
+
+--- Will remove the host from the "recents" node
+M.remove_recent_host = function(provider, host)
+    local config = M.internal.get_netman_config()
+    local provider_recents = config:get('recents')[provider]
+    config:get('recents')[provider] = nil
+    config:save()
+end
+
+-- TODO: Finish setting up all of the favorite/recent stuff
+--- Will either favorite the host or remove favorite on host
+M.favorite_toggle = function(provider, host)
+    local config = M.internal.get_netman_config()
+    local provider_favorites = config:get('favorites')[provider]
+    if not provider_favorites then
+        provider_favorites = {[host] = 1}
+        config:get('favorites')[provider] = provider_favorites
+    else
+        provider_favorites[host] = nil
+    end
+    config:save()
+end
+
+--- Will either mark the host as hidden or remove the hidden attribute
+M.hide_toggle = function(provider, host)
+    local config = M.internal.get_netman_config()
+    local provider_hidden_hosts = config:get('hidden')[provider]
+    if not provider_hidden_hosts then
+        config:get('hidden')[provider] = {[host]=1}
+    else
+        provider_hidden_hosts[host] = nil
+    end
+    config:save()
+end
+
 M.internal.sorter = function(a, b) return a.name < b.name end
 
 --- Reaches out to the generic Netman UI tool to fetch our config
@@ -93,6 +139,7 @@ M.internal.navigate_to_provider = function(state, node, provider)
             name = _entry.NAME,
             type = 'netman_host',
             provider = provider,
+            host = _entry.NAME,
             uri = _entry.URI,
             state = _entry.STATE,
             last_accessed = _entry.LAST_ACCESSED
@@ -203,6 +250,10 @@ M.navigate = function(state, window_state)
     end
 
     internal_node = M.internal.node_id_map[neo_tree_node:get_id()]
+    if internal_node.host and internal_node.provider then
+        -- Adding the host to the recents node
+        M.add_recent_host(internal_node.provider, internal_node.host)
+    end
 
     -- Display the available hosts for the selected provider
     if internal_node.type == 'netman_provider' then
@@ -219,7 +270,22 @@ end
 ---@param config table Configuration table containing any keys that the user
 --wants to change from the defaults. May be empty to accept default values.
 M.setup = function(config, global_config)
-
+    local netman_config = M.internal.get_netman_config()
+    require("netman.tools.utils").log.debug(netman_config)
+    -- This seems to be resetting these on load?
+    if not netman_config:get('recents') then
+        require("netman.tools.utils").log.info("Creating Recents Table in Netman Neotree Configuration")
+        netman_config:set('recents', {})
+    end
+    if not netman_config:get('favorites') then
+         require("netman.tools.utils").log.info("Creating Favorites Table in Netman Neotree Configuration")
+         netman_config:set('favorites', {})
+    end
+    if not netman_config:get('hidden') then
+        require("netman.tools.utils").log.info("Creating Hidden Table in Netman Neotree Configuration")
+        netman_config:set('hidden', {})
+    end
+    netman_config:save()
 end
 
 M.default_config = defaults
