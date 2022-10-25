@@ -42,18 +42,49 @@ local find_pattern_globs = {
     '^(NAME)=(.*)$'
 }
 local M = {
-    internal = {}
+    internal = {},
+    ui = {}
 }
 
 M.protocol_patterns = { 'docker' }
 M.name = 'docker'
 M.version = 0.1
+
 -- Check if devicons exists. If not, unicode boi!
-M.icon = "🐋"
+M.ui.icon = "🐋"
 local success, web_devicons = pcall(require, "nvim-web-devicons")
 if success then
     local devicon, _ = web_devicons.get_icon('dockerfile')
-    M.icon = devicon or M.icon
+    M.ui.icon = devicon or M.ui.icon
+end
+
+--- Returns the various containers that are currently available on the system
+--- @param config Configuration
+---     The Netman provided (provider managed) configuration
+--- @return table
+---     Returns a 1 dimensional table with various container info such as
+---     - NAME
+---     - URI
+---     - STATE
+---     - LAST_ACCESSED
+function M.ui.get_hosts(config)
+    local containers = M.internal._get_containers()
+    local hosts = {}
+    local states = require("netman.tools.options").ui.STATES
+    for _, container in ipairs(containers) do
+        local _host = {}
+        _host.NAME  = container.name
+        _host.URI   = string.format("docker://%s/", container.name)
+        if not container.status then
+            _host.STATE = states.ERROR
+        elseif container.status:match('^Up') then
+            _host.STATE = states.AVAILABLE
+        else
+            _host.STATE = states.UNKNOWN
+        end
+        table.insert(hosts, _host)
+    end
+    return hosts
 end
 
 --- _parse_uri will take a string uri and return an object containing details about
@@ -546,34 +577,6 @@ end
 
 function M.close_connection(buffer_index, uri, cache)
 
-end
-
---- Returns the various containers that are currently available on the system
---- @param config Configuration
----     The Netman provided (provider managed) configuration
---- @return table
----     Returns a 1 dimensional table with various container info such as
----     - NAME
----     - URI
----     - STATUS
----     - LAST_ACCESSED
-function M.get_hosts(config)
-    local containers = M.internal._get_containers()
-    local hosts = {}
-    for _, container in ipairs(containers) do
-        local _host = {}
-        _host.NAME  = container.name
-        _host.URI   = string.format("docker://%s/", container.name)
-        if not container.status then
-            _host.STATE = "🔴"
-        elseif container.status:match('^Up') then
-            _host.STATE = "⬆"
-        else
-            _host.STATE = "⬇"
-        end
-        table.insert(hosts, _host)
-    end
-    return hosts
 end
 
 --- Retrieves the metadata for the provided URI (as long as the URI is one that

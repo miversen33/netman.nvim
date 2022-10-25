@@ -73,7 +73,31 @@ M.protocol_patterns = {'ssh', 'scp', 'sftp'}
 M.name = 'ssh'
 M.version = 0.1
 M.internal = {}
-M.icon = ""
+
+M.ui = {
+    icon = ""
+}
+
+--- Returns the various containers that are currently available on the system
+--- @param config Configuration
+---     The Netman provided (provider managed) configuration
+--- @return table
+---     Returns a 1 dimensional table with various container info such as
+---     - NAME
+---     - URI
+---     - STATE
+---     - LAST_ACCESSED
+function M.ui.get_hosts(config)
+    local hosts = {}
+    for host, _ in pairs(config:get('hosts')) do
+        local _host = {}
+        _host.NAME = host
+        _host.URI  = string.format("sftp://%s///", host)
+        _host.STATE = nil
+        table.insert(hosts, _host)
+    end
+    return hosts
+end
 
 function M.internal.prepare_config(config)
     if not config:get('hosts') then
@@ -93,8 +117,13 @@ function M.internal.parse_user_sshconfig(config)
     local hosts = config:get('hosts')
     for line in _config:lines() do
         local host = line:match(HOST_MATCH_GLOB)
-        if host and not hosts[host] then
-            hosts[host] = {}
+        if host then
+            -- Removing any trailing padding
+            host = host:gsub('[%s]*$', '')
+            log.trace(string.format("Processing SSH host: %s", host))
+            if host ~= '*' and not hosts[host] then
+                hosts[host] = {}
+            end
         end
     end
     config:save()
@@ -549,18 +578,6 @@ function M.delete(uri, provider_cache)
     else
         notify.info("Deleted " .. uri  .. " successfully")
     end
-end
-
-function M.get_hosts(config)
-    local hosts = {}
-    for host, _ in pairs(config:get('hosts')) do
-        local _host = {}
-        _host.NAME = host
-        _host.URI  = string.format("sftp://%s///", host)
-        _host.STATE = ''
-        table.insert(hosts, _host)
-    end
-    return hosts
 end
 
 function M.init(config, cache)

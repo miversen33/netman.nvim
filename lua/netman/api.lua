@@ -79,6 +79,8 @@ function M.internal.init_config()
     else
         _config = {}
     end
+    ---@diagnostic disable-next-line: need-check-nil
+    if not _config.ui then _config['netman.ui'] = {} end
     for key, value in pairs(_config) do
         local new_config = require("netman.tools.configuration"):new(value)
         new_config.save = function(_) M.internal.config:save() end
@@ -344,12 +346,25 @@ function M.internal.get_provider_entries(provider)
         return data
     end
     _provider = _provider.provider
-    if not _provider.get_hosts then
+    if not _provider.ui or not _provider.ui.get_hosts then
         log.info(string.format("%s has not implemented the get_hosts function", provider))
     else
-        data = _provider.get_hosts(_config)
+        data = _provider.ui.get_hosts(_config)
     end
     return data
+end
+
+--- Returns the associated config for the config owner.
+--- @param config_owner_name string
+---     The name of the owner of the config. Name should be the
+---     path to the provider/consumer. Note, if there isn't one,
+---     already available, **ONE IS NOT CREATED FOR YOU**
+---     To get a config created for yourself, you should have registered
+---     your provider with netman.api.load_provider. If you're a UI
+---     you should be using netman.ui to get your config
+--- @return Configuration
+function M.internal.get_config(config_owner_name)
+    return M.internal.config:get(config_owner_name)
 end
 
 --- Returns a 1 dimensional table of strings which are registered
