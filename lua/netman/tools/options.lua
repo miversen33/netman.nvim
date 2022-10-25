@@ -101,6 +101,11 @@ return {
             STATE = "STATE",
             LAST_ACCESSED = "LAST_ACCESSED",
             URI = "URI"
+        },
+        STATES = {
+            UNKNOWN = "UNKNOWN",
+            AVAILABLE = "AVAILABLE",
+            ERROR = "ERROR"
         }
     }
 }
