@@ -451,12 +451,9 @@ function M.read(uri, provider_cache)
     if cache.file_type == api_flags.ATTRIBUTES.FILE then
         if M.internal._read_file(cache.container, cache.path, cache.local_file) then
             return {
-                local_path = cache.local_file
-                , origin_path = uri
-            }, api_flags.READ_TYPE.FILE, {
-                local_parent = parsed_uri_details.parent
-                , remote_parent = 'docker://' .. parsed_uri_details.container .. parsed_uri_details.parent
-            }
+                local_path = cache.local_file,
+                origin_path = cache.path
+            }, api_flags.READ_TYPE.FILE
         else
             log.warn("Failed to read remote file " .. cache.path .. '!')
             notify.info("Failed to access remote file " .. cache.path .. " on container " .. cache.container)
@@ -469,10 +466,7 @@ function M.read(uri, provider_cache)
             provider_cache:get_item(parsed_uri_details.container)
         )
         if not directory_contents then return nil end
-        return directory_contents, api_flags.READ_TYPE.EXPLORE, {
-            local_parent = parsed_uri_details.parent
-            , remote_parent = 'docker://' .. parsed_uri_details.container .. parsed_uri_details.parent
-        }
+        return directory_contents, api_flags.READ_TYPE.EXPLORE
     end
 end
 

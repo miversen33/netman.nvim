@@ -154,17 +154,30 @@ end
 
 
 M.internal.navigate_host = function(state, node)
-    -- Ok so this is a little bit ugly but lets explain what we are doing
+    -- This should eventually be set by whatever form of open command was done in neo-tree
+    local open_command = 'read ++edit '
+    local command = ''
+    -- local command = ' | set nomodified | filetype detect'
     local internal_node = M.internal.get_internal_node(node:get_id())
+    if not internal_node then
+        require("netman.tools.utils").log.warn("No internal node found for %s", node:get_name())
+        return
+    end
 
-    -- If the item being selected in neo-tree is a "file", we treat it as such.
-    -- However, the "file" doesn't exist in the filesystem so we need to do some 
-    -- shenanigans with Netman to pull it down.
-    -- The way we do that is, make Neotree give us a buffer with the appropriate name
-    -- of the URI we are pulling down, and then let netman stuff the content into the newly
-    -- created buffer.
-    -- LET NEOTREE HANDLE BUFFER MANAGEMENT
-    if internal_node.type == 'file' then
+    local host_data = require("netman.api").read(internal_node.uri)
+    require("netman.tools.utils").log.trace({host_data=host_data})
+    if not host_data then
+        require("netman.tools.utils").log.warn(string.format("Uri: %s did not return anything to display!", internal_node.uri))
+        return
+    end
+    if host_data.type == 'FILE' or host_data.type == 'STREAM' then
+        -- Handle content to display in a buffer
+        if host_data.type == 'STREAM' then
+            command = '0append! ' .. table.concat(host_data.data) .. command
+        else
+            command = open_command .. host_data.data.local_path .. command
+        end
+        require("netman.tools.utils").log.debug({command=command})
         local _event_handler_id = "netman_dummy_file_event"
         local _dummy_file_open_handler = {
             event = "file_opened",
@@ -172,26 +185,20 @@ M.internal.navigate_host = function(state, node)
         }
         _dummy_file_open_handler.handler = function()
             events.unsubscribe(_dummy_file_open_handler)
-            require("netman").read(internal_node.uri)
+            require("netman.tools.utils").render_command_and_clean_buffer(command)
         end
         events.subscribe(_dummy_file_open_handler)
         neo_tree_utils.open_file(state, internal_node.uri)
         return
     end
 
-    local _host_contents = require("netman.api").read(internal_node.uri)
-    if not _host_contents or not _host_contents.contents then
-        require("netman.tools.utils").log.warn(string.format("Unable to process %s!", internal_node.uri))
-        return
-    end
-
-    local contents          = _host_contents.contents
+    local data              = host_data.data
     local entries           = {}
     local name_to_entry_map = {}
     local _unsorted_entries = {}
     local _sorted_entries   = {}
 
-    for _, item in ipairs(contents) do
+    for _, item in ipairs(data) do
         local entry = {
             id = string.format("%s", M.internal.last_id + 1),
             name = item.NAME,

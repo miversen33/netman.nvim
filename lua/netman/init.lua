@@ -21,31 +21,45 @@ function M.read(...)
     for _, file in ipairs(files) do
         if not file then goto continue end
         notify.info("Fetching file: ", file)
-        local command = api.read(file)
-        log.trace(string.format("Received read command: %s", command))
-        if not command then
-            log.warn(string.format("No command returned for read of %s", file))
+        local data = api.read(file)
+        local command = 'read ++edit '
+        if not data then
+            log.warn(string.format("No data was returned from netman api for %s", file))
             goto continue
         end
-        local mapped_file, is_shortcut = api.check_if_path_is_shortcut(file, 'remote_to_local')
-        if is_shortcut and vim.fn.bufexists(mapped_file) then
-            local buffer = vim.fn.bufnr(mapped_file)
+        if data.error then
+            if data.error.callback then
+                local default = data.error.default or ""
+                local callback = function(input)
+                    local response = data.error.callback(input)
+                    if response and response.retry then
+                        M.read(file)
+                    end
+                end
+                vim.ui.input({
+                    prompt = data.error.message,
+                    default = default,
+                    },
+                    callback
+                )
+                return
+            end
+        end
+        if data.type == 'EXPLORE' then
+            -- Figure out what we want netman itself to do when directory is open?
+            goto continue
+        elseif data.type == 'STREAM' then
+            command = '0append! ' .. table.concat(data.data)
+        else
+            command = string.format("%s %s", command, data.data.local_path)
+        end
+        if vim.fn.bufexists(file) ~= 0 then
+            -- Create a buffer
+            local buffer = vim.fn.bufnr(file)
             vim.api.nvim_set_current_buf(buffer)
             vim.api.nvim_buf_set_name(0, file)
-            vim.api.nvim_command('file ' .. file)
         end
-        if vim.fn.bufexists(file) == 0 then
-            vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(true, false))
-            vim.api.nvim_command('file ' .. file)
-        end
-        local undo_levels = vim.api.nvim_get_option('undolevels')
-        vim.api.nvim_command('keepjumps sil! 0')
-        vim.api.nvim_command('keepjumps sil! setlocal ul=-1 | ' .. command)
-        -- TODO: (Mike): This actually adds the empty line to the default register. consider a way to get
-        -- 0"_dd to work instead?
-        vim.api.nvim_command('keepjumps sil! 0d')
-        vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
-        vim.api.nvim_command('sil! set nomodified')
+        require("netman.tools.utils").render_command_and_clean_buffer(command)
         ::continue::
     end
 end
