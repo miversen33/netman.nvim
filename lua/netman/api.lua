@@ -65,9 +65,7 @@ local _provider_required_attributes = {
 function M.internal.init_config()
     local _lines = {}
     local _config = io.open(require("netman.tools.utils").netman_config_path, 'r')
-    if not _config then
-        error(string.format("Unable to read netman configuration file: %s", require("netman.tools.utils").netman_config_path))
-    end
+    assert(_config, string.format("Unable to read netman configuration file: %s", require("netman.tools.utils").netman_config_path))
     for line in _config:lines() do table.insert(_lines, line) end
     _config:close()
     if next(_lines) then
