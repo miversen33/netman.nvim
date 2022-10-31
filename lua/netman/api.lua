@@ -239,7 +239,6 @@ end
 function M.internal.init_augroups()
     local read_callback = function(callback_details)
         local uri = callback_details.match
-        log.debug("Read Details", {input_file=callback_details.match, uri=uri, is_shortcut=is_shortcut})
         if M.internal.get_provider_for_uri(uri) then
                 require("netman").read(uri)
             return
