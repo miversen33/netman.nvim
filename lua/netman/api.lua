@@ -412,6 +412,7 @@ function M.clear_unused_configs(assume_yes)
     if not ran then print("There are currently no unused netman provider configurations") end
 end
 
+--- @deprecated
 --- Checks if the path is a URI that netman can manage
 --- @param uri string
 ---     The uri to check
@@ -421,6 +422,7 @@ function M.is_path_netman_uri(uri)
     if M.internal.get_provider_for_uri(uri) then return true else return false end
 end
 
+--- @deprecated
 --- Checks with the libruv to see if the provided path 
 --- is a shortcut path to a uri
 --- @param path string
@@ -565,6 +567,7 @@ function M.unload_buffer(uri, buffer_handle)
 
 end
 
+--- @deprecated
 --- Registers an explorer package which will be used to determine
 --- what path to feed on cwd fetches
 --- See netman.tools.options.explorer.EXPLORER_PACKAGES for predefined
@@ -581,6 +584,7 @@ function M.register_explorer_package(explorer_package)
     M._explorers[explorer_package] = sanitized_package
 end
 
+--- @deprecated
 --- Gets a list of all registered explorer packages with netman
 --- See netman.api.register_explorer_packages for more details on how to
 --- register a package
