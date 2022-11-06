@@ -88,6 +88,7 @@ require("neo-tree).setup({
     sources = {
         "filesystem", -- Neotree filesystem source
         "netman.ui.neo-tree", -- The one you really care about 😉
+    }
 })
 ```
 Netman will then register itself as the `remote` source in Neo Tree. You can load the New remote browser with the `:Neotree remote` command
