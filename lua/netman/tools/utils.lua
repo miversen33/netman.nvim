@@ -146,6 +146,27 @@ local _log = function(level, do_notify, ...)
     end
 end
 
+local render_command_and_clean_buffer = function(render_command, opts)
+    opts = {
+        nomod = 1,
+        -- filetype = 'detect'
+    } or opts
+    local undo_levels = vim.api.nvim_get_option('undolevels')
+    vim.api.nvim_command('keepjumps sil! 0')
+    vim.api.nvim_command('keepjumps sil! setlocal ul=-1 | ' .. render_command)
+    if opts.nomod then
+        vim.api.nvim_command('set nomodified')
+    end
+    -- if opts.filetype then
+    --     vim.api.nvim_command(string.format('set filetype=%s', opts.filetype))
+    -- end
+    -- TODO: (Mike): This actually adds the empty line to the default register. consider a way to get
+    -- 0"_dd to work instead?
+    vim.api.nvim_command('keepjumps sil! 0d')
+    vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
+    vim.api.nvim_command('sil! set nomodified')
+end
+
 local setup = function()
     if _is_setup then
         return
@@ -208,18 +229,19 @@ do
 end
 
 return {
-    notify               = notify,
-    log                  = log,
-    cache_dir            = cache_dir,
-    data_dir             = data_dir,
-    files_dir            = files_dir,
-    socket_dir           = socket_dir,
-    package_name_escape  = package_name_escape,
-    generate_string      = generate_string,
-    is_process_alive     = is_process_alive,
-    generate_session_log = generate_session_log,
-    escape_shell_command = escape_shell_command,
-    dump_callstack       = dump_callstack,
-    get_calling_source   = get_calling_source,
-    netman_config_path   = netman_config_path,
+    notify                          = notify,
+    log                             = log,
+    cache_dir                       = cache_dir,
+    data_dir                        = data_dir,
+    files_dir                       = files_dir,
+    socket_dir                      = socket_dir,
+    package_name_escape             = package_name_escape,
+    generate_string                 = generate_string,
+    is_process_alive                = is_process_alive,
+    generate_session_log            = generate_session_log,
+    escape_shell_command            = escape_shell_command,
+    dump_callstack                  = dump_callstack,
+    get_calling_source              = get_calling_source,
+    netman_config_path              = netman_config_path,
+    render_command_and_clean_buffer = render_command_and_clean_buffer
 }

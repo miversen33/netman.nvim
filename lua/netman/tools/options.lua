@@ -23,6 +23,12 @@ return {
             FILE = "FILE"
             ,DIRECTORY = "DIRECTORY"
             ,LINK = "LINK"
+        },
+        READ_RETURN_SCHEMA = {
+            origin_path  = 'origin_path',
+            local_path   = 'local_path',
+            display_name = 'display_name',
+            error = 'error'
         }
     }
     ,protocol = {
@@ -93,6 +99,19 @@ return {
             TYPE = "TYPE",
             URI = "URI",
             USER = "USER",
+        }
+    }
+    ,ui = {
+        ENTRY_SCHEMA = {
+            NAME = "NAME",
+            STATE = "STATE",
+            LAST_ACCESSED = "LAST_ACCESSED",
+            URI = "URI"
+        },
+        STATES = {
+            UNKNOWN = "UNKNOWN",
+            AVAILABLE = "AVAILABLE",
+            ERROR = "ERROR"
         }
     }
 }

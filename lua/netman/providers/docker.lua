@@ -8,17 +8,17 @@ local metadata_options = require("netman.tools.options").explorer.METADATA
 local shell = require("netman.tools.shell")
 
 local invalid_permission_glob = '^Got permission denied while trying to connect to the Docker daemon socket at'
-local container_pattern     = "^([%a%c%d%s%-_%.]*)"
-local name_parse_pattern    = "[^/]+"
-local path_pattern          = '^([/]+)(.*)$'
-local protocol_pattern      = '^(.*)://'
-local _docker_status = {
+local container_pattern       = "^([%a%c%d%s%-_%.]*)"
+local name_parse_pattern      = "[^/]+"
+local path_pattern            = '^([/]+)(.*)$'
+local protocol_pattern        = '^(.*)://'
+local _docker_status          = {
     ERROR = "ERROR",
     RUNNING = "RUNNING",
     NOT_RUNNING = "NOT_RUNNING",
     INVALID = "INVALID"
 }
-local STAT_COMMAND = {
+local STAT_COMMAND            = {
     'stat',
     '-L',
     '-c',
@@ -42,12 +42,108 @@ local find_pattern_globs = {
     '^(NAME)=(.*)$'
 }
 local M = {
-    internal = {}
+    internal = {},
+    ui = {}
 }
 
-M.protocol_patterns = {'docker'}
+M.protocol_patterns = { 'docker' }
 M.name = 'docker'
 M.version = 0.1
+
+-- Check if devicons exists. If not, unicode boi!
+M.ui.icon = "🐋"
+local success, web_devicons = pcall(require, "nvim-web-devicons")
+if success then
+    local devicon, _ = web_devicons.get_icon('dockerfile')
+    M.ui.icon = devicon or M.ui.icon
+end
+
+--- Returns the various containers that are currently available on the system
+--- @param config Configuration
+--- @return table
+---     Returns a 1 dimensional table containing the name of each available container
+---@diagnostic disable-next-line: unused-local
+function M.ui.get_hosts(config)
+    -- Note: Netman will provide our provider configuration to this function, but we 
+    -- don't really need it for this work so we are going to ignore it
+    local containers = M.internal._get_containers()
+    local hosts = {}
+    for _, container in ipairs(containers) do
+        table.insert(hosts, container.name)
+    end
+    return hosts
+end
+
+--- Returns a list of details for a container.
+--- @param config Configuration
+--- @param container string
+--- @param provider_cache Cache
+--- @return table
+---     Returns a 1 dimensional table with the following key value pairs in it
+---     - NAME
+---     - URI
+---     - STATE
+function M.ui.get_host_details(config, container, provider_cache)
+    -- Kinda ick, we are basically going to cache the root directory of the container and
+    -- hopefully that doesn't cause explosions?
+    local _faux_uri = string.format("docker://%s/", container)
+    local _ = M.internal._parse_uri(_faux_uri)
+    M.internal._validate_cache(provider_cache, _)
+    local cache = provider_cache:get_item(container)
+    local states = require("netman.tools.options").ui.STATES
+    local state = M.internal.get_container_state(container, cache, {force=true})
+    local host_details = {
+        NAME = container,
+        URI = string.format("docker://%s/", container),
+    }
+    if state == _docker_status.ERROR then
+        host_details.STATE = states.ERROR
+    elseif state == _docker_status.RUNNING then
+        host_details.STATE = states.AVAILABLE
+    else
+        host_details.STATE = states.UNKNOWN
+    end
+    return host_details
+end
+
+function M.internal.remove_item_from_cache(uri, cache, opts)
+    opts = opts or {}
+    if opts.clear_self then
+        log.debug(string.format("Removing %s from cache", uri))
+        if cache
+            and cache:get_item('files') then
+            -- Remove the file from local cache
+            cache:get_item('files'):remove_item(uri)
+        end
+        if cache
+            and cache:get_item('file_metadata') then
+            -- Remove the file metedata from local cache
+            cache:get_item('file_metadata'):remove_item(uri)
+        end
+    end
+    if opts.clear_parent then
+        -- Get parent details from our current parsed info
+        local details = cache:get_item(uri)
+        local parent = {}
+        for part in details.path:gmatch("([^/]+)") do
+            table.insert(parent, part)
+        end
+        -- popping the tail off the file list
+        table.remove(parent, #parent)
+        local parent_uri = string.format("docker://%s/%s/", details.container, table.concat(parent, "/"))
+        if cache
+            and cache:get_item('file_metadata') then
+            -- Remove the parent metadata from local cache
+            cache:get_item('file_metadata'):remove_item(parent_uri)
+        end
+        if cache
+            and cache:get_item('files') then
+            -- Remove the parent files from local cache
+            cache:get_item('files'):remove_item(parent_uri)
+        end
+        log.debug(string.format("Removing (parent) %s from cache", parent_uri))
+    end
+end
 
 --- _parse_uri will take a string uri and return an object containing details about
 --- the uri provided.
@@ -64,14 +160,14 @@ M.version = 0.1
 ---        ,parent
 function M.internal._parse_uri(uri)
     local details = {
-        base_uri     = uri
-        ,protocol    = nil
-        ,container   = nil
-        ,path        = nil
-        ,file_type   = nil
-        ,return_type = nil
-        ,parent      = nil
-        ,local_file  = nil
+        base_uri = uri
+        , protocol = nil
+        , container = nil
+        , path = nil
+        , file_type = nil
+        , return_type = nil
+        , parent = nil
+        , local_file = nil
     }
     details.protocol = uri:match(protocol_pattern)
     uri = uri:gsub(protocol_pattern, '')
@@ -81,7 +177,8 @@ function M.internal._parse_uri(uri)
     path_head = path_head or "/"
     path_body = path_body or ""
     if (path_head:len() ~= 1) then
-        notify.error("Error parsing path: Unable to parse path from uri: " .. details.base_uri .. '. Path should begin with / but path begins with ' .. path_head)
+        notify.error("Error parsing path: Unable to parse path from uri: " ..
+            details.base_uri .. '. Path should begin with / but path begins with ' .. path_head)
         return {}
     end
     details.path = "/" .. path_body
@@ -89,7 +186,7 @@ function M.internal._parse_uri(uri)
         details.file_type = api_flags.ATTRIBUTES.DIRECTORY
         details.return_type = api_flags.READ_TYPE.EXPLORE
     else
-        details.file_type = api_flags.ATTRIBUTES.FILE
+        details.file_type   = api_flags.ATTRIBUTES.FILE
         details.return_type = api_flags.READ_TYPE.FILE
         details.unique_name = string_generator(11)
         details.local_file  = local_files .. details.unique_name
@@ -99,8 +196,8 @@ function M.internal._parse_uri(uri)
     local cur_path = ''
     -- This is literal 💩 but I dont know a better way of handling this since path globs are awful...
     -- TODO: Mike: Should be able to do this better with glob gmatching
-    for i=1, #details.path do
-        local char = details.path:sub(i,i)
+    for i = 1, #details.path do
+        local char = details.path:sub(i, i)
         cur_path = cur_path .. char
         if char == '/' then
             previous_parent = parent
@@ -114,7 +211,7 @@ function M.internal._parse_uri(uri)
 end
 
 function M.internal._process_find_result(preprocessed_result)
-    local result = {raw=preprocessed_result}
+    local result = { raw = preprocessed_result }
     for _, pattern in ipairs(find_pattern_globs) do
         local key, value = preprocessed_result:match(pattern)
         result[key] = value
@@ -152,6 +249,7 @@ function M.internal._validate_cache(cache, container_details)
         for key, value in pairs(container_details) do
             cache:get_item(path)[key] = value
         end
+        cache:add_item(container_details.base_uri, container_details)
     end
     if not cache:get_item('files') then
         cache:add_item('files', CACHE_MANAGER:new(CACHE_MANAGER.FOREVER), CACHE_MANAGER.FOREVER)
@@ -164,14 +262,14 @@ end
 
 function M.internal._is_container_running(container)
     -- TODO: Mike: Probably worth caching the result of this for some short amount of time as its kinda expensive?
-    local command = {'docker', 'container', 'ls', '--all', '--format', 'table {{.Status}}', '--filter', 'name=' .. tostring(container)}
+    local command = { 'docker', 'container', 'ls', '--all', '--format', 'table {{.Status}}', '--filter',
+        'name=' .. tostring(container) }
     -- Creating command to check if the container is running
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
     -- -- Options to make our output easier to read
     local command_output = shell:new(command, command_options):run()
     local stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
-    log.trace("Life Check Output ", {command=command, output=command_output})
     if stderr ~= '' then
         log.warn(string.format("Received error while checking container status: %s", stderr))
     end
@@ -189,8 +287,33 @@ function M.internal._is_container_running(container)
     end
 end
 
+function M.internal._get_containers()
+    -- -- This hurts, but might be the better way of doing this?
+    -- local command = { 'docker', 'container', 'ls', '--all', '--format', '{{json .}}'}
+    local command = { 'docker', 'container', 'ls', '--all', '--format',
+        '{\"name\": {{json .Names}},\"status\": {{json .Status}}}' }
+    local command_options = {}
+    command_options[command_flags.STDERR_JOIN] = ''
+    local command_output = shell:new(command, command_options):run()
+    local stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
+    log.trace('Container Fetching Output', { command = command, output = command_output })
+    if stderr ~= '' then
+        log.warn(string.format("Received error while fetching containers: %s", stderr))
+    end
+    if exit_code ~= 0 then
+        log.warn(string.format("Received Error Code: %s", exit_code))
+        return {}
+    end
+    local _containers = {}
+    for _, item in ipairs(stdout) do
+        local parsed_output = vim.fn.json_decode(item)
+        table.insert(_containers, parsed_output)
+    end
+    return _containers
+end
+
 function M.internal._start_container(container_name)
-    local command = {'docker', 'container', 'start', container_name}
+    local command = { 'docker', 'container', 'start', container_name }
 
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
@@ -199,7 +322,8 @@ function M.internal._start_container(container_name)
     local command_output = shell:new(command, command_options):run()
     local stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
     if exit_code ~= 0 then
-        notify.error(string.format("Received the following error while trying to start container %s:%s", container_name, stderr))
+        notify.error(string.format("Received the following error while trying to start container %s:%s", container_name,
+            stderr))
         return false
     end
     if M.internal._is_container_running(container_name) == _docker_status.RUNNING then
@@ -211,7 +335,7 @@ function M.internal._start_container(container_name)
 end
 
 function M.internal._read_file(container, container_file, local_file)
-    local command = {'docker', 'cp', '-L', string.format("%s:/%s", container, container_file), local_file}
+    local command = { 'docker', 'cp', '-L', string.format("%s:/%s", container, container_file), local_file }
 
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
@@ -229,14 +353,14 @@ end
 
 function M.internal._read_directory(uri, path, container, cache)
     local CACHE_MANAGER = require('netman.tools.cache')
-    local results =  cache:get_item('files'):get_item(uri)
-    if results and results:len() > 0 then return {remote_files = results:as_table(), parent = 1} end
+    local results = cache:get_item('files'):get_item(uri)
+    if results and results:len() > 0 then return { remote_files = results:as_table(), parent = 1 } end
     cache
         :get_item('files')
         :add_item(
             uri,
             CACHE_MANAGER:
-                new(CACHE_MANAGER.SECOND * 5),
+            new(CACHE_MANAGER.SECOND * 5),
             CACHE_MANAGER.FOREVER
         )
     local children = cache:get_item('files'):get_item(uri)
@@ -249,6 +373,8 @@ function M.internal._read_directory(uri, path, container, cache)
         path,
         '-maxdepth',
         '1',
+        '-mindepth',
+        '1',
         '-exec',
     }
     for _, flag in ipairs(STAT_COMMAND) do
@@ -257,7 +383,7 @@ function M.internal._read_directory(uri, path, container, cache)
     table.insert(command, '{}')
     table.insert(command, '+')
     local command_output = {}
-    local stderr, stdout = nil, nil
+    local stderr, stdout, exit_code = nil, nil, nil
     local command_options = {}
     local child = {}
     local size = 0
@@ -265,45 +391,44 @@ function M.internal._read_directory(uri, path, container, cache)
     command_options[command_flags.STDERR_JOIN] = ''
     command_output = shell:new(command, command_options):run()
     stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
-    log.trace('Docker Directory Command and output', {command=command, options=command_options, output=command_output})
+    log.trace('Docker Directory Command and output', { command = command, options = command_options,
+        output = command_output })
     if stderr and stderr ~= '' and not stderr:match('No such file or directory$') then
         log.warn(string.format("Received STDERR output: %s", stderr))
     end
-    if exit_code then
-        notify.warn(string.format("Error trying to get contents of %s", uri))
+    if exit_code ~= 0 then
+        log.warn(string.format("Error trying to get contents of %s", uri))
         return nil
     end
     stdout = stdout:gsub('\\0', string.char(0))
     for result in stdout:gmatch('[.%Z]+') do
         child = M.internal._process_find_result(result)
         child.URI = uri .. child.NAME
-        if
-            child.FIELD_TYPE == metadata_options.LINK
+        if child.FIELD_TYPE == metadata_options.LINK
             and child.URI:sub(-1, -1) ~= '/'
         then
             child.URI = child.URI .. '/'
         end
-        if size == 0 then
-            child.URI = uri
-            cache:get_item('file_metadata'):add_item(uri, child)
-            child.NAME = './'
-        else
-            cache:get_item('file_metadata'):add_item(child.URI, child)
-        end
-        children:add_item(child.URI, {URI=child.URI, FIELD_TYPE=child.FIELD_TYPE, NAME=child.NAME, ABSOLUTE_PATH=child.ABSOLUTE_PATH, METADATA=child})
+        cache:get_item('file_metadata'):add_item(child.URI, child)
+        children:add_item(child.URI,
+            { URI = child.URI, FIELD_TYPE = child.FIELD_TYPE, NAME = child.NAME, ABSOLUTE_PATH = child.ABSOLUTE_PATH,
+                METADATA = child })
         size = size + 1
     end
-    return {remote_files = children:as_table()}
+    return { remote_files = children:as_table() }
 end
 
-function M.internal._write_file(cache, lines)
-    -- WARN: (Mike): The mode 664 here isn't actually 664 for some reason? Maybe it needs to be an octal, who knows
-    local local_file = vim.loop.fs_open(cache.local_file, 'w', 664)
-    assert(local_file, string.format("Unable to write to %s",local_file))
-    assert(vim.loop.fs_write(local_file, lines))
-    assert(vim.loop.fs_close(local_file))
+function M.internal._write_file(container_cache, cache, lines)
+    -- Needs to clear the cache for its parent and itself if it exists
+    lines = lines or {}
+    lines = table.concat(lines, '\n')
+    local local_file = io.open(cache.local_file, "w+")
+    assert(local_file, string.format("Unable to write to %s", cache.local_file))
+    assert(local_file:write(lines), string.format("Failed to write to %s", cache.local_file))
+    assert(local_file:flush(), string.format("Failed to save %s", cache.local_file))
+    assert(local_file:close(), string.format("Failed to close %s", cache.local_file))
 
-    local command = {'docker', 'cp', cache.local_file, string.format('%s:/%s', cache.container, cache.path)}
+    local command = { 'docker', 'cp', cache.local_file, string.format('%s:/%s', cache.container, cache.path) }
 
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
@@ -317,10 +442,11 @@ function M.internal._write_file(cache, lines)
     return true
 end
 
-function M.internal._create_directory(container, directory)
-    local command = {'docker', 'exec', container, 'mkdir', '-p', directory}
+function M.internal._create_directory(container_cache, container, directory)
+    -- Needs to clear the cache for its parent and itself if it exists
+    local command = { 'docker', 'exec', container, 'mkdir', '-p', directory }
 
-    log.trace(string.format("Creating directory %s in container %s with command: %s", directory, container, table.concat(command, ' ')))
+    log.trace(string.format("Creating directory %s in container %s", directory, container), {command = command})
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
     local command_output = shell:new(command, command_options):run()
@@ -330,13 +456,15 @@ function M.internal._create_directory(container, directory)
     if command_output.exit_code ~= 0 then
         return false
     end
+
     return true
 end
 
-function M.internal._validate_container(uri, container, cache)
+function M.internal.get_container_state(container, cache, opts)
     assert(container, "No container provided to validate!")
+    opts = opts or {}
     local container_status = nil
-    if cache:get_item('container_status') == _docker_status.RUNNING then
+    if not opts.force and cache:get_item('container_status') == _docker_status.RUNNING then
         return _docker_status.RUNNING
     else
         container_status = M.internal._is_container_running(container)
@@ -344,34 +472,14 @@ function M.internal._validate_container(uri, container, cache)
     end
     if container_status == _docker_status.ERROR then
         notify.error("Received an error while trying to interface with docker")
-        return nil
+        return _docker_status.ERROR
     elseif container_status == _docker_status.INVALID then
         log.info("Unable to find container! Check logs (:Nmlogs) for more details")
-        return nil
+        return _docker_status.INVALID
     elseif container_status == _docker_status.NOT_RUNNING then
-        vim.ui.input({
-            prompt = string.format('Container %s is not running, would you like to start it? [y/N] ', container),
-            default = 'N'
-        }
-        , function(input)
-            if input:match('^[yYeEsS]$') then
-                local started_container = M.internal._start_container(container)
-                if started_container then
-                    cache:add_item('container_status', _docker_status.RUNNING)
-                    require("netman").read(uri)
-                end
-            elseif input:match('^[nNoO]$') then
-                log.info("Not starting container " .. tostring(container))
-                return nil
-            else
-                notify.info("Invalid Input. Not starting container!")
-                return nil
-            end
-        end)
-        -- Probably should return false here?
-        return false
+        return _docker_status.NOT_RUNNING
     end
-    return true
+    return _docker_status.RUNNING
 end
 
 function M.read(uri, provider_cache)
@@ -381,32 +489,48 @@ function M.read(uri, provider_cache)
         return nil
     end
     M.internal._validate_cache(provider_cache, parsed_uri_details)
-    local cache = provider_cache:get_item(parsed_uri_details.container):get_item(parsed_uri_details.path)
-    if not M.internal._validate_container(uri, cache.container, provider_cache:get_item(parsed_uri_details.container)) then return nil end
+    local container_cache = provider_cache:get_item(parsed_uri_details.container)
+    local cache = container_cache:get_item(parsed_uri_details.path)
+    local container_state = M.internal.get_container_state(cache.container, container_cache)
+    if container_state == _docker_status.NOT_RUNNING then
+        return {
+            error = {
+                message = string.format("%s is not running. Would you like to start it? [Y/n] ", cache.container),
+                default = 'Y',
+                callback = function(response)
+                   if response:match('^[yY]') then
+                        local started_container = M.internal._start_container(cache.container)
+                        if started_container then
+                            container_cache:add_item('container_status', _docker_status.RUNNING)
+                            notify.info(string.format("%s successfully started!", cache.container))
+                            return {retry = true}
+                        end
+                    else
+                        log.info(string.format("Not starting container %s", cache.container))
+                        return {retry = false}
+                    end
+                end
+            }
+        }
+    end
     if cache.file_type == api_flags.ATTRIBUTES.FILE then
         if M.internal._read_file(cache.container, cache.path, cache.local_file) then
             return {
-                local_path = cache.local_file
-                ,origin_path = uri
-            }, api_flags.READ_TYPE.FILE, {
-                local_parent = parsed_uri_details.parent
-                ,remote_parent = 'docker://' .. parsed_uri_details.container .. parsed_uri_details.parent
-            }
+                local_path = cache.local_file,
+                origin_path = cache.path
+            }, api_flags.READ_TYPE.FILE
         else
             log.warn("Failed to read remote file " .. cache.path .. '!')
-            notify.info("Failed to access remote file " .. cache.path .. " on container " .. cache.container)
+            log.info("Failed to access remote file " .. cache.path .. " on container " .. cache.container)
             return nil
         end
     else
         -- Consider sending the global cache and the uri along with the request and letting _read_directory manage adding stuff to the cache
         local directory_contents = M.internal._read_directory(
-            uri, parsed_uri_details.path, parsed_uri_details.container, provider_cache:get_item(parsed_uri_details.container)
+            uri, parsed_uri_details.path, parsed_uri_details.container, container_cache
         )
         if not directory_contents then return nil end
-        return directory_contents, api_flags.READ_TYPE.EXPLORE, {
-                local_parent = parsed_uri_details.parent
-                ,remote_parent = 'docker://' .. parsed_uri_details.container .. parsed_uri_details.parent
-            }
+        return directory_contents, api_flags.READ_TYPE.EXPLORE
     end
 end
 
@@ -414,85 +538,74 @@ function M.write(uri, provider_cache, data)
     local CACHE_MANAGER = require('netman.tools.cache')
     local cache = nil
     local parsed_uri_details = M.internal._parse_uri(uri)
+    M.internal._validate_cache(provider_cache, parsed_uri_details)
+    local container_cache = provider_cache:get_item(parsed_uri_details.container)
     if parsed_uri_details.protocol ~= M.protocol_patterns[1] then
         log.warn("Invalid URI: " .. uri .. " provided!")
         return nil
     end
 
-    if not provider_cache:get_item(parsed_uri_details.container) then
+    if not container_cache then
         -- Lets add a cache to the cache for the current container
-        provider_cache:add_item(parsed_uri_details.container, CACHE_MANAGER:new(), CACHE_MANAGER.FOREVER)
+        container_cache = CACHE_MANAGER:new()
+        provider_cache:add_item(parsed_uri_details.container, container_cache, CACHE_MANAGER.FOREVER)
     end
 
-    if not provider_cache:get_item(parsed_uri_details.container):get_item(parsed_uri_details.path) then
+    if not container_cache:get_item(parsed_uri_details.path) then
         -- Lets add a cache to the container's cache for the current path info
-        provider_cache:get_item(parsed_uri_details.container):add_item(parsed_uri_details.path, {}, CACHE_MANAGER.FOREVER)
+        container_cache:add_item(parsed_uri_details.path, {}, CACHE_MANAGER.FOREVER)
         for key, value in pairs(parsed_uri_details) do
-            provider_cache:get_item(parsed_uri_details.container):get_item(parsed_uri_details.path)[key] = value
+            container_cache:get_item(parsed_uri_details.path)[key] = value
         end
     end
-    cache = provider_cache:get_item(parsed_uri_details.container):get_item(parsed_uri_details.path)
+    cache = container_cache:get_item(parsed_uri_details.path)
     if cache.protocol ~= M.protocol_patterns[1] then
         log.warn("Invalid Cache details for " .. uri)
         return nil
     end
-    if not M.internal._validate_container(uri, cache.container, provider_cache:get_item(parsed_uri_details.container)) then return nil end
-    if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        M.internal._write_file(cache, data)
-    else
-        M.internal._create_directory()
+    -- TODO: Mike, handle the fact that the container may be dead?
+    -- WARN: This will break
+    if M.internal.get_container_state(cache.container, container_cache)  ~= _docker_status.RUNNING then
+        return nil
     end
+    if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
+        M.internal._write_file(container_cache, cache, data)
+    else
+        M.internal._create_directory(container_cache, cache.container, parsed_uri_details.path)
+    end
+    M.internal.remove_item_from_cache(uri, container_cache, {clear_self=true, clear_parent=true})
 end
 
 function M.delete(uri, cache)
+    -- Needs to clear the cache for its parent and itself if it exists
     -- It is _not_ safe to assume we already
     -- have a cache, additionally its possible
     -- that the uri provided doesn't match the
     -- cache uri so we should verify the cache
     -- we were given has contents
     local details = M.internal._parse_uri(uri)
-    local command = {'docker', 'exec', details.container, 'rm', '-rf', details.path}
+    M.internal._validate_cache(cache, details)
+    local container_cache = cache:get_item(details.container)
+    local command = { 'docker', 'exec', details.container, 'rm', '-rf', details.path }
 
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
-
-    vim.ui.input({
-        prompt = 'Are you sure you wish to delete ' .. details.path .. ' in container ' .. details.container .. '? [y/N] ',
-        default = 'N'
-    }
-    , function(input)
-        if input:match('^[yYeEsS]$') then
-            log.trace("Deleting URI: " .. uri .. ' with command: ' .. table.concat(command, ' '))
-            local command_output = shell:new(command, command_options):run()
-            local success = true
-            if command_output.stderr ~= '' then
-                log.warn("Received Error: " .. command_output.stderr)
-            end
-            if success then
-                notify.warn("Successfully Deleted " .. details.path .. ' from container ' .. details.container)
-                if cache
-                    and cache:get_item(details.container)
-                    and cache:get_item(details.container):get_item('files'):get_item(uri) then
-                    cache:get_item(details.container):get_item('files'):remove_item(uri)
-                end
-            else
-                notify.warn("Failed to delete " .. details.path .. ' from container ' .. details.container .. '! See logs (:Nmlogs) for more details')
-            end
-        elseif input:match('^[nNoO]$') then
-            notify.warn("Delete Request Cancelled")
-        end
-    end)
+    ---@diagnostic disable-next-line: missing-parameter
+    local command_output = shell:new(command, command_options):run()
+    log.trace({command=command, stderr=command_output.stderr, stdout=command_output.stdout, exit_code=command_output.exit_code})
+    M.internal.remove_item_from_cache(uri, container_cache, {clear_self=true, clear_parent=true})
+    notify.warn("Successfully Deleted " .. details.path .. ' from container ' .. details.container)
 end
 
 function M.init(config_options, cache)
     log.info("Attempting to initialize docker provider")
-    local command = {"docker", "-v"}
+    local command = { "docker", "-v" }
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
     command_options[command_flags.STDOUT_JOIN] = ''
 
     local command_output =
-        require("netman.tools.shell"):new(command, command_options):run()
+    require("netman.tools.shell"):new(command, command_options):run()
     if command_output.exit_code ~= 0 then
         log.warn("Unable to verify docker is available to run!")
         log.info("Received error: " .. tostring(command_output.stderr))
@@ -511,7 +624,7 @@ function M.close_connection(buffer_index, uri, cache)
 
 end
 
---- Retrieves the metadata for the provided URI (as long as the URI is one that 
+--- Retrieves the metadata for the provided URI (as long as the URI is one that
 --- we can handle).
 --- @param uri string
 ---     The URI to get metadata for
@@ -533,7 +646,8 @@ function M.get_metadata(uri, provider_cache, requested_metadata, forced)
     end
     M.internal._validate_cache(provider_cache, parsed_uri_details)
     local cache = provider_cache:get_item(parsed_uri_details.container)
-    if not M.internal._validate_container(uri, parsed_uri_details.container, cache) then
+    -- Pretty ick here
+    if M.internal.get_container_state(parsed_uri_details.container, cache) ~= _docker_status.RUNNING then
         log.trace("Unable to get metadata for " .. tostring(uri))
         return nil
     end
@@ -555,7 +669,7 @@ function M.get_metadata(uri, provider_cache, requested_metadata, forced)
             return _child
         end
     end
-    local command = {'docker', 'exec', parsed_uri_details.container}
+    local command = { 'docker', 'exec', parsed_uri_details.container }
     for _, flag in ipairs(STAT_COMMAND) do
         table.insert(command, flag)
     end
@@ -570,7 +684,7 @@ function M.get_metadata(uri, provider_cache, requested_metadata, forced)
     command_output = require("netman.tools.shell"):new(command, command_options):run()
     stderr, stdout = command_output.stderr, command_output.stdout
     if stderr and stderr ~= '' and not stderr:match('No such file or directory$') then
-        notify.warn("Error trying to get metadata of " .. tostring(uri))
+        log.warn("Error trying to get metadata of " .. tostring(uri))
         return nil
     end
     stdout = stdout:gsub('\\0', string.char(0))

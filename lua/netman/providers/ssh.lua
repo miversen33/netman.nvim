@@ -21,6 +21,11 @@ local port_pattern          = '^:([%d]+)'
 local path_pattern          = '^([/]+)(.*)$'
 local protocol_pattern      = '^(.*)://'
 local NO_SUCH_FILE_OR_DIRECTORY_ERROR_GLOB = 'No such file or directory$'
+local FILE_NOT_FOUND_GLOB = 'not found'
+local FILE_MISSING_GLOBS = {
+    NO_SUCH_FILE_OR_DIRECTORY_ERROR_GLOB,
+    FILE_NOT_FOUND_GLOB
+}
 
 local SSH_CONNECTION_TIMEOUT = 10
 
@@ -50,6 +55,7 @@ local SSH_COMMAND = {
     '-o',
     string.format('ControlPersist=%s', SSH_CONNECTION_TIMEOUT),
 }
+local HOST_MATCH_GLOB = "^[%s]*Host[%s=](.*)"
 
 local METADATA_TIMEOUT = 5 * require("netman.tools.cache").SECOND
 
@@ -73,6 +79,111 @@ M.name = 'ssh'
 M.version = 0.1
 M.internal = {}
 
+M.ui = {
+    icon = ""
+}
+
+--- Returns the various containers that are currently available on the system
+--- @param config Configuration
+---     The Netman provided (provider managed) configuration
+--- @return table
+---     Returns a 1 dimensional table with the name of each host in it
+function M.ui.get_hosts(config)
+    local hosts_as_dict = config:get('hosts')
+    local hosts = {}
+    for host, _ in pairs(hosts_as_dict) do
+        table.insert(hosts, host)
+    end
+    return hosts
+end
+
+--- Returns a list of details for a host
+--- @param config Configuration
+--- @param host string
+--- @param provider_cache Cache
+--- @return table
+---     Returns a 1 dimensional table with the followin gkey value pairs in it
+---     - NAME
+---     - URI
+---     - STATE
+function M.ui.get_host_details(config, host, provider_cache)
+
+    return {
+        NAME = host,
+        URI = string.format("sftp://%s/", host),
+    }
+end
+
+function M.internal.prepare_config(config)
+    if not config:get('hosts') then
+        config:set('hosts', {})
+        config:save()
+    end
+end
+
+function M.internal.parse_user_sshconfig(config)
+    local config_location = string.format("%s/.ssh/config", vim.loop.os_homedir())
+    local _config = io.open(config_location, 'r')
+    if not _config then
+        log.warn(string.format("Unable to open user ssh config: %s", config_location))
+        return
+    end
+
+    local hosts = config:get('hosts')
+    for line in _config:lines() do
+        local host = line:match(HOST_MATCH_GLOB)
+        if host then
+            -- Removing any trailing padding
+            host = host:gsub('[%s]*$', '')
+            log.trace(string.format("Processing SSH host: %s", host))
+            if host ~= '*' and not hosts[host] then
+                hosts[host] = {}
+            end
+        end
+    end
+    config:save()
+end
+
+function M.internal.remove_item_from_cache(uri, cache, opts)
+    opts = opts or {}
+    if opts.clear_self then
+        log.debug(string.format("Removing %s from cache", uri))
+        if cache
+            and cache:get_item('files') then
+            -- Remove the file from local cache
+            cache:get_item('files'):remove_item(uri)
+        end
+        if cache
+            and cache:get_item('file_metadata') then
+            -- Remove the file metedata from local cache
+            cache:get_item('file_metadata'):remove_item(uri)
+        end
+    end
+    if opts.clear_parent then
+        -- Get parent details from our current parsed info
+        local details = cache:get_item(uri)
+        local parent = {}
+        for part in details.path:gmatch("([^/]+)") do
+            table.insert(parent, part)
+        end
+        -- popping the tail off the file list
+        table.remove(parent, #parent)
+        local parent_uri = string.format("docker://%s/%s/", details.container, table.concat(parent, "/"))
+        if cache
+            and cache:get_item('file_metadata') then
+            -- Remove the parent metadata from local cache
+            cache:get_item('file_metadata'):remove_item(parent_uri)
+        end
+        if cache
+            and cache:get_item('files') then
+            -- Remove the parent files from local cache
+            cache:get_item('files'):remove_item(parent_uri)
+        end
+        log.debug(string.format("Removing (parent) %s from cache", parent_uri))
+    end
+    log.debug("Updated Cache", {cache=cache})
+end
+
 --- _parse_uri will take a string uri and return an object containing details about
 --- the uri provided.
 --- @param uri string
@@ -83,6 +194,7 @@ M.internal = {}
 ---        ,command
 ---        ,protocol
 ---        ,container
+---        ,host
 ---        ,path
 ---        ,type
 ---        ,return_type
@@ -91,6 +203,7 @@ function M.internal._parse_uri(uri)
     local details = {
         base_uri     = uri
         ,command     = nil
+        ,host        = nil
         ,protocol    = nil
         ,container   = nil
         ,path        = nil
@@ -230,6 +343,9 @@ function M.internal._validate_cache(provider_cache, uri)
     if not cache:get_item('file_metadata') then
         cache:add_item('file_metadata', CACHE:new(METADATA_TIMEOUT), CACHE.FOREVER)
     end
+    if not cache:get_item(uri) then
+        cache:add_item(uri, uri_details, CACHE.FOREVER)
+    end
     provider_cache:add_item(uri, {cache=cache, details=uri_details}, CACHE.FOREVER)
     return cache, uri_details
 end
@@ -257,7 +373,6 @@ function M.internal._read_file(uri_details)
         log.warn(string.format("Unable to process %s protocol", uri_details.protocol))
         return nil
     end
-    log.info("Generated read command " .. table.concat(command, ' '))
     local command_options = {
         [command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true,
         [command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true,
@@ -265,31 +380,56 @@ function M.internal._read_file(uri_details)
         [command_flags.STDERR_JOIN] = '',
     }
     local command_output = shell:new(command, command_options):run()
+    log.trace("Command Info", {command=table.concat(command, ' '), exit_code=command_output.exit_code, stderr=command_output.stderr, stdout=command_output.stdout})
     -- TODO: Mike: Handle missing file error, we should not _die_
     -- if a file is missing, instead prompt for if the user wants us
     -- to create it for them
     if command_output.exit_code ~= 0 then
-        if command_output.stderr:match(NO_SUCH_FILE_OR_DIRECTORY_ERROR_GLOB) then
-            vim.ui.input({
-                prompt = string.format("%s doesn't currently exist. Create? [Y/n] ", uri_details.local_file),
-                default = 'Y'
-            })
+        log.warn(string.format("Received error while trying to get %s", uri_details.path), {exit_code = command_output.exit_code, stderr = command_output.stderr})
+        local missing_file = false
+        for _, glob in ipairs(FILE_MISSING_GLOBS) do
+            if command_output.stderr:match(glob) then
+                missing_file = true
+            end
         end
-        log.warn("Received error while trying to fetch file " .. uri_details.base_uri, {command_output.stderr, command_output.exit_code})
-        return nil, nil
+        if missing_file then
+            return {
+                error = {
+                    message = string.format("%s doesn't currently exist. Would you like to create it? [Y/n] ", uri_details.path),
+                    default = "Y",
+                    callback = function(response)
+                        if response and response:match('^[yY]') then
+                            -- Create file
+                            local success, error = pcall(M.internal._create_local_file, uri_details)
+                            if not success then
+                                log.warn(string.format("Received Error: %s while trying to create local file %s", error, uri_details.local_file))
+                                return {retry = false}
+                            end
+                            success = M.internal._copy_to_remote(uri_details)
+                            if not success then
+                                notify.warn(string.format("Unable to create remote file %s on %s", uri_details.path, uri_details.host))
+                                return {retry = false}
+                            end
+                            notify.info(string.format("Created %s on %s", uri_details.path, uri_details.host))
+                            return {retry = true}
+                        else
+                            return {retry = false}
+                        end
+                    end
+                }
+            }
+        else
+            return {
+                error = {
+                    message = string.format("Unable to retrieve %s from %s. Check netman log for details", uri_details.path, uri_details.host)
+                }
+            }
+        end
     end
-    local return_info = {
+    return {
         local_path = uri_details.local_file,
-        origin_path = uri_details.base_uri,
-        unique_name = uri_details.unique_name
+        origin_path = uri_details.path,
     }
-    local remote_parent = uri_details.protocol .. '://' .. uri_details.auth_uri
-    remote_parent = remote_parent .. uri_details.parent
-    local parent_info = {
-        local_parent = uri_details.parent,
-        remote_parent = remote_parent
-    }
-    return return_info, parent_info
 end
 
 function M.internal._read_directory(uri_details, cache)
@@ -317,7 +457,7 @@ function M.internal._read_directory(uri_details, cache)
     local _find_command =
         "find -L "
         .. path
-        .. ' -maxdepth 1 -exec '
+        .. ' -maxdepth 1 -mindepth 1 -exec '
         .. table.concat(STAT_COMMAND, ' ')
         .. ' {} +'
     table.insert(command, _find_command)
@@ -332,10 +472,11 @@ function M.internal._read_directory(uri_details, cache)
     command_output = shell:new(command, command_options):run()
     stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
     log.trace('SSH Directory Command and output', {command=command, options=command_options, output=command_output})
-    if exit_code ~= 0 then
-        notify.warn("Error trying to get contents of " .. tostring(uri_details.base_uri))
-        return nil
-    end
+
+    -- if exit_code ~= 0 then
+    --     notify.warn("Error trying to get contents of " .. tostring(uri_details.base_uri))
+    --     return nil
+    -- end
     stdout = stdout:gsub('\\0', string.char(0))
     for result in stdout:gmatch('[.%Z]+') do
         child = M.internal._process_find_result(result)
@@ -347,26 +488,23 @@ function M.internal._read_directory(uri_details, cache)
             child.URI = child.URI .. '/'
             child.NAME = child.NAME .. '/'
         end
-        if size == 0 then
-            child.URI = uri_details.base_uri
-            cache:get_item('file_metadata'):add_item(uri_details.base_uri, child)
-            child.NAME = './'
-        else
-            cache:get_item('file_metadata'):add_item(child.URI, child)
-        end
+        cache:get_item('file_metadata'):add_item(child.URI, child)
         children:add_item(child.URI, {URI=child.URI, FIELD_TYPE=child.FIELD_TYPE, NAME=child.NAME, ABSOLUTE_PATH=child.ABSOLUTE_PATH, METADATA=child})
         size = size + 1
     end
     return {remote_files = children:as_table()}
 end
 
-function M.internal._write_file(uri_details, lines)
-    -- WARN: (Mike): The mode 664 here isn't actually 664 for some reason? Maybe it needs to be an octal, who knows
-    local local_file = vim.loop.fs_open(uri_details.local_file, 'w', 664)
-    assert(local_file, "Unable to write to " .. tostring(local_file))
-    assert(vim.loop.fs_write(local_file, lines))
-    assert(vim.loop.fs_close(local_file))
+function M.internal._create_local_file(uri_details, write_contents)
+    local contents = write_contents or ""
+    local local_file = io.open(uri_details.local_file, 'w+')
+    assert(local_file, string.format("Unable to write to %s", local_file))
+    assert(local_file:write(contents), string.format("Failed to write to %s", local_file))
+    assert(local_file:flush(), string.format("Failed to save %s", local_file))
+    assert(local_file:close(), string.format("Failed to close %s", local_file))
+end
 
+function M.internal._copy_to_remote(uri_details)
     local command = {}
     if uri_details.protocol == 'sftp' or uri_details.protocol == 'scp' then
         -- TODO: Mike: Since this is relatively static, we should prepare this on provider init instead of dynamically each time
@@ -384,7 +522,7 @@ function M.internal._write_file(uri_details, lines)
         table.insert(command, uri_details.local_file)
         local _auth_uri = uri_details.auth_uri .. ':'
         if uri_details.is_relative then
-            _auth_uri = _auth_uri .. '.' .. uri_details.path
+            _auth_uri = _auth_uri .. '~' .. uri_details.path
         else
             _auth_uri = _auth_uri .. uri_details.path
         end
@@ -404,6 +542,7 @@ function M.internal._write_file(uri_details, lines)
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = '',
     }
+    ---@diagnostic disable-next-line: missing-parameter
     local command_output = shell:new(command, command_options):run()
     if command_output.exit_code ~= 0 then
         log.warn("Received error while trying to save file " .. uri_details.base_uri, {command_output.stderr, command_output.exit_code})
@@ -412,7 +551,23 @@ function M.internal._write_file(uri_details, lines)
     return true
 end
 
-function M.internal._create_directory(uri_details, directory)
+function M.internal._write_file(uri_details, cache, lines)
+    lines = lines or {}
+    lines = table.concat(lines, '\n')
+    M.internal._create_local_file(uri_details, lines)
+    local success = M.internal._copy_to_remote(uri_details)
+    if success then
+
+        M.internal.remove_item_from_cache(uri_details.base_uri, cache, {clear_self=true, clear_parent=true})
+    end
+end
+
+function M.internal._create_directory(uri_details, cache, directory)
+    -- If the directory starts with `/`, we need to append `~` before it
+    log.debug(string.format("Directory: %s", directory))
+    if uri_details.is_relative then
+        directory = string.format("~%s", directory)
+    end
     local command = {}
     for _, item in ipairs(SSH_COMMAND) do
         table.insert(command, item)
@@ -423,12 +578,14 @@ function M.internal._create_directory(uri_details, directory)
     table.insert(command, directory)
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
+    ---@diagnostic disable-next-line: missing-parameter
     local command_output = shell:new(command, command_options):run()
     log.trace({command=command, stderr=command_output.stderr, stdout=command_output.stdout, exit_code=command_output.exit_code})
     if command_output.exit_code ~= 0 then
         log.warn("Received error while trying to create directory on", {command_output.stderr, command_output.exit_code})
         return false
     end
+    M.internal.remove_item_from_cache(uri_details.base_uri, cache, {clear_self=true, clear_parent=true})
     return true
 end
 
@@ -448,16 +605,10 @@ function M.read(uri, provider_cache)
         log.warn("Invalid URI: " .. uri .. " provided!")
         return nil
     end
-    local parent_details = {
-        local_parent = parsed_uri_details.parent,
-        remote_parent = parsed_uri_details.protocol .. '://' .. parsed_uri_details.auth_uri .. '' .. parsed_uri_details.parent
-    }
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        if M.internal._read_file(parsed_uri_details) then
-            return {
-                local_path = parsed_uri_details.local_file
-                ,origin_path = uri
-            }, api_flags.READ_TYPE.FILE, parent_details
+        local data = M.internal._read_file(parsed_uri_details)
+        if data then
+            return data, api_flags.READ_TYPE.FILE
         else
             log.warn(string.format("Failed to read remote file %s !", parsed_uri_details.path))
             notify.info(string.format("Failed to access remote file %s on remote host %s", parsed_uri_details.path, parsed_uri_details.host))
@@ -467,7 +618,7 @@ function M.read(uri, provider_cache)
         -- Consider sending the global cache and the uri along with the request and letting _read_directory manage adding stuff to the cache
         local directory_contents = M.internal._read_directory(parsed_uri_details, cache)
         if not directory_contents then return nil end
-        return directory_contents, api_flags.READ_TYPE.EXPLORE, parent_details
+        return directory_contents, api_flags.READ_TYPE.EXPLORE
     end
 end
 
@@ -488,10 +639,10 @@ function M.write(uri, provider_cache, data)
         return nil
     end
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        M.internal._write_file(parsed_uri_details, data)
+        M.internal._write_file(parsed_uri_details, cache, data)
     else
         -- TODO: Mike: Get the name of the directory to create
-        M.internal._create_directory(parsed_uri_details, data)
+        M.internal._create_directory(parsed_uri_details, cache, parsed_uri_details.path)
     end
 end
 
@@ -511,19 +662,33 @@ function M.delete(uri, provider_cache)
         log.warn("Invalid URI: " .. uri .. " provided!")
         return nil
     end
-    local command = "ssh " .. parsed_uri_details.auth_uri .. ' "rm -rf ' .. parsed_uri_details.remote_path .. '"'
-    log.info("Delete command: " .. command)
-    -- TODO:(Mike): Consider making this request verification for delete
-    local command_output = shell.run_shell_command(command)
-    if command_output.stderr then
+    local path = parsed_uri_details.path
+    if parsed_uri_details.is_relative then
+        path = string.format("~%s", path)
+    end
+
+    local command = {"ssh", parsed_uri_details.auth_uri, "rm", "-rf", path}
+    local command_options = {[command_flags.STDERR_JOIN] = ''}
+    local command_output = shell:new(command, command_options):run()
+    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    if command_output.exit_code ~= 0 then
         notify.error("Failed to delete " .. uri .. '! Check logs for more details')
-        log.warn("Received Error: " .. {stderr=command_output.stderr})
+        log.warn(string.format("Received Error while trying to delete %s ", uri), {stderr=command_output.stderr})
     else
         notify.info("Deleted " .. uri  .. " successfully")
     end
+    M.internal.remove_item_from_cache(uri, cache, {clear_self=true, clear_parent=true})
 end
 
-function M.init(config_options, cache)
+function M.move(uri1, uri2, cache1, cache2)
+
+end
+
+function M.init(config, cache)
+    M.internal.prepare_config(config)
+
+    -- Read in the local user ssh config?
+    M.internal.parse_user_sshconfig(config)
     log.info("Attempting to initialize ssh provider")
     local command = {'ssh', '-V'}
     local command_options = {
