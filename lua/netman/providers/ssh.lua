@@ -87,21 +87,31 @@ M.ui = {
 --- @param config Configuration
 ---     The Netman provided (provider managed) configuration
 --- @return table
----     Returns a 1 dimensional table with various container info such as
+---     Returns a 1 dimensional table with the name of each host in it
+function M.ui.get_hosts(config)
+    local hosts_as_dict = config:get('hosts')
+    local hosts = {}
+    for host, _ in pairs(hosts_as_dict) do
+        table.insert(hosts, host)
+    end
+    return hosts
+end
+
+--- Returns a list of details for a host
+--- @param config Configuration
+--- @param host string
+--- @param provider_cache Cache
+--- @return table
+---     Returns a 1 dimensional table with the followin gkey value pairs in it
 ---     - NAME
 ---     - URI
 ---     - STATE
----     - LAST_ACCESSED
-function M.ui.get_hosts(config)
-    local hosts = {}
-    for host, _ in pairs(config:get('hosts')) do
-        local _host = {}
-        _host.NAME = host
-        _host.URI  = string.format("sftp://%s///", host)
-        _host.STATE = nil
-        table.insert(hosts, _host)
-    end
-    return hosts
+function M.ui.get_host_details(config, host, provider_cache)
+
+    return {
+        NAME = host,
+        URI = string.format("sftp://%s/", host),
+    }
 end
 
 function M.internal.prepare_config(config)

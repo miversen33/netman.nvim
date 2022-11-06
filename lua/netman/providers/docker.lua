@@ -60,31 +60,50 @@ end
 
 --- Returns the various containers that are currently available on the system
 --- @param config Configuration
----     The Netman provided (provider managed) configuration
 --- @return table
----     Returns a 1 dimensional table with various container info such as
+---     Returns a 1 dimensional table containing the name of each available container
+---@diagnostic disable-next-line: unused-local
+function M.ui.get_hosts(config)
+    -- Note: Netman will provide our provider configuration to this function, but we 
+    -- don't really need it for this work so we are going to ignore it
+    local containers = M.internal._get_containers()
+    local hosts = {}
+    for _, container in ipairs(containers) do
+        table.insert(hosts, container.name)
+    end
+    return hosts
+end
+
+--- Returns a list of details for a container.
+--- @param config Configuration
+--- @param container string
+--- @param provider_cache Cache
+--- @return table
+---     Returns a 1 dimensional table with the following key value pairs in it
 ---     - NAME
 ---     - URI
 ---     - STATE
----     - LAST_ACCESSED
-function M.ui.get_hosts(config)
-    local containers = M.internal._get_containers()
-    local hosts = {}
+function M.ui.get_host_details(config, container, provider_cache)
+    -- Kinda ick, we are basically going to cache the root directory of the container and
+    -- hopefully that doesn't cause explosions?
+    local _faux_uri = string.format("docker://%s/", container)
+    local _ = M.internal._parse_uri(_faux_uri)
+    M.internal._validate_cache(provider_cache, _)
+    local cache = provider_cache:get_item(container)
     local states = require("netman.tools.options").ui.STATES
-    for _, container in ipairs(containers) do
-        local _host = {}
-        _host.NAME  = container.name
-        _host.URI   = string.format("docker://%s/", container.name)
-        if not container.status then
-            _host.STATE = states.ERROR
-        elseif container.status:match('^Up') then
-            _host.STATE = states.AVAILABLE
-        else
-            _host.STATE = states.UNKNOWN
-        end
-        table.insert(hosts, _host)
+    local state = M.internal.get_container_state(container, cache, {force=true})
+    local host_details = {
+        NAME = container,
+        URI = string.format("docker://%s/", container),
+    }
+    if state == _docker_status.ERROR then
+        host_details.STATE = states.ERROR
+    elseif state == _docker_status.RUNNING then
+        host_details.STATE = states.AVAILABLE
+    else
+        host_details.STATE = states.UNKNOWN
     end
-    return hosts
+    return host_details
 end
 
 --- _parse_uri will take a string uri and return an object containing details about
@@ -398,10 +417,11 @@ function M.internal._create_directory(container, directory)
     return true
 end
 
-function M.internal._validate_container(uri, container, cache)
+function M.internal.get_container_state(container, cache, opts)
     assert(container, "No container provided to validate!")
+    opts = opts or {}
     local container_status = nil
-    if cache:get_item('container_status') == _docker_status.RUNNING then
+    if not opts.force and cache:get_item('container_status') == _docker_status.RUNNING then
         return _docker_status.RUNNING
     else
         container_status = M.internal._is_container_running(container)
@@ -409,34 +429,14 @@ function M.internal._validate_container(uri, container, cache)
     end
     if container_status == _docker_status.ERROR then
         notify.error("Received an error while trying to interface with docker")
-        return nil
+        return _docker_status.ERROR
     elseif container_status == _docker_status.INVALID then
         log.info("Unable to find container! Check logs (:Nmlogs) for more details")
-        return nil
+        return _docker_status.INVALID
     elseif container_status == _docker_status.NOT_RUNNING then
-        vim.ui.input({
-            prompt = string.format('Start %s? [y/N] ', container),
-            default = 'N'
-        }
-            , function(input)
-            if input:match('^[yYeEsS]$') then
-                local started_container = M.internal._start_container(container)
-                if started_container then
-                    cache:add_item('container_status', _docker_status.RUNNING)
-                    notify.info(string.format("%s successfully started!", container))
-                end
-            elseif input:match('^[nNoO]$') then
-                log.info("Not starting container " .. tostring(container))
-                return nil
-            else
-                notify.info("Invalid Input. Not starting container!")
-                return nil
-            end
-        end)
-        -- Probably should return false here?
-        return false
+        return _docker_status.NOT_RUNNING
     end
-    return true
+    return _docker_status.RUNNING
 end
 
 function M.read(uri, provider_cache)
@@ -446,8 +446,30 @@ function M.read(uri, provider_cache)
         return nil
     end
     M.internal._validate_cache(provider_cache, parsed_uri_details)
-    local cache = provider_cache:get_item(parsed_uri_details.container):get_item(parsed_uri_details.path)
-    if not M.internal._validate_container(uri, cache.container, provider_cache:get_item(parsed_uri_details.container)) then return nil end
+    local container_cache = provider_cache:get_item(parsed_uri_details.container)
+    local cache = container_cache:get_item(parsed_uri_details.path)
+    local container_state = M.internal.get_container_state(cache.container, container_cache)
+    if container_state == _docker_status.NOT_RUNNING then
+        return {
+            error = {
+                message = string.format("%s is not running. Would you like to start it? [Y/n] ", cache.container),
+                default = 'Y',
+                callback = function(response)
+                   if response:match('^[yY]') then
+                        local started_container = M.internal._start_container(cache.container)
+                        if started_container then
+                            container_cache:add_item('container_status', _docker_status.RUNNING)
+                            notify.info(string.format("%s successfully started!", cache.container))
+                            return {retry = true}
+                        end
+                    else
+                        log.info(string.format("Not starting container %s", cache.container))
+                        return {retry = false}
+                    end
+                end
+            }
+        }
+    end
     if cache.file_type == api_flags.ATTRIBUTES.FILE then
         if M.internal._read_file(cache.container, cache.path, cache.local_file) then
             return {
@@ -496,7 +518,11 @@ function M.write(uri, provider_cache, data)
         log.warn("Invalid Cache details for " .. uri)
         return nil
     end
-    if not M.internal._validate_container(uri, cache.container, provider_cache:get_item(parsed_uri_details.container)) then return nil end
+    -- TODO: Mike, handle the fact that the container may be dead?
+    -- WARN: This will break
+    if M.internal.get_container_state(cache.container, provider_cache:get_item(parsed_uri_details.container))  ~= _docker_status.RUNNING then
+        return nil
+    end
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
         M.internal._write_file(cache, data)
     else
@@ -595,7 +621,8 @@ function M.get_metadata(uri, provider_cache, requested_metadata, forced)
     end
     M.internal._validate_cache(provider_cache, parsed_uri_details)
     local cache = provider_cache:get_item(parsed_uri_details.container)
-    if not M.internal._validate_container(uri, parsed_uri_details.container, cache) then
+    -- Pretty ick here
+    if M.internal.get_container_state(parsed_uri_details.container, cache) ~= _docker_status.RUNNING then
         log.trace("Unable to get metadata for " .. tostring(uri))
         return nil
     end
