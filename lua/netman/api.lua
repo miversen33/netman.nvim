@@ -18,6 +18,12 @@ M.internal = {
     boot_timestamp = vim.loop.now()
 }
 
+--- Set of tools to communicate directly with provider(s) (in a generic sense).
+--- Note, this will not let you talk directly to the provider per say, (meaning you can't
+--- talk straight to the ssh provider, but you can talk to api and tell it you want things
+--- from or to give to the ssh provider).
+M.providers = {}
+
 --- The default function that any provider configuration will have associated with its 
 --- :save function.
 M.internal.config.save = function(self)
@@ -320,34 +326,6 @@ function M.internal.init_augroups()
     end
 end
 
---- Reaches out to the provided provider and gets a list of
---- the entries it wants displayed
---- @param provider string
----    The string path of the provider in question. This should
----    likely be provided via netman.api.internal.get_providers()
---- @return table/nil
----    Returns a table with data or nil.
----    nil is returned if the provider is not valid or if the provider
----    doesn't have the `get_hosts` function implemented
----    NOTE: Does _not_ validate the schema, you do that yourself, whatever
----    is calling this
-function M.internal.get_provider_entries(provider)
-    local _provider = M._providers.path_to_provider[provider]
-    local _config   = M.internal.config:get(provider)
-    local data = nil
-    if not _provider then
-        log.warn(string.format("%s is not a valid provider", provider))
-        return data
-    end
-    _provider = _provider.provider
-    if not _provider.ui or not _provider.ui.get_hosts then
-        log.info(string.format("%s has not implemented the get_hosts function", provider))
-    else
-        data = _provider.ui.get_hosts(_config)
-    end
-    return data
-end
-
 --- Returns the associated config for the config owner.
 --- @param config_owner_name string
 ---     The name of the owner of the config. Name should be the
@@ -361,16 +339,117 @@ function M.internal.get_config(config_owner_name)
     return M.internal.config:get(config_owner_name)
 end
 
+--- Validates the information provided by the entry to ensure it 
+--- matches the defined schema in netman.tools.options.ui.ENTRY_SCHEMA.
+--- If there are any invalid keys, they will be logged and stripped out.
+--- @param entry table
+---     A single entry returned by netman.api.get_hosts
+--- @return table
+---     A validated/sanitized entry
+---     NOTE: If the entry is not validated, this returns nil
+function M.internal.validate_entry_schema(provider, entry)
+    local schema = require("netman.tools.options").ui.ENTRY_SCHEMA
+    local states = require("netman.tools.options").ui.STATES
+    local host = nil
+    local invalid_state = nil
+    local valid_entry = true
+    local return_entry = {}
+    for key, value in pairs(entry) do
+        if not schema[key] then
+            log.warn(string.format("%s provided invalid key: %s", provider, key))
+            valid_entry = false
+            goto continue
+        end
+        if key == 'STATE' and value and not states[value] then
+            invalid_state = value
+            valid_entry = false
+            goto continue
+        end
+        if key == 'NAME' then host = value end
+        return_entry[key] = value
+        ::continue::
+    end
+    if invalid_state then
+        log.warn(string.format("%s provided invalid state: %s for host: %s", provider, invalid_state, host))
+        valid_entry = false
+    end
+    ---@diagnostic disable-next-line: return-type-mismatch
+    if not valid_entry then return nil else return return_entry end
+end
+
 --- Returns a 1 dimensional table of strings which are registered
---- netman providers. Intended to be used with netman.api.get_provider_entries (but
+--- netman providers. Intended to be used with netman.api.providers.get_hosts (but
 --- I'm not the police, you do what you want with this).
 --- @return table
-function M.internal.get_providers()
+function M.providers.get_providers()
     local _providers = {}
     for provider, _ in pairs(M._providers.path_to_provider) do
         table.insert(_providers, provider)
     end
     return _providers
+end
+
+--- Reaches out to the provided provider and gets a list of
+--- the entries it wants displayed
+--- @param provider string
+---    The string path of the provider in question. This should
+---    likely be provided via netman.api.providers.get_providers()
+--- @return table/nil
+---    Returns a table with data or nil.
+---    nil is returned if the provider is not valid or if the provider
+---    doesn't have the `get_hosts` function implemented
+---    NOTE: Does _not_ validate the schema, you do that yourself, whatever
+---    is calling this
+function M.providers.get_hosts(provider)
+    local _provider = M._providers.path_to_provider[provider]
+    local hosts = nil
+    if not _provider then
+        log.warn(string.format("%s is not a valid provider", provider))
+        return hosts
+    end
+    local _config   = M.internal.config:get(provider)
+    if not _provider.provider.ui or not _provider.provider.ui.get_hosts then
+        log.info(string.format("%s has not implemented the ui.get_hosts function", provider))
+        return nil
+    else
+        local cache = _provider.cache
+        _provider = _provider.provider
+        hosts = _provider.ui.get_hosts(_config, cache)
+    end
+    log.debug(string.format("Got hosts for %s", provider), {hosts=hosts})
+    return hosts
+end
+
+--- Gets details for a specific host
+--- @param provider string
+---     The path to the provider. For example, `netman.providers.ssh`. This will be provided by netman.api.provider.get_providers
+--- @param host string
+---     The name of the host. For example `localhost`. This will be provided by the provider via netman.api.providers.get_hosts
+--- @return table
+---     Returns a 1 dimensional table with the following information
+---     - NAME (string)
+---     - URI (string)
+---     - STATE (string from netman.options.ui.states)
+function M.providers.get_host_details(provider, host)
+    local _provider = M._providers.path_to_provider[provider]
+    if not _provider then
+        log.warn(string.format("%s is not a valid provider", provider))
+        ---@diagnostic disable-next-line: return-type-mismatch
+        return nil
+    end
+    if not _provider.provider.ui or not _provider.provider.ui.get_host_details then
+        log.info(string.format("%s has not implemented the ui.get_host_details function", provider))
+        ---@diagnostic disable-next-line: return-type-mismatch
+        return nil
+    end
+    local config = M.internal.config:get(provider)
+    if not config then
+        log.info(string.format("%s has no configuration associated with it?!", provider))
+    end
+    local cache = _provider.cache
+    _provider = _provider.provider
+    local _data = _provider.ui.get_host_details(config, host, cache)
+    return M.internal.validate_entry_schema(provider, _data)
 end
 
 function M.remove_config(provider)
