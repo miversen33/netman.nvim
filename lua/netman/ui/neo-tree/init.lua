@@ -60,7 +60,6 @@ end
 M.internal.get_provider_children = function(provider)
     local hosts = {}
     for _, host in ipairs(api.providers.get_hosts(provider)) do
-        log.debug(string.format("Processing host %s for provider %s", host, provider))
         local host_details = api.providers.get_host_details(provider, host)
         if not host_details then
             log.warn(string.format("%s did not return any details for %s", provider, host))
@@ -269,7 +268,6 @@ M.navigate = function(state)
         nodes = M.internal.generate_node_children(state, node)
         parent_id = node:get_id()
     end
-    log.debug("Rendering Nodes", {parent=node, nodes=nodes})
     renderer.show_nodes(nodes, state, parent_id)
 end
 
