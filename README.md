@@ -1,3 +1,6 @@
+STOP! Don't try to integrate with Netman yet!
+There be breaking changes coming with [support for file browsers](https://github.com/miversen33/netman.nvim/issues/28). For details, check out [the current development branch](https://github.com/miversen33/netman.nvim/tree/v1.1) until it is merged back with main!
+
 # Neovim (Lua Powered) Network Resource Manager
 
 [Interested in how Netman Works or how to integrate with it?](https://github.com/miversen33/netman.nvim/wiki)
@@ -253,3 +256,8 @@ NOTE: In order for the logs to be useful, it is required that `:Nmlogs` be ran f
 The Netman logfile for netman is stored in `$HOME/.local/nvim/netman/logs.txt` if you would prefer to look through this in an attempt to troubleshoot issues
 
 **NOTE: This does _not_ scrub sensitive content, so it is wise to ensure there are no passwords or the like in this log before uploading it**
+
+## Donate
+**THIS IS A FREE PRODUCT!**   
+Do not feel obligated to donate anything for this. Your issues will be resolved all the same whether you have donated or not. Still, if you are feeling generous...  
+[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/donate/?business=T2QJK7GZYC772&no_recurring=0&item_name=Help+me+stay+caffeinated+so+I+can+write+semi+usable+code&currency_code=USD)
