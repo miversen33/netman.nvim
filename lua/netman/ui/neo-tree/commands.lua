@@ -20,26 +20,24 @@ M.add_directory = function(state, callback)
     do_callback(callback)
 end
 
---- This will reach out to netman's api to create the new item in question
 M.add = function(state, callback)
     ui.add_node(state)
     do_callback(callback)
 end
 
--- TODO:
 M.refresh = function(state, callback)
     ui.refresh(state)
     do_callback(callback)
 end
 
--- TODO:
-M.rename = function(state, callback)
-    do_callback(callback)
-end
+-- -- TODO:
+-- M.rename = function(state, callback)
+--     do_callback(callback)
+-- end
 
 -- TODO:
 M.delete = function(state, callback)
-    ui.delete(state)
+    ui.delete_node(state)
     do_callback(callback)
 end
 

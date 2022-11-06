@@ -2,7 +2,7 @@ vim.g.netman_log_level = 0
 vim.g.loaded_netrwPlugin = 1
 vim.g.loaded_netrw = 1
 
--- vim.g.netman_no_shim = true
+vim.g.netman_no_shim = true
 
 local api    = require('netman.api')
 local utils  = require("netman.tools.utils")

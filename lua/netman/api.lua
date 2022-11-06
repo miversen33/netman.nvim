@@ -613,6 +613,7 @@ function M.delete(uri)
     log.info(string.format("Reaching out to %s to delete %s", provider.name,uri))
     -- Do this asynchronously
     provider.delete(uri, cache)
+    M._providers.file_cache[uri] = nil
 end
 
 function M.get_metadata(uri, metadata_keys)

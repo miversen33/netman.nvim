@@ -7,6 +7,7 @@ local neo_tree_utils = require("neo-tree.utils")
 local defaults = require("netman.ui.neo-tree.defaults")
 local input = require("neo-tree.ui.inputs")
 local log = require("netman.tools.utils").log
+local notify = require("netman.tools.utils").notify
 local api = require("netman.api")
 local CACHE_FACTORY = require("netman.tools.cache")
 
@@ -89,8 +90,8 @@ M.internal.get_uri_children = function(state, uri)
     -- Do stuff with that output?
     local output = api.read(uri)
     if not output then
-        log.warn(string.format("%s did not return anything on read", uri))
-        return children
+        log.info(string.format("%s did not return anything on read", uri))
+        return nil
     end
     if output.error then
         local _error = output.error
@@ -108,12 +109,12 @@ M.internal.get_uri_children = function(state, uri)
                 end
             end
             input.input(message, default, callback)
-            return children
+            return nil
         else
             -- No callback was provided, display the error and move on with our lives
             print(string.format("Unable to read %s, received error", message))
             log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
-            return children
+            return nil
         end
     end
     if output.type == 'FILE' or output.type == 'STREAM' then
@@ -186,6 +187,7 @@ M.internal.generate_node_children = function(state, node)
     return children
 end
 
+-- BUG: When refresh is ran on a file, it is opened. Probably not great
 -- Need a way to indicate that we only want to refresh a certain id
 M.refresh = function(state, opts)
     local refresh_stack, return_stack, tree, head, children
@@ -209,23 +211,27 @@ M.refresh = function(state, opts)
         for _, child in ipairs(tree:get_nodes()) do
             table.insert(refresh_stack, child)
         end
+        log.debug("Running full refresh of all providers")
     elseif opts.refresh_only_id then
         -- We are going to start our refresh at this node, regardless of what node
         -- we are currently looking at
-        -- NOTE: Not really sure why but lua shits the bed if you move the 
+        -- NOTE: Not really sure why but lua shits the bed if you move the
         -- function call into the table.insert statement so 🤷
         local _ = state.tree:get_node(opts.refresh_only_id)
         table.insert(refresh_stack, _)
+        log.debug(string.format("Running Targetted Refresh of %s", opts.refresh_only_id))
     else
         -- Add the current node found at state.tree:get_node() to the process stack
-        -- NOTE: Not really sure why but lua shits the bed if you move the 
+        -- NOTE: Not really sure why but lua shits the bed if you move the
         -- function call into the table.insert statement so 🤷
         local _ = state.tree:get_node()
         table.insert(refresh_stack, _)
+        log.debug(string.format("Running full refresh on %s", _.name))
     end
     while(#refresh_stack> 0) do
         -- - While there are things in the process stack
         head = table.remove(refresh_stack, 1)
+        local head_id = head:get_id()
         -- - Check if any of current node's children are expanded. If so, add those children to the tail of the process stack
         -- NOTE: Might be able to call tree:get_nodes(head:get_id()) instead...?
         for _, child_id in ipairs(head:get_child_ids()) do
@@ -241,26 +247,29 @@ M.refresh = function(state, opts)
         end
         -- - Generate the nodes new children (assume all nodes will always have the same ID)
         children = M.internal.generate_node_children(state, head)
+        if children and type(children) == 'table' then
+            table.insert(return_stack, {children=children, parent_id=head_id})
+        else
+            log.warn("Received invalid children from generation of head", {head=head, children=children})
+        end
         -- Checking if children were returned, and there is more than 0
         -- Lua empty tables still pass truthy checks
-        if children and (type(children) == 'table' and #children > 0) then
-            -- - Add the children (and applicable parent id) to the return stack
-            table.insert(return_stack, {children=children, parent_id=head:get_id()})
-        end
+        -- - Add the children (and applicable parent id) to the return stack
     end
     -- While there are things in the return stack
     while(#return_stack > 0) do
         -- - Add each item to the renderer via (renderer.show_nodes), ensuring that if a parent id was provided, we add the items under that id
         head = table.remove(return_stack, 1)
         children = head.children
-        -- If there are no children to display for some reason, dont.
-        if not children then goto continue end
-        renderer.show_nodes(children, state, head.parent_id)
-        if head.parent_id then
-            -- Get the node that was just rendered and expand it  (it wouldn't be in this list if it wasn't)
-            tree:get_node(head.parent_id):expand()
+        local parent = tree:get_node(head.parent_id)
+        -- Check if the parent node still exists. If it doesn't we wont try to render our cached info on its children
+        if parent then
+            renderer.show_nodes(children, state, head.parent_id)
+            if head.parent_id then
+                -- Get the node that was just rendered and expand it  (it wouldn't be in this list if it wasn't)
+                tree:get_node(head.parent_id):expand()
+            end
         end
-        ::continue::
     end
 end
 
@@ -279,13 +288,13 @@ M.navigate = function(state, opts)
         else
             node = tree:get_node()
         end
+        if not node.extra then
+            log.warn(string.format("Node %s doesn't have any extra attributes, not dealing with this shit today", node.name))
+            return
+        end
         if node:is_expanded() then
             node:collapse()
             renderer.redraw(state)
-            return
-        end
-        if not node.extra then
-            log.warn(string.format("Node %s doesn't have any extra attributes, not dealing with this shit today", node.name))
             return
         end
         nodes = M.internal.generate_node_children(state, node)
@@ -295,41 +304,37 @@ M.navigate = function(state, opts)
 end
 
 M.internal.add_item_to_node = function(state, node, item)
-    local uri = nil
     log.debug(string.format("Trying to add item to node"), {node=node, item=item})
     if node.type == 'file' then
         node = state.tree:get_node(node:get_parent_id())
     end
-    -- Check if item contains directories and ends in a file
-    if item:match('/') and item:sub(-1) ~= '/' then
-        -- Item is a file and contains at least one directory
-        -- lets create the directories first
-        -- then create and open the item last
-        local children = {}
-        local last_child = nil
-        for child in item:gmatch('([^/]+)') do
-            table.insert(children, child)
-        end
-        last_child = table.remove(children, #children)
-        local path = string.format("%s", table.concat(children, '/'))
-        uri = string.format("%s%s/", node.extra.uri, path)
-        api.write(nil, uri)
-        uri = string.format("%s%s", uri, last_child)
-        api.write(nil, uri)
-        local _path = node.extra.uri
-        M.refresh(state, {refresh_only_id=node:get_id()})
-        local head = nil
-        while(#children > 0) do
-            head = table.remove(children, 1)
-            _path = string.format("%s%s/", _path, head)
-            M.refresh(state, {refresh_only_id=_path})
-        end
-    else
-        uri = string.format("%s%s", node.extra.uri, item)
-        api.write(nil, uri)
+    local uri = string.format("%s", node.extra.uri)
+    local head_child = nil
+    local children = {}
+    local tail_child = nil
+    local parent_id = node:get_id()
+    for child in item:gmatch('([^/]+)') do
+        table.insert(children, child)
     end
-    M.refresh(state, {refresh_only_id=node:get_id()})
-    M.navigate(state, {target_id=uri})
+    if item:sub(-1, -1) ~= '/' then
+    -- the last child is a file, we need to create it seperately from the above children
+        tail_child = table.remove(children, #children)
+    end
+    -- We iterate over the children creating each one on its own because not all
+    -- providers might be able to create all the directories at once 😥
+    while(#children > 0) do
+        head_child = table.remove(children, 1)
+        uri = string.format("%s%s/", uri, head_child)
+        api.write(nil, uri)
+        M.refresh(state, {refresh_only_id=parent_id})
+        parent_id = uri
+    end
+    if tail_child then
+        uri = string.format("%s%s", uri, tail_child)
+        api.write(nil, uri)
+        M.refresh(state, {refresh_only_id=parent_id})
+        M.navigate(state, {target_id=uri})
+    end
 end
 
 M.add_node = function(state, opts)
@@ -359,8 +364,46 @@ M.add_node = function(state, opts)
     input.input(message, "", callback)
 end
 
-M.delete_node = function(state)
+M.internal.delete_item = function(uri)
+    local status, _error = pcall(api.delete, uri)
+    if not status then
+        log.warn(string.format("Received error while trying to delete uri %s", uri), {error=_error})
+        return false
+    end
+    return true
+end
 
+M.delete_node = function(state)
+    local tree, node, node_name, parent_id
+    tree = state.tree
+    node = tree:get_node()
+    node_name = node.name
+    parent_id = node:get_parent_id()
+    log.debug(string.format("Deleting Node %s with parent id %s", node_name, parent_id))
+    if node.type == 'netman_provider' then
+        print("Deleting providers isn't supported. Please uninstall the provider instead")
+        return
+    end
+    if node.type == 'netman_host' then
+        print("Removing hosts isn't supported. Yet... 👀")
+        return
+    end
+    -- Get confirmation...
+    local message = string.format("Are you sure you want to delete %s [y/N]", node_name)
+    local default = "N"
+    local callback = function(response)
+        if not response:match('^[yY]') then
+            log.info(string.format("Did not receive confirmation of delete. Bailing out of deletion of %s", node_name))
+            return
+        end
+        local success = M.internal.delete_item(node.extra.uri)
+        if not success then
+            notify.warn(string.format("Unable to delete %s. Received error, check netman logs for details!", node_name))
+            return
+        end
+        M.refresh(state, {refresh_only_id=parent_id})
+    end
+    input.input(message, default, callback)
 end
 
 M.rename_node = function(state)

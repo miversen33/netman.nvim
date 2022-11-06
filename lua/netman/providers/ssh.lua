@@ -144,6 +144,46 @@ function M.internal.parse_user_sshconfig(config)
     config:save()
 end
 
+function M.internal.remove_item_from_cache(uri, cache, opts)
+    opts = opts or {}
+    if opts.clear_self then
+        log.debug(string.format("Removing %s from cache", uri))
+        if cache
+            and cache:get_item('files') then
+            -- Remove the file from local cache
+            cache:get_item('files'):remove_item(uri)
+        end
+        if cache
+            and cache:get_item('file_metadata') then
+            -- Remove the file metedata from local cache
+            cache:get_item('file_metadata'):remove_item(uri)
+        end
+    end
+    if opts.clear_parent then
+        -- Get parent details from our current parsed info
+        local details = cache:get_item(uri)
+        local parent = {}
+        for part in details.path:gmatch("([^/]+)") do
+            table.insert(parent, part)
+        end
+        -- popping the tail off the file list
+        table.remove(parent, #parent)
+        local parent_uri = string.format("docker://%s/%s/", details.container, table.concat(parent, "/"))
+        if cache
+            and cache:get_item('file_metadata') then
+            -- Remove the parent metadata from local cache
+            cache:get_item('file_metadata'):remove_item(parent_uri)
+        end
+        if cache
+            and cache:get_item('files') then
+            -- Remove the parent files from local cache
+            cache:get_item('files'):remove_item(parent_uri)
+        end
+        log.debug(string.format("Removing (parent) %s from cache", parent_uri))
+    end
+    log.debug("Updated Cache", {cache=cache})
+end
+
 --- _parse_uri will take a string uri and return an object containing details about
 --- the uri provided.
 --- @param uri string
@@ -302,6 +342,9 @@ function M.internal._validate_cache(provider_cache, uri)
     end
     if not cache:get_item('file_metadata') then
         cache:add_item('file_metadata', CACHE:new(METADATA_TIMEOUT), CACHE.FOREVER)
+    end
+    if not cache:get_item(uri) then
+        cache:add_item(uri, uri_details, CACHE.FOREVER)
     end
     provider_cache:add_item(uri, {cache=cache, details=uri_details}, CACHE.FOREVER)
     return cache, uri_details
@@ -508,17 +551,21 @@ function M.internal._copy_to_remote(uri_details)
     return true
 end
 
-function M.internal._write_file(uri_details, lines)
+function M.internal._write_file(uri_details, cache, lines)
     lines = lines or {}
     lines = table.concat(lines, '\n')
     M.internal._create_local_file(uri_details, lines)
-    return M.internal._copy_to_remote(uri_details)
+    local success = M.internal._copy_to_remote(uri_details)
+    if success then
+
+        M.internal.remove_item_from_cache(uri_details.base_uri, cache, {clear_self=true, clear_parent=true})
+    end
 end
 
-function M.internal._create_directory(uri_details, directory)
+function M.internal._create_directory(uri_details, cache, directory)
     -- If the directory starts with `/`, we need to append `~` before it
     log.debug(string.format("Directory: %s", directory))
-    if directory:sub(1, 1) == '/' then
+    if uri_details.is_relative then
         directory = string.format("~%s", directory)
     end
     local command = {}
@@ -538,6 +585,7 @@ function M.internal._create_directory(uri_details, directory)
         log.warn("Received error while trying to create directory on", {command_output.stderr, command_output.exit_code})
         return false
     end
+    M.internal.remove_item_from_cache(uri_details.base_uri, cache, {clear_self=true, clear_parent=true})
     return true
 end
 
@@ -591,10 +639,10 @@ function M.write(uri, provider_cache, data)
         return nil
     end
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
-        M.internal._write_file(parsed_uri_details, data)
+        M.internal._write_file(parsed_uri_details, cache, data)
     else
         -- TODO: Mike: Get the name of the directory to create
-        M.internal._create_directory(parsed_uri_details, parsed_uri_details.path)
+        M.internal._create_directory(parsed_uri_details, cache, parsed_uri_details.path)
     end
 end
 
@@ -614,16 +662,26 @@ function M.delete(uri, provider_cache)
         log.warn("Invalid URI: " .. uri .. " provided!")
         return nil
     end
-    local command = "ssh " .. parsed_uri_details.auth_uri .. ' "rm -rf ' .. parsed_uri_details.remote_path .. '"'
-    log.info("Delete command: " .. command)
-    -- TODO:(Mike): Consider making this request verification for delete
-    local command_output = shell.run_shell_command(command)
-    if command_output.stderr then
+    local path = parsed_uri_details.path
+    if parsed_uri_details.is_relative then
+        path = string.format("~%s", path)
+    end
+
+    local command = {"ssh", parsed_uri_details.auth_uri, "rm", "-rf", path}
+    local command_options = {[command_flags.STDERR_JOIN] = ''}
+    local command_output = shell:new(command, command_options):run()
+    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    if command_output.exit_code ~= 0 then
         notify.error("Failed to delete " .. uri .. '! Check logs for more details')
-        log.warn("Received Error: " .. {stderr=command_output.stderr})
+        log.warn(string.format("Received Error while trying to delete %s ", uri), {stderr=command_output.stderr})
     else
         notify.info("Deleted " .. uri  .. " successfully")
     end
+    M.internal.remove_item_from_cache(uri, cache, {clear_self=true, clear_parent=true})
+end
+
+function M.move(uri1, uri2, cache1, cache2)
+
 end
 
 function M.init(config, cache)
