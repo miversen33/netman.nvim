@@ -1,6 +1,3 @@
-STOP! Don't try to integrate with Netman yet!
-There be breaking changes coming with [support for file browsers](https://github.com/miversen33/netman.nvim/issues/28). For details, check out [the current development branch](https://github.com/miversen33/netman.nvim/tree/v1.1) until it is merged back with main!
-
 # Neovim (Lua Powered) Network Resource Manager
 
 [Interested in how Netman Works or how to integrate with it?](https://github.com/miversen33/netman.nvim/wiki)
@@ -13,6 +10,7 @@ There be breaking changes coming with [support for file browsers](https://github
 - [Dependencies](#dependencies)
 - [Installation](#installation)
 - [Usage](#usage)
+    - [:UI Integrations](#ui)
     - [:NmloadProvider](#nmloadprovider)
     - [:Nmlogs](#nmlogs)
     - [:Nmread](#nmread)
@@ -77,7 +75,28 @@ require("netman")
 
 Once Netman is loaded into memory, it will automatically load its providers. If you are using 3rd party providers, they will have already loaded themselves into memory and thus you wont need to load them into Netman.
 
-From here, simply use Neovim as you would usually. However you will now have the ability to interact with Remote Resources (remote files, remote directories, remote streams, etc) through Netman and any associated providers you have. Examples of this would be to open a file/directory via the `ssh` provider.
+### UI
+Netman now supports integration as a source for the following UI tools
+- [Neo-tree](https://github.com/nvim-neo-tree/neo-tree.nvim)
+
+Below is tool specific configurations needed to get Netman working, as well as any caveats for that tool
+#### Neo-Tree
+Netman is now comes with a source provider for neo-tree. This provider can be loaded by adding "netman.ui.neo-tree" to the `Neo Tree sources` as detailed in the [`Neo Tree Documentation`](https://github.com/nvim-neo-tree/neo-tree.nvim/blob/main/doc/neo-tree.txt)
+An example of this is as follows
+```lua
+require("neo-tree).setup({
+    sources = {
+        "filesystem", -- Neotree filesystem source
+        "netman.ui.neo-tree", -- The one you really care about 😉
+})
+```
+Netman will then register itself as the `remote` source in Neo Tree. You can load the New remote browser with the `:Neotree remote` command
+Note: All providers that support the new [`ui`]() attributes will automatically be displayed here. As of current, this is likely to only be netman provided sources, as there is no documentation on this new attribute yet ;)
+
+If you are more inclined to browse your file systems without Neo-tree, the original methods of interacting with Netman will still work, as detailed below.
+
+#### Commands
+You can simply use Neovim as you would usually. However you will now have the ability to interact with Remote Resources (remote files, remote directories, remote streams, etc) through Netman and any associated providers you have. Examples of this would be to open a file/directory via the `ssh` provider.
 
 Simply open the file as you would any other file
 ```
