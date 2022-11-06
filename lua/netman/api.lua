@@ -589,14 +589,17 @@ function M.read(uri, opts)
 end
 
 function M.write(buffer_index, uri)
-    local provider, cache = nil, nil
+    local provider, cache, lines = nil, nil, {}
     uri, provider, cache = M.internal.validate_uri(uri)
     if not uri or not provider then return nil end
     log.info(string.format("Reaching out to %s to write %s", provider.name, uri))
-    local lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
-    for index, line in ipairs(lines) do
-        if not line:match('[\n\r]$') then
-            lines[index] = line .. '\n'
+    if buffer_index then
+        lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
+        -- Consider making this an iterator instead
+        for index, line in ipairs(lines) do
+            if not line:match('[\n\r]$') then
+                lines[index] = line .. '\n'
+            end
         end
     end
     -- TODO: Do this asynchronously

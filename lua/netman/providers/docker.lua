@@ -230,7 +230,6 @@ function M.internal._is_container_running(container)
     -- -- Options to make our output easier to read
     local command_output = shell:new(command, command_options):run()
     local stderr, stdout, exit_code = command_output.stderr, command_output.stdout, command_output.exit_code
-    log.trace("Life Check Output ", { command = command, output = command_output })
     if stderr ~= '' then
         log.warn(string.format("Received error while checking container status: %s", stderr))
     end
@@ -344,7 +343,7 @@ function M.internal._read_directory(uri, path, container, cache)
     table.insert(command, '{}')
     table.insert(command, '+')
     local command_output = {}
-    local stderr, stdout = nil, nil
+    local stderr, stdout, exit_code = nil, nil, nil
     local command_options = {}
     local child = {}
     local size = 0
@@ -380,11 +379,13 @@ function M.internal._read_directory(uri, path, container, cache)
 end
 
 function M.internal._write_file(cache, lines)
-    -- WARN: (Mike): The mode 664 here isn't actually 664 for some reason? Maybe it needs to be an octal, who knows
-    local local_file = vim.loop.fs_open(cache.local_file, 'w', 664)
-    assert(local_file, string.format("Unable to write to %s", local_file))
-    assert(vim.loop.fs_write(local_file, lines))
-    assert(vim.loop.fs_close(local_file))
+    lines = lines or {}
+    lines = table.concat(lines, '\n')
+    local local_file = io.open(cache.local_file, "w+")
+    assert(local_file, string.format("Unable to write to %s", cache.local_file))
+    assert(local_file:write(lines), string.format("Failed to write to %s", cache.local_file))
+    assert(local_file:flush(), string.format("Failed to save %s", cache.local_file))
+    assert(local_file:close(), string.format("Failed to close %s", cache.local_file))
 
     local command = { 'docker', 'cp', cache.local_file, string.format('%s:/%s', cache.container, cache.path) }
 
@@ -403,8 +404,7 @@ end
 function M.internal._create_directory(container, directory)
     local command = { 'docker', 'exec', container, 'mkdir', '-p', directory }
 
-    log.trace(string.format("Creating directory %s in container %s with command: %s", directory, container,
-        table.concat(command, ' ')))
+    log.trace(string.format("Creating directory %s in container %s", directory, container), {command = command})
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
     local command_output = shell:new(command, command_options):run()
@@ -526,7 +526,7 @@ function M.write(uri, provider_cache, data)
     if parsed_uri_details.file_type == api_flags.ATTRIBUTES.FILE then
         M.internal._write_file(cache, data)
     else
-        M.internal._create_directory()
+        M.internal._create_directory(cache.container, parsed_uri_details.path)
     end
 end
 

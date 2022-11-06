@@ -452,11 +452,13 @@ function M.internal._read_directory(uri_details, cache)
     return {remote_files = children:as_table()}
 end
 
-function M.internal._create_local_file(uri_details)
-    -- WARN: (Mike): The mode 664 here isn't actually 664 for some reason? Maybe it needs to be an octal, who knows
-    local local_file = vim.loop.fs_open(uri_details.local_file, 'w', 664)
-    assert(local_file, "Unable to write to " .. tostring(local_file))
-    assert(vim.loop.fs_close(local_file))
+function M.internal._create_local_file(uri_details, write_contents)
+    local contents = write_contents or ""
+    local local_file = io.open(uri_details.local_file, 'w+')
+    assert(local_file, string.format("Unable to write to %s", local_file))
+    assert(local_file:write(contents), string.format("Failed to write to %s", local_file))
+    assert(local_file:flush(), string.format("Failed to save %s", local_file))
+    assert(local_file:close(), string.format("Failed to close %s", local_file))
 end
 
 function M.internal._copy_to_remote(uri_details)
@@ -507,15 +509,18 @@ function M.internal._copy_to_remote(uri_details)
 end
 
 function M.internal._write_file(uri_details, lines)
-    assert(M.internal._create_local_file(uri_details))
-    -- WARN: (Mike): The mode 664 here isn't actually 664 for some reason? Maybe it needs to be an octal, who knows
-    local local_file = vim.loop.fs_open(uri_details.local_file, 'w', 664)
-    assert(vim.loop.fs_write(local_file, lines))
-    assert(vim.loop.fs_close(local_file))
+    lines = lines or {}
+    lines = table.concat(lines, '\n')
+    M.internal._create_local_file(uri_details, lines)
     return M.internal._copy_to_remote(uri_details)
 end
 
 function M.internal._create_directory(uri_details, directory)
+    -- If the directory starts with `/`, we need to append `~` before it
+    log.debug(string.format("Directory: %s", directory))
+    if directory:sub(1, 1) == '/' then
+        directory = string.format("~%s", directory)
+    end
     local command = {}
     for _, item in ipairs(SSH_COMMAND) do
         table.insert(command, item)
@@ -589,7 +594,7 @@ function M.write(uri, provider_cache, data)
         M.internal._write_file(parsed_uri_details, data)
     else
         -- TODO: Mike: Get the name of the directory to create
-        M.internal._create_directory(parsed_uri_details, data)
+        M.internal._create_directory(parsed_uri_details, parsed_uri_details.path)
     end
 end
 

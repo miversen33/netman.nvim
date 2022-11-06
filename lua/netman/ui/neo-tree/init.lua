@@ -264,8 +264,9 @@ M.refresh = function(state, opts)
     end
 end
 
-M.navigate = function(state)
+M.navigate = function(state, opts)
     local tree, node, nodes, parent_id
+    opts = opts or {}
     -- Check to see if there is even a tree built
     tree = state.tree
     if not tree then
@@ -273,7 +274,11 @@ M.navigate = function(state)
         nodes = M.internal.generate_node_children(state)
         parent_id = nil
     else
-        node = tree:get_node()
+        if opts.target_id then
+            node = tree:get_node(opts.target_id)
+        else
+            node = tree:get_node()
+        end
         if node:is_expanded() then
             node:collapse()
             renderer.redraw(state)
@@ -287,6 +292,79 @@ M.navigate = function(state)
         parent_id = node:get_id()
     end
     renderer.show_nodes(nodes, state, parent_id)
+end
+
+M.internal.add_item_to_node = function(state, node, item)
+    local uri = nil
+    log.debug(string.format("Trying to add item to node"), {node=node, item=item})
+    if node.type == 'file' then
+        node = state.tree:get_node(node:get_parent_id())
+    end
+    -- Check if item contains directories and ends in a file
+    if item:match('/') and item:sub(-1) ~= '/' then
+        -- Item is a file and contains at least one directory
+        -- lets create the directories first
+        -- then create and open the item last
+        local children = {}
+        local last_child = nil
+        for child in item:gmatch('([^/]+)') do
+            table.insert(children, child)
+        end
+        last_child = table.remove(children, #children)
+        local path = string.format("%s", table.concat(children, '/'))
+        uri = string.format("%s%s/", node.extra.uri, path)
+        api.write(nil, uri)
+        uri = string.format("%s%s", uri, last_child)
+        api.write(nil, uri)
+        local _path = node.extra.uri
+        M.refresh(state, {refresh_only_id=node:get_id()})
+        local head = nil
+        while(#children > 0) do
+            head = table.remove(children, 1)
+            _path = string.format("%s%s/", _path, head)
+            M.refresh(state, {refresh_only_id=_path})
+        end
+    else
+        uri = string.format("%s%s", node.extra.uri, item)
+        api.write(nil, uri)
+    end
+    M.refresh(state, {refresh_only_id=node:get_id()})
+    M.navigate(state, {target_id=uri})
+end
+
+M.add_node = function(state, opts)
+    local tree, node
+    opts = opts or {}
+    tree = state.tree
+    node = tree:get_node()
+    if node.type == 'netman_provider' then
+        print("Adding new hosts to a provider isn't supported. Yet... 👀")
+        return
+    end
+    local message = "Enter name of new file/directory. End the name in / to make it a directory"
+    if opts.force_dir then
+        message = "Enter name of new directory"
+    end
+    local callback = function(response)
+        if opts.force_dir and response:sub(-1, -1) ~= '/' then
+            response = string.format("%s/", response)
+        end
+        M.internal.add_item_to_node(state, node, response)
+    end
+    -- Check if the node is active before trying to add to it
+    -- Prompt for new item name
+    -- Create new item in netman.api with the provider ui and parent path
+    -- Refresh the parent only
+    -- Navigate to the item
+    input.input(message, "", callback)
+end
+
+M.delete_node = function(state)
+
+end
+
+M.rename_node = function(state)
+
 end
 
 M.setup = function(neo_tree_config)
