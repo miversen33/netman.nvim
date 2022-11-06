@@ -14,6 +14,7 @@ local highlights = require("neo-tree.ui.highlights")
 local common = require("neo-tree.sources.common.components")
 local netman = require("netman.ui.neo-tree")
 local netman_host_states = require("netman.tools.options").ui.STATES
+local log = require("netman.tools.utils").log
 
 local M = {
     internal = {}
@@ -28,32 +29,39 @@ M.internal.state_map = {
 
 M.icon = function(config, node, state)
     local _icon = common.icon(config, node, state)
-    local internal_node = netman.internal.get_internal_node(node:get_id())
-    if internal_node then
-        if internal_node.type == 'netman_provider' then
-            _icon.text = "  "
-        end
-        if internal_node.icon then
-            _icon.text = string.format("%s ", internal_node.icon)
-        end
-        _icon.highlight = internal_node.hl or _icon.highlight
+    local entry = node.extra
+    if not entry then
+        return _icon
     end
+    if node.type == 'netman_host' then
+        _icon.text = ' '
+    end
+    if entry.icon then
+        _icon.text = string.format("%s ", entry.icon)
+    end
+    _icon.highlight = entry.highlight or _icon.highlight
     return _icon
 end
 
 M.state = function(config, node, state)
-    local internal_node = netman.internal.get_internal_node(node:get_id())
-
     local icon = "  "
-    local hl = nil
-    if internal_node and internal_node.state and M.internal.state_map[internal_node.state] then
-        local _state = M.internal.state_map[internal_node.state].text
-        hl = M.internal.state_map[internal_node.state].highlight
-        icon = string.format("%s", _state)
+    local highlight = nil
+    local entry = node.extra
+    if not entry then
+        return {
+            text = icon,
+            highlight = highlight
+        }
     end
+    local _state = M.internal.state_map[entry.state]
+    if _state then
+        icon = _state.text
+        highlight = _state.highlight
+    end
+    icon = string.format("%s", icon)
     return {
         text = icon,
-        highlight = hl
+        highlight = highlight
     }
 end
 
