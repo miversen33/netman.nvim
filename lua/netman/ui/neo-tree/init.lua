@@ -5,296 +5,276 @@ local renderer = require("neo-tree.ui.renderer")
 local events = require("neo-tree.events")
 local neo_tree_utils = require("neo-tree.utils")
 local defaults = require("netman.ui.neo-tree.defaults")
+local input = require("neo-tree.ui.inputs")
+local log = require("netman.tools.utils").log
+local api = require("netman.api")
+local CACHE_FACTORY = require("netman.tools.cache")
+
+-- TODO: Let this be configurable via neo-tree
+local CACHE_TIMEOUT = CACHE_FACTORY.FOREVER
 
 local M = {
     name = "remote",
+    default_config = defaults,
     internal = {
-        providers = {},
-        node_id_map = {},
-        last_id = 0
-    },
+        sorter = {}
+    }
 }
 
---- Will add the host to the "recents" node
-M.add_recent_host = function(provider, host)
-    local config = M.internal.get_netman_config()
-    local provider_recents = config:get('recents')[provider]
-    if not provider_recents then
-        provider_recents = {}
-        config:get('recents')[provider] = provider_recents
-    end
-    provider_recents[host] = vim.loop.now()
-    config:save()
-end
+-- Sorts nodes in ascending order
+M.internal.sorter.ascending = function(a, b) return a.name < b.name end
 
---- Will remove the host from the "recents" node
-M.remove_recent_host = function(provider, host)
-    local config = M.internal.get_netman_config()
-    local provider_recents = config:get('recents')[provider]
-    config:get('recents')[provider] = nil
-    config:save()
-end
+-- Sorts nodes in descending order
+M.internal.sorter.descending = function(a, b) return a.name > b.name end
 
--- TODO: Finish setting up all of the favorite/recent stuff
---- Will either favorite the host or remove favorite on host
-M.favorite_toggle = function(provider, host)
-    local config = M.internal.get_netman_config()
-    local provider_favorites = config:get('favorites')[provider]
-    if not provider_favorites then
-        provider_favorites = {[host] = 1}
-        config:get('favorites')[provider] = provider_favorites
-    else
-        provider_favorites[host] = nil
-    end
-    config:save()
-end
-
---- Will either mark the host as hidden or remove the hidden attribute
-M.hide_toggle = function(provider, host)
-    local config = M.internal.get_netman_config()
-    local provider_hidden_hosts = config:get('hidden')[provider]
-    if not provider_hidden_hosts then
-        config:get('hidden')[provider] = {[host]=1}
-    else
-        provider_hidden_hosts[host] = nil
-    end
-    config:save()
-end
-
-M.internal.sorter = function(a, b) return a.name < b.name end
-
---- Reaches out to the generic Netman UI tool to fetch our config
---- @return Configuration
-M.internal.get_netman_config = function() return
-    require("netman.ui").get_config("netman.ui.neo-tree")
-end
-
---- Invalidates the internally cached provider tree. This will be called
---- anytime a provider is unloaded or loaded into netman
-M.internal.invalidate_provider_cache = function()
-    M.internal.generate_root_tree()
-end
-
---- I mean, does whats on the tin guy
-M.internal.increment_last_id = function()
-    M.internal.last_id = M.internal.last_id + 1
-end
-
---- Fetches the internal (to this class) node for the provided neo-tree id
---- @param id string
---- @return table
----     Who knows what this table will have on it! Enjoy!
-M.internal.get_internal_node = function(id)
-    return M.internal.node_id_map[id]
-end
-
---- Saves the internal (to this class) node, mapping it to the provided neo-tree id
-M.internal.set_internal_node = function(id, node)
-    M.internal.node_id_map[id] = node
-end
-
---- Generates the base provider tree that Neo-tree should display
-M.internal.generate_root_tree = function()
-    local providers = require("netman.ui").get_providers()
-
-    local entries = {}
-    -- Make sure this is in alphabetical order
-    for _, provider in ipairs(providers) do
-        local _status, _provider = pcall(require, provider)
-        if not  _status then
-            require("netman.tools.utils").log.warn(string.format("Unable to add %s to Neo-tree. Received Error", provider), {error=_provider})
+M.internal.get_providers = function()
+    local providers = {}
+    for _, provider_path in ipairs(api.providers.get_providers()) do
+        local status, provider = pcall(require, provider_path)
+        if not status or not provider.ui then
+            -- Failed to import the provider for some reason
+            -- or the provider is not UI ready
+            if not provider.ui then
+                log.info(string.format("%s is not ui ready, it is missing the ui attribute", provider_path))
+            end
             goto continue
         end
-        local name = _provider.name
-        local entry = {
-            id       = string.format('%s', M.internal.last_id + 1),
-            name     = name,
-            type     = "netman_provider",
-            provider = provider,
-            icon     = _provider.ui.icon,
-            hl       = _provider.icon_highlight
-        }
-        M.internal.set_internal_node(entry.id, entry)
-        table.insert(entries, entry)
-        M.internal.increment_last_id()
+        table.insert(providers, {
+            -- Provider's (in this context) are unique as they are 
+            -- import paths from netman.api
+            id = provider_path,
+            name = provider.name,
+            type = "netman_provider",
+            extra = {
+                icon = provider.ui.icon or "",
+                highlight = provider.ui.highlight or "",
+                provider = provider_path
+            }
+        })
         ::continue::
     end
-    table.sort(entries, M.internal.sorter)
-    M.internal.providers = entries
+    table.sort(providers, M.internal.sorter.ascending)
+    return providers
 end
 
-M.internal.navigate_to_root = function(state)
-    M.internal.generate_root_tree()
-    local entries = M.internal.providers
-    renderer.show_nodes(entries, state)
+M.internal.get_provider_children = function(provider)
+    local hosts = {}
+    for _, host in ipairs(api.providers.get_hosts(provider)) do
+        log.debug(string.format("Processing host %s for provider %s", host, provider))
+        local host_details = api.providers.get_host_details(provider, host)
+        if not host_details then
+            log.warn(string.format("%s did not return any details for %s", provider, host))
+            goto continue
+        end
+        table.insert(hosts, {
+            id = host_details.URI,
+            name = host_details.NAME,
+            type = "netman_host",
+            extra = {
+                state = host_details.STATE,
+                last_access = host_details.LAST_ACCESSED,
+                provider = provider,
+                host = host,
+                uri = host_details.URI
+            }
+        })
+        ::continue::
+    end
+    table.sort(hosts, M.internal.sorter.ascending)
+    return hosts
 end
 
-M.internal.navigate_to_provider = function(state, node, provider)
-    local _entries = require("netman.ui").get_entries_for_provider(provider)
-
-    local entries = {}
-    for _, _entry in ipairs(_entries) do
-        local entry = {
-            id = string.format('%s', M.internal.last_id + 1),
-            name = _entry.NAME,
-            type = 'netman_host',
-            provider = provider,
-            host = _entry.NAME,
-            uri = _entry.URI,
-            state = _entry.STATE,
-            last_accessed = _entry.LAST_ACCESSED
-        }
-        M.internal.set_internal_node(entry.id, entry)
-        M.internal.increment_last_id()
-        table.insert(entries, entry)
+M.internal.get_uri_children = function(state, uri)
+    local children = {}
+    -- Get the output from netman.api.read
+    -- Do stuff with that output?
+    local output = api.read(uri)
+    if not output then
+        log.warn(string.format("%s did not return anything on read", uri))
+        return children
     end
-    table.sort(entries, M.internal.sorter)
-    renderer.show_nodes(entries, state, node:get_id())
-end
-
-
-M.internal.navigate_host = function(state, node)
-    -- This should eventually be set by whatever form of open command was done in neo-tree
-    local open_command = 'read ++edit '
-    local command = ''
-    -- local command = ' | set nomodified | filetype detect'
-    local internal_node = M.internal.get_internal_node(node:get_id())
-    if not internal_node then
-        require("netman.tools.utils").log.warn("No internal node found for %s", node:get_name())
-        return
-    end
-
-    local host_data = require("netman.api").read(internal_node.uri)
-    require("netman.tools.utils").log.trace({host_data=host_data})
-    if not host_data then
-        require("netman.tools.utils").log.warn(string.format("Uri: %s did not return anything to display!", internal_node.uri))
-        return
-    end
-    if host_data.type == 'FILE' or host_data.type == 'STREAM' then
-        -- Handle content to display in a buffer
-        if host_data.type == 'STREAM' then
-            command = '0append! ' .. table.concat(host_data.data) .. command
+    if output.error then
+        local _error = output.error
+        local message = _error.message
+        -- Handle the error?
+        -- The error wants us to do a thing
+        if _error.callback then
+            local default = _error.default or ""
+            local parent_id = state.tree:get_node():get_parent_id()
+            local callback = function(_)
+                local response = _error.callback(_)
+                if response.retry then
+                    -- Do a retry of ourselves???
+                    M.refresh(state, {refresh_only_id=parent_id})
+                end
+            end
+            input.input(message, default, callback)
+            return children
         else
-            command = open_command .. host_data.data.local_path .. command
+            -- No callback was provided, display the error and move on with our lives
+            print(string.format("Unable to read %s, received error", message))
+            log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
+            return children
         end
-        require("netman.tools.utils").log.debug({command=command})
-        local _event_handler_id = "netman_dummy_file_event"
-        local _dummy_file_open_handler = {
-            event = "file_opened",
-            id=_event_handler_id
-        }
-        _dummy_file_open_handler.handler = function()
-            events.unsubscribe(_dummy_file_open_handler)
-            require("netman.tools.utils").render_command_and_clean_buffer(command)
-        end
-        events.subscribe(_dummy_file_open_handler)
-        neo_tree_utils.open_file(state, internal_node.uri)
-        return
     end
-
-    local data              = host_data.data
-    local entries           = {}
-    local name_to_entry_map = {}
-    local _unsorted_entries = {}
-    local _sorted_entries   = {}
-
-    for _, item in ipairs(data) do
-        local entry = {
-            id = string.format("%s", M.internal.last_id + 1),
+    if output.type == 'FILE' or output.type == 'STREAM' then
+        -- Make neo-tree create a buffer for us
+        return children
+    end
+    local unsorted_children = {}
+    local children_map = {}
+    for _, item in ipairs(output.data) do
+        local child = {
+            id = item.URI,
             name = item.NAME,
-            uri = item.URI,
-            host = internal_node.host
+            extra = {
+                uri = item.URI
+            }
         }
         if item.FIELD_TYPE == 'LINK' then
-            entry.type = 'directory'
+            child.type = 'directory'
         else
-            entry.type = 'file'
+            child.type = 'file'
         end
-        M.internal.increment_last_id()
-        M.internal.set_internal_node(entry.id, entry)
-        name_to_entry_map[entry.name] = entry
-        table.insert(_unsorted_entries, entry.name)
+        table.insert(unsorted_children, child.name)
+        children_map[child.name] = child
     end
-    _sorted_entries = neo_tree_utils.sort_by_tree_display(_unsorted_entries)
-    for _, entry in ipairs(_sorted_entries) do
-        table.insert(entries, name_to_entry_map[entry])
+    local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
+    for _, child in ipairs(sorted_children) do
+        table.insert(children, children_map[child])
     end
-    renderer.show_nodes(entries, state, node:get_id())
+    return children
 end
 
---- Navigate to the given path.
---- @param state table
----     I'll be honest, I have absolutely no idea what state is, its
----     an object that comes from neo-tree. Any usage of it in this file
----     is due to reflection shenanigans to figure out what is in it
---- @param window_state string
----     If provided, this is the state the open window needs to be in
----     when a new file is opened.
----     Default: nil
----     Valid Options:
----         - split
----         - vsplit
----         - tab
----         - tab drop
----         - drop
---- @return nil
-M.navigate = function(state, window_state)
-    local tree, neo_tree_node, internal_node
-    tree = state.tree
-
-    -- There is nothing currently displayed, generate the basic
-    -- Provider Tree
-    if tree == nil then
-        M.internal.navigate_to_root(state)
-        return
-    end
-    neo_tree_node = tree:get_node()
-    -- WARN: This might not be the best place for this?
-    if neo_tree_node:is_expanded() then
-        neo_tree_node:collapse()
-        renderer.redraw(state)
-        return
-    end
-
-    internal_node = M.internal.node_id_map[neo_tree_node:get_id()]
-    if internal_node.host and internal_node.provider then
-        -- Adding the host to the recents node
-        M.add_recent_host(internal_node.provider, internal_node.host)
-    end
-
-    -- Display the available hosts for the selected provider
-    if internal_node.type == 'netman_provider' then
-        M.internal.navigate_to_provider(state, neo_tree_node, internal_node.provider)
-        return
-    -- Display whatever the provider thinks we should display for the selected host
+M.internal.generate_node_children = function(state, node)
+    local children = {}
+    if not node then
+        -- No node was provided, assume we want the root providers
+        children = M.internal.get_providers()
+    elseif node.type == "netman_provider" then
+        if not node.extra.provider then
+            -- SCREAM!
+            log.error(string.format("Node %s says its a provider but doesn't have a provider. How tf????", node.name), {node=node})
+            return children
+        end
+        children = M.internal.get_provider_children(node.extra.provider)
     else
-        M.internal.navigate_host(state, neo_tree_node)
-        return
+        if not node.extra.uri then
+            -- SCREAM!
+           log.error(string.format("Node %s says its a netman node, but has no URI. How tf????", node.name), {node=node})
+           return children
+        end
+        children = M.internal.get_uri_children(state, node.extra.uri)
+    end
+    return children
+end
+
+-- Need a way to indicate that we only want to refresh a certain id
+M.refresh = function(state, opts)
+    local refresh_stack, return_stack, tree, head, children
+    opts = opts or {}
+    -- If provided, will force a global refresh of everything, including the providers
+    -- Available options are
+    -- do_all: boolean
+    -- refresh_only_id: string
+    -- Create an empty process stack
+    refresh_stack= {}
+    -- Create an empty return stack
+    return_stack  = {}
+    if not state.tree then
+        -- How did you call refresh without a tree already rendered?
+        -- Should probably call navigate with no tree instead
+        return M.navigate(state)
+    end
+    tree = state.tree
+    if opts.do_all then
+        -- Iterate over the "root nodes" (providers) and add them to the refresh stack
+        for _, child in ipairs(tree:get_nodes()) do
+            table.insert(refresh_stack, child)
+        end
+    elseif opts.refresh_only_id then
+        -- We are going to start our refresh at this node, regardless of what node
+        -- we are currently looking at
+        -- NOTE: Not really sure why but lua shits the bed if you move the 
+        -- function call into the table.insert statement so 🤷
+        local _ = state.tree:get_node(opts.refresh_only_id)
+        table.insert(refresh_stack, _)
+    else
+        -- Add the current node found at state.tree:get_node() to the process stack
+        -- NOTE: Not really sure why but lua shits the bed if you move the 
+        -- function call into the table.insert statement so 🤷
+        local _ = state.tree:get_node()
+        table.insert(refresh_stack, _)
+    end
+    while(#refresh_stack> 0) do
+        -- - While there are things in the process stack
+        head = table.remove(refresh_stack, 1)
+        -- - Check if any of current node's children are expanded. If so, add those children to the tail of the process stack
+        -- NOTE: Might be able to call tree:get_nodes(head:get_id()) instead...?
+        for _, child_id in ipairs(head:get_child_ids()) do
+            local child_node = tree:get_node(child_id)
+            -- Quick escape of logic if somehow the node doesn't exist
+            if not child_node then goto continue end
+
+            if child_node:is_expanded() then
+                -- The node is expanded, add it to the refresh stack
+                table.insert(refresh_stack, child_node)
+            end
+            ::continue::
+        end
+        -- - Generate the nodes new children (assume all nodes will always have the same ID)
+        children = M.internal.generate_node_children(state, head)
+        -- Checking if children were returned, and there is more than 0
+        -- Lua empty tables still pass truthy checks
+        if children and (type(children) == 'table' and #children > 0) then
+            -- - Add the children (and applicable parent id) to the return stack
+            table.insert(return_stack, {children=children, parent_id=head:get_id()})
+        end
+    end
+    -- While there are things in the return stack
+    while(#return_stack > 0) do
+        -- - Add each item to the renderer via (renderer.show_nodes), ensuring that if a parent id was provided, we add the items under that id
+        head = table.remove(return_stack, 1)
+        children = head.children
+        -- If there are no children to display for some reason, dont.
+        if not children then goto continue end
+        renderer.show_nodes(children, state, head.parent_id)
+        if head.parent_id then
+            -- Get the node that was just rendered and expand it  (it wouldn't be in this list if it wasn't)
+            tree:get_node(head.parent_id):expand()
+        end
+        ::continue::
     end
 end
 
----Configures the plugin, should be called before the plugin is used.
----@param config table Configuration table containing any keys that the user
---wants to change from the defaults. May be empty to accept default values.
-M.setup = function(config, global_config)
-    local netman_config = M.internal.get_netman_config()
-    require("netman.tools.utils").log.debug(netman_config)
-    -- This seems to be resetting these on load?
-    if not netman_config:get('recents') then
-        require("netman.tools.utils").log.info("Creating Recents Table in Netman Neotree Configuration")
-        netman_config:set('recents', {})
+M.navigate = function(state)
+    local tree, node, nodes, parent_id
+    -- Check to see if there is even a tree built
+    tree = state.tree
+    if not tree then
+        -- Somehow there was no providers rendered.
+        nodes = M.internal.generate_node_children(state)
+        parent_id = nil
+    else
+        node = tree:get_node()
+        if node:is_expanded() then
+            node:collapse()
+            renderer.redraw(state)
+            return
+        end
+        if not node.extra then
+            log.warn(string.format("Node %s doesn't have any extra attributes, not dealing with this shit today", node.name))
+            return
+        end
+        nodes = M.internal.generate_node_children(state, node)
+        parent_id = node:get_id()
     end
-    if not netman_config:get('favorites') then
-         require("netman.tools.utils").log.info("Creating Favorites Table in Netman Neotree Configuration")
-         netman_config:set('favorites', {})
-    end
-    if not netman_config:get('hidden') then
-        require("netman.tools.utils").log.info("Creating Hidden Table in Netman Neotree Configuration")
-        netman_config:set('hidden', {})
-    end
-    netman_config:save()
+    log.debug("Rendering Nodes", {parent=node, nodes=nodes})
+    renderer.show_nodes(nodes, state, parent_id)
 end
 
-M.default_config = defaults
+M.setup = function(neo_tree_config)
+
+end
 
 return M
