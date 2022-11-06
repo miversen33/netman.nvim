@@ -1,6 +1,6 @@
 --- Basic, Generic, Caching class to be used for storing items
 --- that need to be expired after `n` time
-local clock = require('luv').hrtime
+local clock = vim.loop.hrtime
 
 local Cache = {}
 Cache._cache = {}

@@ -22,12 +22,12 @@ config.renderers =
         { 'indent' },
         { 'state' },
         { 'name' }
-    }
+    },
 }
 
-config.window.mappings = {
-    ['f'] = "toggle_favorite",
-    ['H'] = "toggle_hidden"
-}
+-- config.window.mappings = {
+--     ['f'] = "toggle_favorite",
+--     ['H'] = "toggle_hidden"
+-- }
 
 return config

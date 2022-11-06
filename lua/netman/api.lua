@@ -18,6 +18,12 @@ M.internal = {
     boot_timestamp = vim.loop.now()
 }
 
+--- Set of tools to communicate directly with provider(s) (in a generic sense).
+--- Note, this will not let you talk directly to the provider per say, (meaning you can't
+--- talk straight to the ssh provider, but you can talk to api and tell it you want things
+--- from or to give to the ssh provider).
+M.providers = {}
+
 --- The default function that any provider configuration will have associated with its 
 --- :save function.
 M.internal.config.save = function(self)
@@ -37,7 +43,8 @@ M._inited = false
 M._providers = {
     protocol_to_path = {},
     path_to_provider = {},
-    uninitialized    = {}
+    uninitialized    = {},
+    file_cache       = {}
 }
 
 M._explorers = {}
@@ -64,9 +71,7 @@ local _provider_required_attributes = {
 function M.internal.init_config()
     local _lines = {}
     local _config = io.open(require("netman.tools.utils").netman_config_path, 'r')
-    if not _config then
-        error(string.format("Unable to read netman configuration file: %s", require("netman.tools.utils").netman_config_path))
-    end
+    assert(_config, string.format("Unable to read netman configuration file: %s", require("netman.tools.utils").netman_config_path))
     for line in _config:lines() do table.insert(_lines, line) end
     _config:close()
     if next(_lines) then
@@ -151,53 +156,6 @@ function M.internal.validate_uri(uri)
     return uri, provider, cache, protocol
 end
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
---- Generates a vim command that can be run, which will display the stream contents
---- @param read_data table
----     Array of lines
---- @param filetype string
----         Optional: Defaults to "detect"
----         If provided will set the filetype of the file to this.
---- @return string
----     vim command to run
-function M.internal.read_as_stream(read_data, filetype)
-    filetype = filetype or "detect"
-    local command = "0append! " .. table.concat(read_data, '\n') .. " | set nomodified | filetype " .. filetype
-    log.trace("Generated read stream command: " .. command:sub(1, 30))
-    return command
-end
-
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
---- Generates a vim command to load the pulled file into vim
---- @param read_data table
----     Table containing the following key value pairs
----     - origin_path
----         The path (local to the provider) that the file came from. Its origin
----     - local_path
----         The path (local to the filesystem) that the file lives on. Its local path
---- @param filetype string
----         Optional: Defaults to "detect"
----         If provided will set the filetype of the file to this.
---- @return string
----     vim command to run to load file into buffer
-function M.internal.read_as_file(read_data, filetype)
-    -- TODO: (Mike): Why do we have this? \/
-    local origin_path = read_data.origin_path
-    local local_path  = read_data.local_path
-    filetype    = filetype or "detect"
-    log.trace("Processing details: ", {origin_path=origin_path, local_path=local_path})
-    local command = 'read ++edit ' .. local_path .. ' | set nomodified | filetype ' .. filetype
-    log.trace("Generated read file command: " .. command)
-    return command
-end
 
 --- WARN: Do not rely on these functions existing
 --- WARN: Do not use these functions in your code
@@ -208,7 +166,7 @@ end
 ---     A table which should contain the following keys
 ---         remote_files: 1 dimensional table
 --- @return table
-function M.internal.read_as_explore(read_data)
+function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
     for _, data in pairs(read_data.remote_files) do
         for key, value in ipairs(data) do
@@ -240,12 +198,54 @@ function M.internal.read_as_explore(read_data)
     return sanitized_data
 end
 
+--- Validates that the data provided in the `read` command for type `READ_FILE` is valid
+--- @param table
+---     Expects a table that contains the following keys
+---     - remote_path  (Required)
+---         - Value: String
+---     - local_path   (Required)
+---         - Value: String
+---     - display_name (Optional)
+---         - Value: String
+---     - error        (Required if other fields are missing)
+---         - TODO: Document this
+---         - Value: Function
+---         - Note: The expected return of the function is `{retry=bool}` where `bool` is either true/false. If `retry`
+---         isn't present in the return of the error, or it if is and its false, we will assume that we shouldn't return
+---         the read attempt
+---     More details on the expected schema can be found in netman.tools.options.api.READ_RETURN_SCHEMA
+--- @return table
+---     Returns the validated table of information or (nil) if it cannot be validated
+function M.internal.sanitize_file_data(read_data)
+    log.trace("Validating Read File Data", read_data)
+    local REQUIRED_KEYS = {'local_path', 'origin_path'}
+    if read_data.error then
+        log.warn("Received error from read attempt. Returning error")
+        return {
+            error = read_data.error
+        }
+    end
+    local valid = true
+    local MISSING_KEYS = {}
+    for _, key in ipairs(REQUIRED_KEYS) do
+        if not read_data[key] then
+            valid = false
+            table.insert(MISSING_KEYS, key)
+        end
+    end
+    if not valid then
+        log.warn("Read Data was missing the following required keys", MISSING_KEYS)
+        ---@diagnostic disable-next-line: return-type-mismatch
+        return nil
+    end
+    return read_data
+end
+
 --- Initializes the Netman Augroups, what did you think it does?
 function M.internal.init_augroups()
     local read_callback = function(callback_details)
-        local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
-        log.debug("Read Details", {input_file=callback_details.match, uri=uri, is_shortcut=is_shortcut})
-        if is_shortcut or M.internal.get_provider_for_uri(uri) then
+        local uri = callback_details.match
+        if M.internal.get_provider_for_uri(uri) then
                 require("netman").read(uri)
             return
         else
@@ -326,34 +326,6 @@ function M.internal.init_augroups()
     end
 end
 
---- Reaches out to the provided provider and gets a list of
---- the entries it wants displayed
---- @param provider string
----    The string path of the provider in question. This should
----    likely be provided via netman.api.internal.get_providers()
---- @return table/nil
----    Returns a table with data or nil.
----    nil is returned if the provider is not valid or if the provider
----    doesn't have the `get_hosts` function implemented
----    NOTE: Does _not_ validate the schema, you do that yourself, whatever
----    is calling this
-function M.internal.get_provider_entries(provider)
-    local _provider = M._providers.path_to_provider[provider]
-    local _config   = M.internal.config:get(provider)
-    local data = nil
-    if not _provider then
-        log.warn(string.format("%s is not a valid provider", provider))
-        return data
-    end
-    _provider = _provider.provider
-    if not _provider.ui or not _provider.ui.get_hosts then
-        log.info(string.format("%s has not implemented the get_hosts function", provider))
-    else
-        data = _provider.ui.get_hosts(_config)
-    end
-    return data
-end
-
 --- Returns the associated config for the config owner.
 --- @param config_owner_name string
 ---     The name of the owner of the config. Name should be the
@@ -367,16 +339,117 @@ function M.internal.get_config(config_owner_name)
     return M.internal.config:get(config_owner_name)
 end
 
+--- Validates the information provided by the entry to ensure it 
+--- matches the defined schema in netman.tools.options.ui.ENTRY_SCHEMA.
+--- If there are any invalid keys, they will be logged and stripped out.
+--- @param entry table
+---     A single entry returned by netman.api.get_hosts
+--- @return table
+---     A validated/sanitized entry
+---     NOTE: If the entry is not validated, this returns nil
+function M.internal.validate_entry_schema(provider, entry)
+    local schema = require("netman.tools.options").ui.ENTRY_SCHEMA
+    local states = require("netman.tools.options").ui.STATES
+    local host = nil
+    local invalid_state = nil
+    local valid_entry = true
+    local return_entry = {}
+    for key, value in pairs(entry) do
+        if not schema[key] then
+            log.warn(string.format("%s provided invalid key: %s", provider, key))
+            valid_entry = false
+            goto continue
+        end
+        if key == 'STATE' and value and not states[value] then
+            invalid_state = value
+            valid_entry = false
+            goto continue
+        end
+        if key == 'NAME' then host = value end
+        return_entry[key] = value
+        ::continue::
+    end
+    if invalid_state then
+        log.warn(string.format("%s provided invalid state: %s for host: %s", provider, invalid_state, host))
+        valid_entry = false
+    end
+    ---@diagnostic disable-next-line: return-type-mismatch
+    if not valid_entry then return nil else return return_entry end
+end
+
 --- Returns a 1 dimensional table of strings which are registered
---- netman providers. Intended to be used with netman.api.get_provider_entries (but
+--- netman providers. Intended to be used with netman.api.providers.get_hosts (but
 --- I'm not the police, you do what you want with this).
 --- @return table
-function M.internal.get_providers()
+function M.providers.get_providers()
     local _providers = {}
     for provider, _ in pairs(M._providers.path_to_provider) do
         table.insert(_providers, provider)
     end
     return _providers
+end
+
+--- Reaches out to the provided provider and gets a list of
+--- the entries it wants displayed
+--- @param provider string
+---    The string path of the provider in question. This should
+---    likely be provided via netman.api.providers.get_providers()
+--- @return table/nil
+---    Returns a table with data or nil.
+---    nil is returned if the provider is not valid or if the provider
+---    doesn't have the `get_hosts` function implemented
+---    NOTE: Does _not_ validate the schema, you do that yourself, whatever
+---    is calling this
+function M.providers.get_hosts(provider)
+    local _provider = M._providers.path_to_provider[provider]
+    local hosts = nil
+    if not _provider then
+        log.warn(string.format("%s is not a valid provider", provider))
+        return hosts
+    end
+    local _config   = M.internal.config:get(provider)
+    if not _provider.provider.ui or not _provider.provider.ui.get_hosts then
+        log.info(string.format("%s has not implemented the ui.get_hosts function", provider))
+        return nil
+    else
+        local cache = _provider.cache
+        _provider = _provider.provider
+        hosts = _provider.ui.get_hosts(_config, cache)
+    end
+    log.debug(string.format("Got hosts for %s", provider), {hosts=hosts})
+    return hosts
+end
+
+--- Gets details for a specific host
+--- @param provider string
+---     The path to the provider. For example, `netman.providers.ssh`. This will be provided by netman.api.provider.get_providers
+--- @param host string
+---     The name of the host. For example `localhost`. This will be provided by the provider via netman.api.providers.get_hosts
+--- @return table
+---     Returns a 1 dimensional table with the following information
+---     - NAME (string)
+---     - URI (string)
+---     - STATE (string from netman.options.ui.states)
+function M.providers.get_host_details(provider, host)
+    local _provider = M._providers.path_to_provider[provider]
+    if not _provider then
+        log.warn(string.format("%s is not a valid provider", provider))
+        ---@diagnostic disable-next-line: return-type-mismatch
+        return nil
+    end
+    if not _provider.provider.ui or not _provider.provider.ui.get_host_details then
+        log.info(string.format("%s has not implemented the ui.get_host_details function", provider))
+        ---@diagnostic disable-next-line: return-type-mismatch
+        return nil
+    end
+    local config = M.internal.config:get(provider)
+    if not config then
+        log.info(string.format("%s has no configuration associated with it?!", provider))
+    end
+    local cache = _provider.cache
+    _provider = _provider.provider
+    local _data = _provider.ui.get_host_details(config, host, cache)
+    return M.internal.validate_entry_schema(provider, _data)
 end
 
 function M.remove_config(provider)
@@ -417,6 +490,7 @@ function M.clear_unused_configs(assume_yes)
     if not ran then print("There are currently no unused netman provider configurations") end
 end
 
+--- @deprecated
 --- Checks if the path is a URI that netman can manage
 --- @param uri string
 ---     The uri to check
@@ -426,6 +500,7 @@ function M.is_path_netman_uri(uri)
     if M.internal.get_provider_for_uri(uri) then return true else return false end
 end
 
+--- @deprecated
 --- Checks with the libruv to see if the provided path 
 --- is a shortcut path to a uri
 --- @param path string
@@ -445,15 +520,29 @@ function M.check_if_path_is_shortcut(path, direction)
     end
 end
 
---- Where Doc?
-function M.read(uri)
+--- TODO: Where Doc?
+function M.read(uri, opts)
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
     if not uri or not provider then return nil end
+    opts = opts or {}
     log.info(
         string.format("Reaching out to %s to read %s", provider.name, uri)
     )
-    local read_data, read_type, parent_details = provider.read(uri, cache)
+    if M._providers.file_cache[uri] and not opts.force then
+        local cached_file = M._providers.file_cache[uri]
+        local _data = {
+            data = {
+                local_path = cached_file,
+                remote_path = uri
+            },
+            type = netman_options.api.READ_TYPE.FILE
+        }
+        log.info(string.format("Found cached file %s for uri %s", cached_file, uri))
+        log.trace('Short circuiting provider reach out')
+        return _data
+    end
+    local read_data, read_type = provider.read(uri, cache)
     if read_type == nil then
         log.info("Setting read type to api.READ_TYPE.STREAM")
         log.debug("back in my day we didn't have optional return values...")
@@ -466,43 +555,37 @@ function M.read(uri)
     end
     if read_data == nil then
         log.info("Received nothing to display to the user, this seems wrong but I just do what I'm told...")
-        return
+        return nil
     end
     if type(read_data) ~= 'table' then
         log.warn("Data returned is not in a table. Attempting to make it a table")
         log.debug("grumble grumble, kids these days not following spec...")
         read_data = {read_data}
     end
-    -- TODO: (Mike): Validate the parent object is correct
-    if read_type == netman_options.api.READ_TYPE.STREAM then
-        log.info("Getting stream command for path: " .. uri)
-        -- This should only happen if libruv is being used, otherwise
-        -- its a useless call
-        libruv.clear_rcwd()
-        return M.internal.read_as_stream(read_data)
+    local _data = nil
+    if read_type == netman_options.api.READ_TYPE.EXPLORE then
+        _data = M.internal.sanitize_explore_data(read_data)
     elseif read_type == netman_options.api.READ_TYPE.FILE then
-        log.info("Getting file read command for path: " .. uri)
-        -- This should only happen if libruv is being used, otherwise
-        -- its a useless call
-        libruv.clear_rcwd()
-        libruv.rcd(parent_details.local_parent, parent_details.remote_parent, uri)
-        return M.internal.read_as_file(read_data)
-    elseif read_type == netman_options.api.READ_TYPE.EXPLORE then
-        log.info("Getting directory contents for path: " .. uri)
-        return {
-            contents = M.internal.read_as_explore(read_data),
-            parent = {
-                display = parent_details.local_parent,
-                remote  = parent_details.remote_parent
-            },
-            current = {
-                display = uri
-            }
-        }
+        _data = M.internal.sanitize_file_data(read_data)
+        if not _data.error and _data.local_path then
+            log.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
+            M._providers.file_cache[uri] = _data.local_path
+        end
+    elseif read_type == netman_options.api.READ_TYPE.STREAM then
+        _data = read_data
+    else
+        log.warn(string.format("I have no idea what you expect me to do with read type %s, how did you even get this here?", read_type))
+        return nil
     end
-    log.warn("Mismatched read_type. How on earth did you end up here???")
-    log.debug("Ya I don't know what you want me to do here chief...")
-    return nil
+    log.trace(string.format("Getting %s contents for path %s", read_type:lower(), uri), {data=_data})
+    local _error = _data.error
+    -- Removing error key value from data as it will be a parent level attribute
+    _data.error = nil
+    return {
+        error = _error,
+        data = _data,
+        type = read_type
+    }
 end
 
 function M.write(buffer_index, uri)
@@ -557,8 +640,12 @@ function M.get_metadata(uri, metadata_keys)
 end
 
 -- TODO: (Mike): Do a thing with this?
-function M.unload_buffer(uri, buffer_handle) end
+function M.unload_buffer(uri, buffer_handle)
+    M._providers.file_cache[uri] = nil
 
+end
+
+--- @deprecated
 --- Registers an explorer package which will be used to determine
 --- what path to feed on cwd fetches
 --- See netman.tools.options.explorer.EXPLORER_PACKAGES for predefined
@@ -575,6 +662,7 @@ function M.register_explorer_package(explorer_package)
     M._explorers[explorer_package] = sanitized_package
 end
 
+--- @deprecated
 --- Gets a list of all registered explorer packages with netman
 --- See netman.api.register_explorer_packages for more details on how to
 --- register a package
