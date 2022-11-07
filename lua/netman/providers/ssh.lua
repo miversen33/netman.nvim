@@ -146,8 +146,8 @@ end
 
 function M.internal.remove_item_from_cache(uri, cache, opts)
     opts = opts or {}
+    local details = cache:get_item(uri)
     if opts.clear_self then
-        log.debug(string.format("Removing %s from cache", uri))
         if cache
             and cache:get_item('files') then
             -- Remove the file from local cache
@@ -161,7 +161,6 @@ function M.internal.remove_item_from_cache(uri, cache, opts)
     end
     if opts.clear_parent then
         -- Get parent details from our current parsed info
-        local details = cache:get_item(uri)
         local parent = {}
         for part in details.path:gmatch("([^/]+)") do
             table.insert(parent, part)
@@ -179,9 +178,7 @@ function M.internal.remove_item_from_cache(uri, cache, opts)
             -- Remove the parent files from local cache
             cache:get_item('files'):remove_item(parent_uri)
         end
-        log.debug(string.format("Removing (parent) %s from cache", parent_uri))
     end
-    log.debug("Updated Cache", {cache=cache})
 end
 
 --- _parse_uri will take a string uri and return an object containing details about
@@ -564,7 +561,6 @@ end
 
 function M.internal._create_directory(uri_details, cache, directory)
     -- If the directory starts with `/`, we need to append `~` before it
-    log.debug(string.format("Directory: %s", directory))
     if uri_details.is_relative then
         directory = string.format("~%s", directory)
     end
@@ -680,8 +676,77 @@ function M.delete(uri, provider_cache)
     M.internal.remove_item_from_cache(uri, cache, {clear_self=true, clear_parent=true})
 end
 
-function M.move(uri1, uri2, cache1, cache2)
+function M.move(uri1, uri2, cache)
+    local cache1, details_1 = M.internal._validate_cache(cache, uri1)
+    local cache2, details_2 = M.internal._validate_cache(cache, uri2)
+    local uri1_valid = false
+    local uri2_valid = false
+    for _, protocol in ipairs(M.protocol_patterns) do
+        if not uri1_valid and details_1 and details_1.protocol == protocol then
+            uri1_valid = true
+        end
+        if not uri2_valid and details_2 and details_2.protocol == protocol then
+            uri2_valid = true
+        end
+    end
+    if
+        not (details_1 and details_2)
+        or not (uri1_valid and uri2_valid)
+        or not cache1 then
+        log.warn(string.format("Invalid URI: %s or %s provided!", uri1, uri2))
+        return false
+    end
+    if details_1.host ~= details_2.host then
+        log.warn(string.format("%s is not on the same host as %s", uri1, uri2))
+        return false
+    end
+    -- Make the parent of uri2
+    local command, command_options, command_output
+    command_options = {[command_flags.STDERR_JOIN] = ''}
 
+    command = {}
+    for _, item in ipairs(SSH_COMMAND) do
+        table.insert(command, item)
+    end
+    table.insert(command, details_1.auth_uri)
+    local path = details_2.parent
+    if details_2.is_relative then
+        path = string.format("~%s", path)
+    end
+    table.insert(command, string.format("mkdir -p %s", path))
+
+    command_output = shell:new(command, command_options):run()
+    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Received non-0 exit code while making parent directory %s", details_2.path))
+        return false
+    end
+    command = {}
+    for _, item in ipairs(SSH_COMMAND) do
+        table.insert(command, item)
+    end
+    table.insert(command, details_1.auth_uri)
+    local p1 = details_1.path
+    local p2 = details_2.path
+    if details_1.is_relative then
+        p1 = string.format("~%s", p1)
+    end
+    if details_2.is_relative then
+        p2 = string.format("~%s", p2)
+    end
+    table.insert(command, string.format("mv %s %s", p1, p2))
+
+    command_output = shell:new(command, command_options):run()
+    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Received non-0 exit code while making parent directory %s", details_2.path))
+        return false
+    end
+    -- There is absolutely no reason these 2 cache's should be different but the lua 
+    -- gods hate me and it seems they are...
+    M.internal.remove_item_from_cache(uri1, cache1, {clear_self=true, clear_parent=true})
+    M.internal.remove_item_from_cache(uri2, cache2, {clear_self=true, clear_parent=true})
+    return true
 end
 
 function M.init(config, cache)

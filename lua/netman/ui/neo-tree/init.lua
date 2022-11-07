@@ -406,8 +406,50 @@ M.delete_node = function(state)
     input.input(message, default, callback)
 end
 
-M.rename_node = function(state)
+M.internal.rename = function(old_uri, new_uri)
+    return api.move(old_uri, new_uri)
+end
 
+M.rename_node = function(state)
+    -- Get the name to rename to
+    local tree, node, current_uri, parent_uri, parent_id
+    tree = state.tree
+    node = tree:get_node()
+    if not node.extra then
+        log.warn(string.format("%s says its a netman node but its lyin", node.name))
+        return
+    end
+    if node.type == 'netman_provider' then
+        notify.info(string.format("Providers cannot be renamed at this time"))
+        return
+    end
+    if node.type == 'netman_host' then
+        notify.info(string.format("Hosts cannot be renamed at this time"))
+        return
+    end
+    current_uri = node.extra.uri
+    parent_id = node:get_parent_id()
+    parent_uri = tree:get_node(parent_id).extra.uri
+
+    local message = string.format("Rename %s", node.name)
+    local default = ""
+    local callback = function(response)
+        if not response then return end
+        local new_uri = string.format("%s%s", parent_uri, response)
+        local success = M.internal.rename(current_uri, new_uri)
+        if not success then
+            notify.warn(string.format("Unable to move %s to %s. Please check netman logs for more details", current_uri, new_uri))
+            return
+        end
+        M.refresh(state, {refresh_only_id=parent_id})
+    end
+    input.input(message, default, callback)
+end
+
+M.move_node = function(state)
+
+    notify.warn("Move is not currently supported!")
+    return
 end
 
 M.setup = function(neo_tree_config)

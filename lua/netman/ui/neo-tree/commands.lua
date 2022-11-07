@@ -30,14 +30,19 @@ M.refresh = function(state, callback)
     do_callback(callback)
 end
 
--- -- TODO:
--- M.rename = function(state, callback)
---     do_callback(callback)
--- end
+M.rename = function(state, callback)
+    ui.rename_node(state)
+    do_callback(callback)
+end
 
 -- TODO:
 M.delete = function(state, callback)
     ui.delete_node(state)
+    do_callback(callback)
+end
+
+M.move = function(state, callback)
+    ui.move_node(state)
     do_callback(callback)
 end
 
