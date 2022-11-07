@@ -606,6 +606,44 @@ function M.write(buffer_index, uri)
     provider.write(uri, cache, lines)
 end
 
+-- @param current_uri string
+-- @param new_uri string
+-- @return boolean
+function M.move(current_uri, new_uri)
+    local _c_uri, _n_uri = current_uri, new_uri
+    local current_uri_provider, current_uri_cache, new_uri_provider, _
+    current_uri, current_uri_provider, current_uri_cache = M.internal.validate_uri(current_uri)
+    new_uri, new_uri_provider, _ = M.internal.validate_uri(new_uri)
+    if not current_uri_provider or not new_uri_provider or not current_uri or not new_uri then
+        log.info(string.format("No providers found for %s or %s", _c_uri, _n_uri))
+        return false
+    end
+    if current_uri_provider == new_uri_provider and current_uri_provider.move ~= nil then
+        -- Try to have the provider do the move
+        log.info(string.format("Trying to move %s to %s", current_uri, new_uri))
+        local success = current_uri_provider.move(current_uri, new_uri, current_uri_cache)
+        if success then
+            -- Provider was able to perform move. yaa!
+            return true
+        end
+    end
+    -- -- If we get here, then we must have had a failure. Try to manually do move.
+    -- local read_data = M.read(current_uri)
+    -- if not read_data then
+    --     -- Something happened when trying to copy data down
+    --     log.warn(string.format("Unable to read data from %s", current_uri))
+    --     return false
+    -- end
+    -- if read_data.type == 'STREAM' then
+    --     -- We got a stream back, we will want to save that to a file
+    --     -- For now, lets ignore this and come back to it
+    --     -- TODO
+    --     return true
+    -- end
+    -- If it is a directory, things get weird. We will want to figure out a way to tell the 
+    -- provider we want the literal directory and its contents. IE, archive this location and gimme
+end
+
 function M.delete(uri)
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
@@ -646,7 +684,6 @@ end
 -- TODO: (Mike): Do a thing with this?
 function M.unload_buffer(uri, buffer_handle)
     M._providers.file_cache[uri] = nil
-
 end
 
 --- @deprecated

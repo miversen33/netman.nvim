@@ -576,6 +576,47 @@ function M.write(uri, provider_cache, data)
     M.internal.remove_item_from_cache(uri, container_cache, {clear_self=true, clear_parent=true})
 end
 
+function M.move(uri1, uri2, cache)
+    local details_1 = M.internal._parse_uri(uri1)
+    local details_2 = M.internal._parse_uri(uri2)
+    M.internal._validate_cache(cache, details_1)
+    M.internal._validate_cache(cache, details_2)
+    if details_1.container ~= details_2.container then
+        log.warn(string.format("%s and %s are not on the same container!", uri1, uri2))
+        return false
+    end
+    local container_cache = cache:get_item(details_1.container)
+    if details_1.protocol ~= M.protocol_patterns[1] then
+        log.warn(string.format("Invalid URI: %s provided!", uri1))
+        return false
+    end
+    if details_2.protocol ~= M.protocol_patterns[1] then
+        log.warn(string.format("Invalid URI: %s provided!", uri2))
+        return false
+    end
+    -- If we are here, it is safe to assume that both URIs are on the same container. Use
+    -- mv to move 1 to 2. Make sure to create the parent path for 2 first
+    local command, command_options, command_output
+    command_options = {[command_flags.STDERR_JOIN] = ''}
+    command = {"docker", "exec", details_1.container, "mkdir", "-p", details_2.parent}
+    command_output = shell:new(command, command_options):run()
+    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Received non-0 exit code while making parent path of %s", uri2))
+        return false
+    end
+    command = {"docker", "exec", details_1.container, "mv", details_1.path, details_2.path}
+    command_output = shell:new(command, command_options):run()
+    log.trace({comand=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Received non-0 exit code while moving %s to %s", uri1, uri2))
+        return false
+    end
+    M.internal.remove_item_from_cache(uri1, container_cache, {clear_self=true, clear_parent=true})
+    M.internal.remove_item_from_cache(uri2, container_cache, {clear_self=true, clear_parent=true})
+    return true
+end
+
 function M.delete(uri, cache)
     -- Needs to clear the cache for its parent and itself if it exists
     -- It is _not_ safe to assume we already
