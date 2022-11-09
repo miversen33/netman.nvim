@@ -84,7 +84,7 @@ Below is tool specific configurations needed to get Netman working, as well as a
 Netman is now comes with a source provider for neo-tree. This provider can be loaded by adding "netman.ui.neo-tree" to the `Neo Tree sources` as detailed in the [`Neo Tree Documentation`](https://github.com/nvim-neo-tree/neo-tree.nvim/blob/main/doc/neo-tree.txt)
 An example of this is as follows
 ```lua
-require("neo-tree).setup({
+require("neo-tree").setup({
     sources = {
         "filesystem", -- Neotree filesystem source
         "netman.ui.neo-tree", -- The one you really care about 😉
