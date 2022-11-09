@@ -194,6 +194,7 @@ end
 ---        ,host
 ---        ,path
 ---        ,type
+---        ,extension
 ---        ,return_type
 ---        ,parent
 function M.internal._parse_uri(uri)
@@ -207,6 +208,7 @@ function M.internal._parse_uri(uri)
         ,file_type   = nil
         ,return_type = nil
         ,parent      = nil
+        ,extension   = nil
         ,local_file  = nil
     }
     log.info("Parsing URI: " .. tostring(uri))
@@ -260,13 +262,14 @@ function M.internal._parse_uri(uri)
     end
     details.path = "/" .. path_body
     if details.path:sub(-1) == '/' then
-        details.file_type = api_flags.ATTRIBUTES.DIRECTORY
+        details.file_type   = api_flags.ATTRIBUTES.DIRECTORY
         details.return_type = api_flags.READ_TYPE.EXPLORE
     else
-        details.file_type = api_flags.ATTRIBUTES.FILE
+        details.file_type   = api_flags.ATTRIBUTES.FILE
         details.return_type = api_flags.READ_TYPE.FILE
+        details.extension   = details.path:match('[^%.]+$')
         details.unique_name = string_generator(11)
-        details.local_file  = local_files .. details.unique_name
+        details.local_file  = string.format("%s%s%s", local_files, details.unique_name, details.extension)
     end
     local path = {}
     for part in details.path:gmatch('([^/]+)') do

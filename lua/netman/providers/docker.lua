@@ -158,6 +158,7 @@ end
 ---        ,file_type
 ---        ,return_type
 ---        ,parent
+---        ,extension
 ---        ,local_file
 function M.internal._parse_uri(uri)
     local details = {
@@ -168,6 +169,7 @@ function M.internal._parse_uri(uri)
         , file_type = nil
         , return_type = nil
         , parent = nil
+        , extension = nil
         , local_file = nil
     }
     details.protocol = uri:match(protocol_pattern)
@@ -188,9 +190,10 @@ function M.internal._parse_uri(uri)
         details.return_type = api_flags.READ_TYPE.EXPLORE
     else
         details.file_type   = api_flags.ATTRIBUTES.FILE
+        details.extension   = details.path:match("[^%.]+$")
         details.return_type = api_flags.READ_TYPE.FILE
         details.unique_name = string_generator(11)
-        details.local_file  = local_files .. details.unique_name
+        details.local_file  = string.format("%s%s%s", local_files, details.unique_name, details.extension)
     end
     local path = {}
     for part in details.path:gmatch('([^/]+)') do
