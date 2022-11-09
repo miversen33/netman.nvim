@@ -421,7 +421,7 @@ end
 function M.internal._write_file(container_cache, cache, lines)
     -- Needs to clear the cache for its parent and itself if it exists
     lines = lines or {}
-    lines = table.concat(lines, '\n')
+    lines = table.concat(lines, '')
     local local_file = io.open(cache.local_file, "w+")
     assert(local_file, string.format("Unable to write to %s", cache.local_file))
     assert(local_file:write(lines), string.format("Failed to write to %s", cache.local_file))

@@ -550,7 +550,7 @@ end
 
 function M.internal._write_file(uri_details, cache, lines)
     lines = lines or {}
-    lines = table.concat(lines, '\n')
+    lines = table.concat(lines, '')
     M.internal._create_local_file(uri_details, lines)
     local success = M.internal._copy_to_remote(uri_details)
     if success then
