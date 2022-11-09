@@ -149,14 +149,11 @@ end
 local render_command_and_clean_buffer = function(render_command, opts)
     opts = {
         nomod = 1,
-        -- filetype = 'detect'
+        detect_filetype = 1
     } or opts
     local undo_levels = vim.api.nvim_get_option('undolevels')
     vim.api.nvim_command('keepjumps sil! 0')
     vim.api.nvim_command('keepjumps sil! setlocal ul=-1 | ' .. render_command)
-    if opts.nomod then
-        vim.api.nvim_command('set nomodified')
-    end
     -- if opts.filetype then
     --     vim.api.nvim_command(string.format('set filetype=%s', opts.filetype))
     -- end
@@ -164,7 +161,12 @@ local render_command_and_clean_buffer = function(render_command, opts)
     -- 0"_dd to work instead?
     vim.api.nvim_command('keepjumps sil! 0d')
     vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
-    vim.api.nvim_command('sil! set nomodified')
+    if opts.nomod then
+        vim.api.nvim_command('sil! set nomodified')
+    end
+    if opts.detect_filetype then
+        vim.api.nvim_command('sil! filetype detect')
+    end
 end
 
 local setup = function()
