@@ -268,22 +268,15 @@ function M.internal._parse_uri(uri)
         details.unique_name = string_generator(11)
         details.local_file  = local_files .. details.unique_name
     end
-    local parent = ''
-    local previous_parent = ''
-    local cur_path = ''
-    -- This is literal 💩 but I dont know a better way of handling this since path globs are awful...
-    -- TODO: Mike: Should be able to do this better with glob gmatching
-    for i=1, #details.path do
-        local char = details.path:sub(i,i)
-        cur_path = cur_path .. char
-        if char == '/' then
-            previous_parent = parent
-            parent = parent .. cur_path
-            cur_path = ''
-        end
+    local path = {}
+    for part in details.path:gmatch('([^/]+)') do
+        table.insert(path, part)
     end
-    if cur_path == '' then parent = previous_parent end
-    details.parent = parent
+    if #path > 1 then
+        details.parent = path[#path - 1]
+    else
+        details.parent = '/'
+    end
     details.auth_uri = details.host
     if details.user
         and not details.user:match('^([%s]*)$')
