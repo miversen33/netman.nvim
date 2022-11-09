@@ -119,7 +119,7 @@ M.internal.get_uri_children = function(state, uri)
     end
     if output.type == 'FILE' or output.type == 'STREAM' then
         -- Make neo-tree create a buffer for us
-        local command = " | set nomodified | filetype detect"
+        local command = ""
         local open_command = 'read ++edit'
         local event_handler_id = "netman_dummy_file_event"
         if output.type == 'STREAM' then
@@ -133,7 +133,6 @@ M.internal.get_uri_children = function(state, uri)
         }
         dummy_file_open_handler.handler = function()
             events.unsubscribe(dummy_file_open_handler)
-            require("netman.tools.utils").render_command_and_clean_buffer(command)
         end
         events.subscribe(dummy_file_open_handler)
         neo_tree_utils.open_file(state, uri)
