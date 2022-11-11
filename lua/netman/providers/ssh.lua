@@ -1,8 +1,3 @@
--- BUG: I dont know why but for some reason this is breaking on the work servers???
--- There is no errors being show within netman, but telescope just kinda falls over
--- when trying to figure out what the parent directory is and how to display it.
--- Consider adding even more trace logs here?????
-
 local log = require("netman.tools.utils").log
 local notify = require("netman.tools.utils").notify
 local command_flags = require("netman.tools.options").utils.command
@@ -72,12 +67,25 @@ local find_pattern_globs = {
     '^(TYPE)=([%l%s]+),',
     '^(NAME)=(.*)$'
 }
+
+local AVAILABLE_COMPRESSION_SCHEMES = {
+    ["tar.gz"] = {
+        compress = function(start_dir, location)
+            return {"tar", "-czf", "-", "-C", start_dir, location}
+        end,
+        extract = function(target_dir, location)
+            return {"tar", "-C", target_dir, "-xzf", location}
+        end
+    }
+}
+
 local M = {}
 
 M.protocol_patterns = {'ssh', 'scp', 'sftp'}
 M.name = 'ssh'
 M.version = 0.1
 M.internal = {}
+M.archive = {}
 
 M.ui = {
     icon = ""
@@ -763,6 +771,157 @@ function M.init(config, cache)
         return false
     end
     return true
+end
+
+function M.archive.get(uri, provider_cache, archive_dump_dir, available_compression_schemes)
+    local cache, parsed_uri_details = M.internal._validate_cache(provider_cache, uri)
+    local valid_protocol = false
+    for _, protocol in ipairs(M.protocol_patterns) do
+        if parsed_uri_details and parsed_uri_details.protocol == protocol then
+            valid_protocol = true
+            break
+        end
+    end
+    if
+        not parsed_uri_details
+        or not valid_protocol
+        or not cache then
+        log.warn("Invalid URI: " .. uri .. " provided!")
+        return nil
+    end
+    local path = parsed_uri_details.path
+    if parsed_uri_details.is_relative then
+        path = string.format("~%s", path)
+    end
+
+    local selected_compression = nil
+    local compression_command = nil
+    for _, compression_scheme in ipairs(available_compression_schemes) do
+        for matching_scheme, command in pairs(AVAILABLE_COMPRESSION_SCHEMES) do
+            if compression_scheme:lower() == matching_scheme:lower() then
+                selected_compression = compression_scheme
+                compression_command = command.compress
+            end
+        end
+    end
+    if not selected_compression then
+        log.warn(string.format("Unable to find valid compression scheme to compress %s", uri), {provided_schemes = available_compression_schemes, available_compression = AVAILABLE_COMPRESSION_SCHEMES})
+        return nil
+    end
+
+    local file_name = string.format("%s/%s.tar.gz", archive_dump_dir, require("netman.tools.utils").generate_string(11))
+    local compress_command = compression_command(parsed_uri_details.parent, parsed_uri_details.file_name)
+    local ssh_command = {"ssh", parsed_uri_details.auth_uri}
+    for _, _c in ipairs(compress_command) do
+        table.insert(ssh_command, _c)
+    end
+    local command_options = {[command_flags.STDOUT_FILE] = file_name, [command_flags.STDERR_JOIN] = ''}
+    local command = shell:new(ssh_command, command_options)
+    local command_output = command:run()
+    log.trace(command:dump_self_to_table())
+
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Recevied non-0 exit code while trying to compress %s", uri))
+        return false
+    end
+
+    return {
+        archive = file_name,
+        compression_scheme = selected_compression
+    }
+end
+
+function M.archive.put(uri, provider_cache, archive, compression_scheme)
+    local cache, parsed_uri_details = M.internal._validate_cache(provider_cache, uri)
+    local valid_protocol = false
+    for _, protocol in ipairs(M.protocol_patterns) do
+        if parsed_uri_details and parsed_uri_details.protocol == protocol then
+            valid_protocol = true
+            break
+        end
+    end
+    if
+        not parsed_uri_details
+        or not valid_protocol
+        or not cache then
+        log.warn("Invalid URI: " .. uri .. " provided!")
+        return nil
+    end
+    local path = parsed_uri_details.path
+    if parsed_uri_details.is_relative then
+        path = string.format("~%s", path)
+    end
+
+    local selected_compression = nil
+    local extraction_command = nil
+    for matching_scheme, command in pairs(AVAILABLE_COMPRESSION_SCHEMES) do
+        if compression_scheme:lower() == matching_scheme:lower() then
+            selected_compression = compression_scheme
+            extraction_command = command.extract
+        end
+    end
+    if not selected_compression then
+        log.warn(string.format("Unable to find valid compression scheme to compress %s", uri), {used_compression_scheme = compression_scheme, available_compression = AVAILABLE_COMPRESSION_SCHEMES})
+        return nil
+    end
+
+    parsed_uri_details.local_file = archive
+    M.internal._copy_to_remote(parsed_uri_details)
+
+    local archive_file_name = nil
+    for part in archive:gmatch("([^/]+)") do
+        -- We literally only care about the name of the file, nothing else
+        archive_file_name = part
+    end
+    
+    local remote_file = string.format("%s/%s", path, archive_file_name)
+    -- path = string.format("%s/%s", path, archive_file_name)
+
+    local _e_command = extraction_command(path, remote_file)
+    local ssh_command = {"ssh", parsed_uri_details.auth_uri}
+    if parsed_uri_details.port then
+        table.insert(ssh_command, "-p")
+        table.insert(ssh_command, parsed_uri_details.port)
+    end
+    for _, _c in ipairs(_e_command) do
+        table.insert(ssh_command, _c)
+    end
+    local command_options = {[command_flags.STDOUT_JOIN] = '', [command_flags.STDERR_JOIN] = ''}
+    local command = shell:new(ssh_command, command_options)
+    local command_output = command:run()
+    log.trace(command:dump_self_to_table())
+
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Failed to extract %s on remote host %s at %s", archive, parsed_uri_details.host, remote_file))
+        return false
+    end
+
+    ssh_command = {"ssh", parsed_uri_details.auth_uri}
+    if parsed_uri_details.port then
+        table.insert(ssh_command, '-p')
+        table.insert(ssh_command, parsed_uri_details.port)
+    end
+    table.insert(ssh_command, 'rm')
+    table.insert(ssh_command, '-f')
+    table.insert(ssh_command, remote_file)
+
+    command = shell:new(ssh_command, command_options)
+    command_output = command:run()
+    log.trace(command:dump_self_to_table())
+
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Failed to remove uploaded archive %s on host %s", path, parsed_uri_details.host))
+        return false
+    end
+    return true
+end
+
+function M.archive.schemes()
+    local schemes = {}
+    for scheme, _ in pairs(AVAILABLE_COMPRESSION_SCHEMES) do
+        table.insert(schemes, scheme)
+    end
+    return schemes
 end
 
 function M.close_connection(buffer_index, uri, cache)
