@@ -611,9 +611,10 @@ end
 -- @return boolean
 function M.move(current_uri, new_uri)
     local _c_uri, _n_uri = current_uri, new_uri
+    local new_uri_cache = nil
     local current_uri_provider, current_uri_cache, new_uri_provider, _
     current_uri, current_uri_provider, current_uri_cache = M.internal.validate_uri(current_uri)
-    new_uri, new_uri_provider, _ = M.internal.validate_uri(new_uri)
+    new_uri, new_uri_provider, new_uri_cache = M.internal.validate_uri(new_uri)
     if not current_uri_provider or not new_uri_provider or not current_uri or not new_uri then
         log.info(string.format("No providers found for %s or %s", _c_uri, _n_uri))
         return false
@@ -628,20 +629,23 @@ function M.move(current_uri, new_uri)
         end
     end
     -- -- If we get here, then we must have had a failure. Try to manually do move.
-    -- local read_data = M.read(current_uri)
-    -- if not read_data then
-    --     -- Something happened when trying to copy data down
-    --     log.warn(string.format("Unable to read data from %s", current_uri))
-    --     return false
-    -- end
-    -- if read_data.type == 'STREAM' then
-    --     -- We got a stream back, we will want to save that to a file
-    --     -- For now, lets ignore this and come back to it
-    --     -- TODO
-    --     return true
-    -- end
-    -- If it is a directory, things get weird. We will want to figure out a way to tell the 
-    -- provider we want the literal directory and its contents. IE, archive this location and gimme
+    local compression_schemes = new_uri_provider.archive.schemes()
+    local archive_dir = require("netman.tools.utils").cache_dir
+    local status, data = pcall(current_uri_provider.archive.get, current_uri, current_uri_cache, archive_dir, compression_schemes)
+    if not status then
+        log.warn(string.format("%s failed to pull down archive for %s", current_uri_provider.name, current_uri), {error=data})
+        notify.error(string.format("Unable to copy %s to %s. Please check netman logs for details", current_uri, new_uri))
+        return false
+    end
+    local archive = data.archive
+    status, data = pcall(new_uri_provider.archive.put, new_uri, new_uri_cache, archive, data.compression_scheme)
+    if not status then
+        log.warn(string.format("%s failed to accept archive for %s", new_uri_provider.name, new_uri), {error=data})
+        notify.error(string.format("Unable to copy %s to %s. Please check netman logs for details", current_uri, new_uri))
+        return false
+    end
+    assert(vim.loop.fs_unlink(archive), string.format("Unable to delete %s", archive))
+    return true
 end
 
 function M.delete(uri)

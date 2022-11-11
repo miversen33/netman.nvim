@@ -25,6 +25,17 @@ local STAT_COMMAND            = {
     'MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n\\0',
 }
 
+local AVAILABLE_COMPRESSION_SCHEMES = {
+    ["tar.gz"] = {
+        compress = function(start_dir, location)
+            return {"tar", "-czf", "-", "-C", start_dir, location}
+        end,
+        extract = function(target_dir, location)
+            return {"tar", "-C", target_dir, "-xzf", location}
+        end
+    }
+}
+
 local METADATA_TIMEOUT = 5 * require("netman.tools.cache").SECOND
 local CONTAINER_LIFE_CHECK = 1 * require("netman.tools.cache").MINUTE
 
@@ -43,7 +54,8 @@ local find_pattern_globs = {
 }
 local M = {
     internal = {},
-    ui = {}
+    ui = {},
+    archive = {}
 }
 
 M.protocol_patterns = { 'docker' }
@@ -160,6 +172,7 @@ end
 ---        ,parent
 ---        ,extension
 ---        ,local_file
+---        ,file_name
 function M.internal._parse_uri(uri)
     local details = {
         base_uri = uri
@@ -171,6 +184,7 @@ function M.internal._parse_uri(uri)
         , parent = nil
         , extension = nil
         , local_file = nil
+        , file_name = nil
     }
     details.protocol = uri:match(protocol_pattern)
     uri = uri:gsub(protocol_pattern, '')
@@ -201,8 +215,10 @@ function M.internal._parse_uri(uri)
     end
     if #path > 1 then
         details.parent = path[#path - 1]
+        details.file_name = path[#path]
     else
         details.parent = '/'
+        details.file_name = path[#path]
     end
     return details
 end
@@ -658,6 +674,121 @@ function M.init(config_options, cache)
     return true
 end
 
+function M.archive.get(uri, cache, archive_dump_dir, available_compression_schemes)
+    local details = M.internal._parse_uri(uri)
+    M.internal._validate_cache(cache, details)
+    -- Do container check to see if container is running...?
+    if M.internal._is_container_running(details.container) ~= _docker_status.RUNNING then
+        log.warn(string.format("Unable to move as container %s is not running", details.container))
+        return false
+    end
+    local selected_compression = nil
+    local compression_command = nil
+    for _, compression_scheme in ipairs(available_compression_schemes) do
+        for matching_scheme, command in pairs(AVAILABLE_COMPRESSION_SCHEMES) do
+            if compression_scheme:lower() == matching_scheme:lower() then
+                selected_compression = compression_scheme
+                compression_command = command.compress
+            end
+        end
+    end
+    if not selected_compression then
+        log.warn(string.format("Unable to find valid compression scheme to compress %s", uri), {provided_schemes = available_compression_schemes, available_compression = AVAILABLE_COMPRESSION_SCHEMES})
+        return nil
+    end
+
+    local file_name = string.format("%s/%s.tar.gz", archive_dump_dir, require("netman.tools.utils").generate_string(11))
+    local command = compression_command(details.parent, details.file_name)
+    local docker_command = {"docker", "exec", details.container}
+    for _, c in ipairs(command) do
+        table.insert(docker_command, c)
+    end
+    local command_options = {[command_flags.STDOUT_FILE] = file_name, [command_flags.STDERR_JOIN] = ''}
+    local command_output = shell:new(docker_command, command_options):run()
+    log.trace("Dumping Shell info", {command=table.concat(docker_command, ' '), opts=command_options, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    if command_output.exit_code ~= 0 then
+        -- Complain about something having failed when trying to copy?
+        log.warn("Received non-0 exit code while trying to compress %s", uri, {exit_code=command_output.exit_code, error=command_output.stderr})
+        return false
+    end
+
+    return {
+        archive = file_name,
+        compression_scheme = selected_compression
+    }
+end
+
+function M.archive.put(uri, cache, archive, compression_scheme)
+    local details = M.internal._parse_uri(uri)
+    M.internal._validate_cache(cache, details)
+    -- Do container check to see if container is running...?
+    if M.internal._is_container_running(details.container) ~= _docker_status.RUNNING then
+        log.warn(string.format("Unable to move as container %s is not running", details.container))
+        return false
+    end
+    local selected_compression = nil
+    local extraction_command = nil
+    for matching_scheme, command in pairs(AVAILABLE_COMPRESSION_SCHEMES) do
+        if compression_scheme:lower() == matching_scheme:lower() then
+            selected_compression = compression_scheme
+            extraction_command = command.extract
+        end
+    end
+    if not selected_compression then
+        log.warn(string.format("Unable to find valid compression scheme to compress %s", uri), {used_compression_scheme= compression_scheme, available_schemes = AVAILABLE_COMPRESSION_SCHEMES})
+        return nil
+    end
+
+    local archive_file_name = nil
+    for part in archive:gmatch("([^/]+)") do
+        -- We literally only care about the name of the file, nothing else
+        archive_file_name = part
+    end
+    -- We need to document where we are putting the archive, /tmp/ seems like a good idea, but
+    -- it doesn't really matter where, we just need to document it. Maybe the actual location is fine?
+    local docker_command = {"docker", "cp", archive, string.format("%s:/%s", details.container, details.path)}
+    local command_options = {[command_flags.STDOUT_JOIN] = '', [command_flags.STDERR_JOIN] = ''}
+    local command = shell:new(docker_command, command_options)
+    local command_output = command:run()
+    log.trace(command:dump_self_to_table())
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Failed to copy %s to container %s at path %s", archive, details.container, details.path))
+        return false
+    end
+
+    local _e_command = extraction_command(details.path, string.format("%s/%s", details.path, archive_file_name))
+    local extract_command = {"docker", "exec", details.container}
+    for _, _c in ipairs(_e_command) do
+        table.insert(extract_command, _c)
+    end
+    command = shell:new(extract_command, command_options)
+    command_output = command:run()
+    log.trace(command:dump_self_to_table())
+
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Failed to extract %s on container %s at path %s", archive, details.container, details.path))
+        return false
+    end
+
+    local _d_command = {"docker", "exec", details.container, "rm", "-f", string.format("%s/%s", details.path, archive_file_name)}
+    command = shell:new(_d_command, command_options)
+    command_output = command:run()
+    log.trace(command:dump_self_to_table())
+
+    if command_output.exit_code ~= 0 then
+        log.warn(string.format("Failed to remove archive on container %s at path %s", details.container, archive_file_name))
+        return false
+    end
+    return true
+end
+
+function M.archive.schemes()
+    local schemes = {}
+    for scheme, _ in pairs(AVAILABLE_COMPRESSION_SCHEMES) do
+        table.insert(schemes, scheme)
+    end
+    return schemes
+end
 function M.close_connection(buffer_index, uri, cache)
 
 end
