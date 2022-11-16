@@ -10,6 +10,7 @@ local _is_setup            = false
 local cache_dir            = vim.fn.stdpath('cache') .. '/netman/'
 local files_dir            = cache_dir .. 'remote_files/'
 local data_dir             = vim.fn.stdpath('data')  .. '/netman/'
+local tmp_dir              = cache_dir .. "/tmp/"
 local socket_dir           = '/tmp/netman/'
 local session_id           = ''
 local validate_log_pattern = '^%[%d+-%d+-%d+%s%d+:%d+:%d+%]%s%[SID:%s(%a+)%].'
@@ -176,6 +177,7 @@ local setup = function()
     -- Making sure these exist as we do filesystem operations on them. IE, they
     -- MUST exist before we do stuff with them
     mkdir(cache_dir, 'p') -- Creating the cache dir
+    mkdir(tmp_dir, 'p')   -- Creating the temp dir
     mkdir(files_dir, 'p') -- Creating the temp files dir
     local parent_dir = files_dir
     local _parent_dir_id = vim.loop.fs_scandir(parent_dir)
@@ -236,6 +238,7 @@ return {
     cache_dir                       = cache_dir,
     data_dir                        = data_dir,
     files_dir                       = files_dir,
+    tmp_dir                         = tmp_dir,
     socket_dir                      = socket_dir,
     package_name_escape             = package_name_escape,
     generate_string                 = generate_string,
