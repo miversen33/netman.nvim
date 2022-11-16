@@ -120,40 +120,45 @@ end
 
 function M.internal.remove_item_from_cache(uri, cache, opts)
     opts = opts or {}
-    if opts.clear_self then
-        log.debug(string.format("Removing %s from cache", uri))
-        if cache
-            and cache:get_item('files') then
-            -- Remove the file from local cache
-            cache:get_item('files'):remove_item(uri)
-        end
-        if cache
-            and cache:get_item('file_metadata') then
-            -- Remove the file metedata from local cache
-            cache:get_item('file_metadata'):remove_item(uri)
-        end
-    end
     if opts.clear_parent then
         -- Get parent details from our current parsed info
         local details = cache:get_item(uri)
-        local parent = {}
-        for part in details.path:gmatch("([^/]+)") do
-            table.insert(parent, part)
+        if details then
+            -- Its _possible_ that we haven't cached the parent info and thus
+            -- we should _not_ explode because it doesn't exist. It just means
+            -- our job is done
+            local parent = {}
+            for part in details.path:gmatch("([^/]+)") do
+                table.insert(parent, part)
+            end
+            -- popping the tail off the file list
+            table.remove(parent, #parent)
+            local parent_uri = string.format("docker://%s/%s/", details.container, table.concat(parent, "/"))
+            if cache then
+                if cache:get_item('file_metadata') then
+                    -- Remove the parent metadata from local cache
+                    cache:get_item('file_metadata'):remove_item(parent_uri)
+                end
+                if cache:get_item('files') then
+                    -- Remove the parent files from local cache
+                    cache:get_item('files'):remove_item(parent_uri)
+               end
+            end
         end
-        -- popping the tail off the file list
-        table.remove(parent, #parent)
-        local parent_uri = string.format("docker://%s/%s/", details.container, table.concat(parent, "/"))
-        if cache
-            and cache:get_item('file_metadata') then
-            -- Remove the parent metadata from local cache
-            cache:get_item('file_metadata'):remove_item(parent_uri)
+        log.debug(string.format("Removing (parent) of %s from cache", uri))
+    end
+    if opts.clear_self then
+        log.debug(string.format("Removing %s from cache", uri))
+        if cache then
+            if cache:get_item('files') then
+                -- Remove the file from local cache
+                cache:get_item('files'):remove_item(uri)
+            end
+            if cache:get_item('file_metadata') then
+                -- Remove the file metedata from local cache
+                cache:get_item('file_metadata'):remove_item(uri)
+            end
         end
-        if cache
-            and cache:get_item('files') then
-            -- Remove the parent files from local cache
-            cache:get_item('files'):remove_item(parent_uri)
-        end
-        log.debug(string.format("Removing (parent) %s from cache", parent_uri))
     end
 end
 
