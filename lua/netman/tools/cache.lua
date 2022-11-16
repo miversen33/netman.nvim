@@ -89,7 +89,7 @@ function Cache:as_table()
 end
 
 --- Returns the number of keys in the cache
---- @return int
+--- @return integer
 function Cache:len()
     self:validate()
     -- Pretty ick but there may not be a better way to do this?
