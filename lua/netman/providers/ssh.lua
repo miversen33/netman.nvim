@@ -684,77 +684,110 @@ function M.delete(uri, provider_cache)
     M.internal.remove_item_from_cache(uri, cache, {clear_self=true, clear_parent=true})
 end
 
-function M.move(uri1, uri2, cache)
-    local cache1, details_1 = M.internal._validate_cache(cache, uri1)
-    local cache2, details_2 = M.internal._validate_cache(cache, uri2)
-    local uri1_valid = false
-    local uri2_valid = false
+
+function M.move(uris, target, provider_cache)
+    local paths = {}
+    local _error = ''
+    local target_cache, target_details = M.internal._validate_cache(provider_cache, target)
+    local target_valid = false
+    if not target_details then
+        _error = string.format("Invalid URI: %s", target)
+        return {error=_error, success=false}
+    end
     for _, protocol in ipairs(M.protocol_patterns) do
-        if not uri1_valid and details_1 and details_1.protocol == protocol then
-            uri1_valid = true
-        end
-        if not uri2_valid and details_2 and details_2.protocol == protocol then
-            uri2_valid = true
+        if target_details.protocol == protocol then
+            target_valid = true
         end
     end
-    if
-        not (details_1 and details_2)
-        or not (uri1_valid and uri2_valid)
-        or not cache1 then
-        log.warn(string.format("Invalid URI: %s or %s provided!", uri1, uri2))
-        return false
+    if not target_valid then
+        _error = string.format("Invalid URI: %s", target)
+        return {error=_error, success=false}
     end
-    if details_1.host ~= details_2.host then
-        log.warn(string.format("%s is not on the same host as %s", uri1, uri2))
-        return false
+    if target_details.is_relative then
+        target_details.path = string.format('~/%s', target_details.path)
     end
-    -- Make the parent of uri2
-    local command, command_options, command_output
-    command_options = {[command_flags.STDERR_JOIN] = ''}
+    if type(uris) == 'string' then uris = {uris} end
+    local invalid_uris = {invalid_provider_uris = {}, invalid_host_uris = {}}
+    for _, uri in ipairs(uris) do
+        local uri_valid = false
+        local _, uri_details = M.internal._validate_cache(provider_cache, uri)
+        if not uri_details then goto skip end
+        for _, protocol in ipairs(M.protocol_patterns) do
+            if uri_details.protocol == protocol then
+                uri_valid = true
+            end
+        end
+        if uri_details.is_relative then
+            uri_details.path = string.format('~/%s', uri_details.path)
+        end
+        -- We should really try to not use labels but
+        -- Its the best way to deal with skipping the above validation 
+        -- loop if the uri is invalid
+        ::skip::
+        if not uri_valid or not uri_details then
+            table.insert(invalid_uris.invalid_provider_uris, uri)
+        elseif uri_details.host ~= target_details.host then
+            table.insert(invalid_uris.host_uris, uri)
+        else
+            -- The URI is valid
+            table.insert(paths, uri_details)
+        end
+    end
+    if #invalid_uris.invalid_provider_uris > 0 then
+        local _ = string.format("Invalid URIs: %s", table.concat(invalid_uris.invalid_provider_uris, ' '))
+        if _error ~= '' then
+            _error = string.format("%s | %s", _error, _)
+        else
+            _error = _
+        end
+    end
+    if #invalid_uris.invalid_host_uris > 0 then
+        local _ = string.format("Invalid URIs: %s for Host %s", table.concat(invalid_uris.invalid_host_uris, ' '), target_details.host)
+        if _error ~= '' then
+            _error = string.format("%s | %s", _error, _)
+        else
+            _error = _
+        end
+    end
+    if _error ~= '' then
+        return {error=_error, success=false}
+    end
 
-    command = {}
+    local move_paths = nil
+    for _, details in ipairs(paths) do
+        if not move_paths then
+            move_paths = string.format("mkdir -p %s && mv %s %s", target_details.path, details.path, target_details.path)
+        else
+            move_paths = string.format("%s && mv %s %s", move_paths, details.path, target_details.path)
+        end
+    end
+    local ssh_command = {}
     for _, item in ipairs(SSH_COMMAND) do
-        table.insert(command, item)
+        table.insert(ssh_command, item)
     end
-    table.insert(command, details_1.auth_uri)
-    local path = details_2.parent
-    if details_2.is_relative then
-        path = string.format("~%s", path)
+    table.insert(ssh_command, target_details.auth_uri)
+    if target_details.port then
+        table.insert(ssh_command, '-p')
+        table.insert(ssh_command, target_details.port)
     end
-    table.insert(command, string.format("mkdir -p %s", path))
+    table.insert(ssh_command, move_paths)
+    local command_opts = {[command_flags.STDOUT_JOIN] = '', [command_flags.STDERR_JOIN] = ''}
+    local command = shell:new(ssh_command, command_opts)
+    local command_output = command:run()
+    log.trace(command:dump_self_to_table())
 
-    command_output = shell:new(command, command_options):run()
-    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
     if command_output.exit_code ~= 0 then
-        log.warn(string.format("Received non-0 exit code while making parent directory %s", details_2.path))
-        return false
+        -- Scream
+        local _error = string.format("Received non-0 exit code while moving files. Check netman log for more details")
+        return {error=_error, success=false}
     end
-    command = {}
-    for _, item in ipairs(SSH_COMMAND) do
-        table.insert(command, item)
+    
+    M.internal.remove_item_from_cache(target, target_cache, {clear_self=true, clear_parent=true})
+    for _, details in ipairs(paths) do
+        -- WARN: This might cause issues with cache shenanigans
+        M.internal.remove_item_from_cache(details.base_uri, target_cache, {clear_self=true, clear_parent=true})
     end
-    table.insert(command, details_1.auth_uri)
-    local p1 = details_1.path
-    local p2 = details_2.path
-    if details_1.is_relative then
-        p1 = string.format("~%s", p1)
-    end
-    if details_2.is_relative then
-        p2 = string.format("~%s", p2)
-    end
-    table.insert(command, string.format("mv %s %s", p1, p2))
-
-    command_output = shell:new(command, command_options):run()
-    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
-    if command_output.exit_code ~= 0 then
-        log.warn(string.format("Received non-0 exit code while making parent directory %s", details_2.path))
-        return false
-    end
-    -- There is absolutely no reason these 2 cache's should be different but the lua 
-    -- gods hate me and it seems they are...
-    M.internal.remove_item_from_cache(uri1, cache1, {clear_self=true, clear_parent=true})
-    M.internal.remove_item_from_cache(uri2, cache2, {clear_self=true, clear_parent=true})
-    return true
+    return {success=true}
 end
 
 function M.init(config, cache)

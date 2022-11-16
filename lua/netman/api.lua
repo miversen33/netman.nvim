@@ -156,7 +156,6 @@ function M.internal.validate_uri(uri)
     return uri, provider, cache, protocol
 end
 
-
 --- WARN: Do not rely on these functions existing
 --- WARN: Do not use these functions in your code
 --- WARN: If you put an issue in saying anything about using
@@ -606,46 +605,93 @@ function M.write(buffer_index, uri)
     provider.write(uri, cache, lines)
 end
 
--- @param current_uri string
--- @param new_uri string
--- @return boolean
-function M.move(current_uri, new_uri)
-    local _c_uri, _n_uri = current_uri, new_uri
-    local new_uri_cache = nil
-    local current_uri_provider, current_uri_cache, new_uri_provider, _
-    current_uri, current_uri_provider, current_uri_cache = M.internal.validate_uri(current_uri)
-    new_uri, new_uri_provider, new_uri_cache = M.internal.validate_uri(new_uri)
-    if not current_uri_provider or not new_uri_provider or not current_uri or not new_uri then
-        log.info(string.format("No providers found for %s or %s", _c_uri, _n_uri))
-        return false
+--- @param uris table
+---     A table (a single URI can be a string as well) of URIs that need to be moved
+--- @param target_uri string
+---     The target location for the URI(s) to be moved to.
+--- @return table
+---     Returns a table with the following keys,
+---     - error (optional)
+---         - Only present if there is an error. If so, the value will be the following table
+---             - message
+---             - callback (optional)
+function M.move(uris, target_uri)
+    local status = {}
+    -- Wrapping a single URI in a table so all logic is consistent
+    if type(uris) == 'string' then uris = { uris } end
+    local grouped_uris = {}
+    local _, target_provider, target_cache = M.internal.validate_uri(target_uri)
+    if not target_provider then
+        -- Something is very much not right
+        local _error = string.format("Unable to find provider for %s", target_uri)
+        log.error(_error)
+        return {
+            error = {
+                message = _error
+            }
+        }
     end
-    if current_uri_provider == new_uri_provider and current_uri_provider.move ~= nil then
-        -- Try to have the provider do the move
-        log.info(string.format("Trying to move %s to %s", current_uri, new_uri))
-        local success = current_uri_provider.move(current_uri, new_uri, current_uri_cache)
-        if success then
-            -- Provider was able to perform move. yaa!
-            return true
+    if not target_provider.archive or not target_provider.archive.put then
+        local _error = string.format("Target provider for %s did not implement archive.put", target_uri)
+        log.error(_error)
+        return {
+            error = {
+                message = _error
+            }
+        }
+    end
+
+    for _, uri in ipairs(uris) do
+        local _, provider, cache = M.internal.validate_uri(uri)
+        if not provider then
+            log.warn(string.format("Unable to find matching provider for %s", uri))
+            goto continue
+        end
+        if not provider.archive or not provider.archive.get then
+            log.warn(string.format("Provider for %s did not implement archive.get function", uri))
+            goto continue
+        end
+        if not grouped_uris[provider] then
+            grouped_uris[provider] = {}
+        end
+        table.insert(grouped_uris[provider], { uri = uri, cache = cache })
+        ::continue::
+    end
+    if grouped_uris[target_provider] then
+        local target_uris = {}
+        for _, details in ipairs(grouped_uris[target_provider]) do
+
+            table.insert(target_uris, details.uri)
+        end
+        log.info(string.format("Attempting to move uris internally in provider %s", target_provider.name), {uris=target_uris})
+        local move_status = target_provider.move(target_uris, target_uri, target_cache)
+        if move_status.success then
+            -- The provider was able to interally move the URIs on it, removing them
+            -- from the ones that need to be moved
+            grouped_uris[target_provider] = nil
         end
     end
-    -- -- If we get here, then we must have had a failure. Try to manually do move.
-    local compression_schemes = new_uri_provider.archive.schemes()
-    local archive_dir = require("netman.tools.utils").cache_dir
-    local status, data = pcall(current_uri_provider.archive.get, current_uri, current_uri_cache, archive_dir, compression_schemes)
-    if not status then
-        log.warn(string.format("%s failed to pull down archive for %s", current_uri_provider.name, current_uri), {error=data})
-        notify.error(string.format("Unable to copy %s to %s. Please check netman logs for details", current_uri, new_uri))
-        return false
+    local available_compression_schemes = target_provider.archive.schemes()
+    local temp_dir = require("netman.tools.utils").tmp_dir
+    for provider, data in pairs(grouped_uris) do
+        local archive_data = provider.archive.get(data.uri, data.cache, temp_dir, available_compression_schemes)
+        if archive_data and archive_data.archive then
+            -- If archive_data.error, we should complain about not being able to get this item
+            local archive_status = target_provider.archive.put(target_uri, target_cache, archive_data.archive,
+                archive_data.compression_scheme)
+            if archive_status.error then
+                -- IDK Handle this somehow?
+                status[data.uri] = {
+                    error = archive_status.error
+                }
+                log.warn(string.format("Received Error while trying to process %s", data.uri), { error = archive_status.error })
+            end
+        end
+        -- Remove the temporary file
+        assert(vim.loop.fs_unlink(archive_data.archive), string.format("Unable to remove %s", archive_data.archive))
     end
-    local archive = data.archive
-    status, data = pcall(new_uri_provider.archive.put, new_uri, new_uri_cache, archive, data.compression_scheme)
-    if not status then
-        log.warn(string.format("%s failed to accept archive for %s", new_uri_provider.name, new_uri), {error=data})
-        notify.error(string.format("Unable to copy %s to %s. Please check netman logs for details", current_uri, new_uri))
-        return false
-    end
-    assert(vim.loop.fs_unlink(archive), string.format("Unable to delete %s", archive))
-    return true
+
+    return status
 end
 
 function M.delete(uri)

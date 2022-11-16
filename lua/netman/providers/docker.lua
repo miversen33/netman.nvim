@@ -594,45 +594,59 @@ function M.write(uri, provider_cache, data)
     M.internal.remove_item_from_cache(uri, container_cache, {clear_self=true, clear_parent=true})
 end
 
-function M.move(uri1, uri2, cache)
-    local details_1 = M.internal._parse_uri(uri1)
-    local details_2 = M.internal._parse_uri(uri2)
-    M.internal._validate_cache(cache, details_1)
-    M.internal._validate_cache(cache, details_2)
-    if details_1.container ~= details_2.container then
-        log.warn(string.format("%s and %s are not on the same container!", uri1, uri2))
-        return false
+--- Takes a table of URIs and moves them into the target location, creating the location if it doesn't exist
+--- @param uris table
+--- @param target string
+--- @param provider_cache Cache
+--- @return table
+function M.move(uris, target, provider_cache)
+    local paths = {}
+    local _error = nil
+    local target_details = M.internal._parse_uri(target)
+    M.internal._validate_cache(provider_cache, target_details)
+    local container_cache = provider_cache:get_item(target_details.container)
+    if type(uris) == 'string' then uris = {uris} end
+    for _, uri in ipairs(uris) do
+        local details = M.internal._parse_uri(uri)
+        M.internal._validate_cache(provider_cache, details)
+        if details.container ~= target_details.container then
+            -- We aren't on the same container, bail out and let API figure it out
+            _error = "Cannot perform same container move between containers!"
+            break
+        end
+        table.insert(paths, details)
     end
-    local container_cache = cache:get_item(details_1.container)
-    if details_1.protocol ~= M.protocol_patterns[1] then
-        log.warn(string.format("Invalid URI: %s provided!", uri1))
-        return false
+    if _error then
+        return {error = _error, success = false}
     end
-    if details_2.protocol ~= M.protocol_patterns[1] then
-        log.warn(string.format("Invalid URI: %s provided!", uri2))
-        return false
+    local move_paths = nil
+    for _, details in ipairs(paths) do
+        -- We need to check if there is already a file with the same name as 
+        -- details.path at the target location. If it is, we will
+        -- need to remove the file first beforehand.
+        if not move_paths then
+            move_paths = string.format("mkdir -p %s && mv %s %s", target_details.path, details.path, target_details.path)
+        else
+            move_paths = string.format("%s && mv %s %s", move_paths, details.path, target_details.path)
+        end
     end
-    -- If we are here, it is safe to assume that both URIs are on the same container. Use
-    -- mv to move 1 to 2. Make sure to create the parent path for 2 first
-    local command, command_options, command_output
-    command_options = {[command_flags.STDERR_JOIN] = ''}
-    command = {"docker", "exec", details_1.container, "mkdir", "-p", details_2.parent}
-    command_output = shell:new(command, command_options):run()
-    log.trace({command=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
+    local docker_command = {"docker", "exec", target_details.container, "/bin/sh", "-c", move_paths}
+    local command_options = {[command_flags.STDOUT_JOIN] = '', [command_flags.STDERR_JOIN] = ''}
+    local command = shell:new(docker_command, command_options)
+    local command_output = command:run()
+    log.trace(command:dump_self_to_table())
+
     if command_output.exit_code ~= 0 then
-        log.warn(string.format("Received non-0 exit code while making parent path of %s", uri2))
-        return false
+        _error = "Unable to perform move. Check netman logs for more details"
+        log.warn(string.format("Unable to perform move to %s within container %s", target, target_details.container), {uris=uris})
+        return {error=_error, success = false}
     end
-    command = {"docker", "exec", details_1.container, "mv", details_1.path, details_2.path}
-    command_output = shell:new(command, command_options):run()
-    log.trace({comand=command, stdout=command_output.stdout, stderr=command_output.stderr, exit_code=command_output.exit_code})
-    if command_output.exit_code ~= 0 then
-        log.warn(string.format("Received non-0 exit code while moving %s to %s", uri1, uri2))
-        return false
+    for _, details in ipairs(paths) do
+        -- Since we have moved, we need to clear out ourself and our parent. We also need to clear out the target cache
+        M.internal.remove_item_from_cache(details.base_uri, container_cache, {clear_self=true, clear_parent=true})
     end
-    M.internal.remove_item_from_cache(uri1, container_cache, {clear_self=true, clear_parent=true})
-    M.internal.remove_item_from_cache(uri2, container_cache, {clear_self=true, clear_parent=true})
-    return true
+    M.internal.remove_item_from_cache(target, container_cache, {clear_self=true})
+    return {success=true}
 end
 
 function M.delete(uri, cache)
