@@ -112,7 +112,6 @@ function _G.vim.fn.mkdir(name, path, prot)
         assert(not err, err)
         if data then table.insert(_stderr, data) elseif #_stderr > 0 then error(table.concat(_stderr, ''), 2) end
     end)
-    luv.run()
 end
 
 -- Janky version of the vim.fn.stdpath function (:help stdpath)
@@ -252,4 +251,8 @@ function _G.vim.fn.json_decode(...)
     return json:decode(...)
 end
 
-luv.run()
+local looper = vim.loop.new_timer()
+local rerun_uv = function()
+    uv.run('nowait')
+end
+looper:start(0, 10, rerun_uv)

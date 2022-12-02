@@ -1,17 +1,7 @@
 return {
     utils = {
-        command = {
-             IGNORE_WHITESPACE_ERROR_LINES  =
-                'IGNORE_WHITESPACE_ERROR_LINES'
-            ,IGNORE_WHITESPACE_OUTPUT_LINES =
-                'IGNORE_WHITESPACE_OUTPUT_LINES'
-            ,STDOUT_JOIN = "STDOUT_JOIN"
-            ,STDERR_JOIN = "STDERR_JOIN"
-            ,SHELL_ESCAPE = "SHELL_ESCAPE"
-            ,ASYNC = "ASYNC"
-            ,ASYNC_CALLBACK = "ASYNC_CALLBACK"
-        }
-        ,LRU_CACHE_TICK_LIMIT = 1000 -- CPU Ticks
+        command = require("netman.tools.shell").CONSTANTS.FLAGS
+       ,LRU_CACHE_TICK_LIMIT = 1000 -- CPU Ticks
     }
     ,api = {
         READ_TYPE = {
@@ -111,7 +101,8 @@ return {
         STATES = {
             UNKNOWN = "UNKNOWN",
             AVAILABLE = "AVAILABLE",
-            ERROR = "ERROR"
+            ERROR = "ERROR",
+            REFRESHING = "REFRESHING"
         }
     }
 }

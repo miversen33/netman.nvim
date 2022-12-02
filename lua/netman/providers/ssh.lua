@@ -379,8 +379,6 @@ function M.internal._read_file(uri_details)
         return nil
     end
     local command_options = {
-        [command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true,
-        [command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true,
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = '',
     }
@@ -542,8 +540,6 @@ function M.internal._copy_to_remote(uri_details)
     end
     log.info("Generated read command " .. table.concat(command, ' '))
     local command_options = {
-        [command_flags.IGNORE_WHITESPACE_ERROR_LINES] = true,
-        [command_flags.IGNORE_WHITESPACE_OUTPUT_LINES] = true,
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = '',
     }
