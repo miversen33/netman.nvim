@@ -4,8 +4,8 @@ vim.g.loaded_netrw = 1
 
 vim.g.netman_no_shim = true
 
-local api    = require('netman.api')
 local utils  = require("netman.tools.utils")
+local api    = require('netman.api')
 local log    = utils.log
 local notify = utils.notify
 local libruv = require('netman.tools.libruv')

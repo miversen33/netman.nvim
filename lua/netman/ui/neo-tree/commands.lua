@@ -47,6 +47,31 @@ M.move = function(state, callback)
 end
 
 -- -- TODO:
+--
+-- TODO:
+M.cut_to_clipboard = function(state, callback)
+    local node = state.tree:get_node()
+    return M.cut_to_clipboard_visual(state, {node}, callback)
+end
+--
+-- TODO:
+-- Takes the selected nodes and "marks" them as cut.
+M.cut_to_clipboard_visual = function(state, selected_nodes, callback)
+    require("netman.tools.utils").log.debug({nodes=selected_nodes})
+    for _, node in ipairs(selected_nodes) do
+        ui.mark_node(node, ui.constants.MARK.cut)
+    end
+    do_callback(callback)
+end
+--
+-- -- TODO:
+M.paste_from_clipboard = function(state, callback)
+    ui.process_marked_nodes(state, {
+        ui.constants.MARK.cut,
+        ui.constants.MARK.copy
+    })
+    do_callback(callback)
+end
 M.delete_visual = function(state, selected_nodes, callback)
     for _, node in pairs(selected_nodes) do
         M.delete(state, node)

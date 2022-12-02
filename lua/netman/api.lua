@@ -549,7 +549,8 @@ function M.read(uri, opts)
     end
     if netman_options.api.READ_TYPE[read_type] == nil then
         notify.error("Unable to figure out how to display: " .. uri .. '!')
-        log.warn("Received invalid read type: " .. read_type .. ". This should be either api.READ_TYPE.STREAM or api.READ_TYPE.FILE!")
+        log.warn("Received invalid read type: " ..
+            read_type .. ". This should be either api.READ_TYPE.STREAM or api.READ_TYPE.FILE!")
         return nil
     end
     if read_data == nil then
@@ -559,7 +560,7 @@ function M.read(uri, opts)
     if type(read_data) ~= 'table' then
         log.warn("Data returned is not in a table. Attempting to make it a table")
         log.debug("grumble grumble, kids these days not following spec...")
-        read_data = {read_data}
+        read_data = { read_data }
     end
     local _data = nil
     if read_type == netman_options.api.READ_TYPE.EXPLORE then
@@ -573,10 +574,11 @@ function M.read(uri, opts)
     elseif read_type == netman_options.api.READ_TYPE.STREAM then
         _data = read_data
     else
-        log.warn(string.format("I have no idea what you expect me to do with read type %s, how did you even get this here?", read_type))
+        log.warn(string.format("I have no idea what you expect me to do with read type %s, how did you even get this here?"
+            , read_type))
         return nil
     end
-    log.trace(string.format("Getting %s contents for path %s", read_type:lower(), uri), {data=_data})
+    log.trace(string.format("Getting %s contents for path %s", read_type:lower(), uri), { data = _data })
     local _error = _data.error
     -- Removing error key value from data as it will be a parent level attribute
     _data.error = nil
@@ -616,7 +618,6 @@ end
 ---             - message
 ---             - callback (optional)
 function M.move(uris, target_uri)
-    local status = {}
     -- Wrapping a single URI in a table so all logic is consistent
     if type(uris) == 'string' then uris = { uris } end
     local grouped_uris = {}
@@ -652,46 +653,70 @@ function M.move(uris, target_uri)
             goto continue
         end
         if not grouped_uris[provider] then
-            grouped_uris[provider] = {}
+            grouped_uris[provider] = { uris = {}, cache = cache }
         end
-        table.insert(grouped_uris[provider], { uri = uri, cache = cache })
+        table.insert(grouped_uris[provider].uris, uri)
         ::continue::
     end
     if grouped_uris[target_provider] then
-        local target_uris = {}
-        for _, details in ipairs(grouped_uris[target_provider]) do
-
-            table.insert(target_uris, details.uri)
+        if not target_provider.move then
+            log.warn(string.format("%s does not support internal moving, attempting to force", target_provider.name))
+            goto continue
         end
+        local group = grouped_uris[target_provider]
+        local target_uris = group.uris
+
         log.info(string.format("Attempting to move uris internally in provider %s", target_provider.name), {uris=target_uris})
         local move_status = target_provider.move(target_uris, target_uri, target_cache)
         if move_status.success then
             -- The provider was able to interally move the URIs on it, removing them
             -- from the ones that need to be moved
             grouped_uris[target_provider] = nil
+            return { success = true }
         end
+        ::continue::
     end
-    local available_compression_schemes = target_provider.archive.schemes()
+    local available_compression_schemes = target_provider.archive.schemes(target_uri, target_cache)
+    if available_compression_schemes.error then
+        -- Complain that we got an error from the target and bail
+        local message = string.format("Received failure while looking for archive schemes for %s", target_uri)
+        log.warn(message, available_compression_schemes)
+        return { error = available_compression_schemes.error }
+    end
     local temp_dir = require("netman.tools.utils").tmp_dir
+    -- TODO: Mike
+    -- Consider a coroutine for each iteration of this loop and then join those bois together so 
+    -- we can properly "utilize" multiprocessing
     for provider, data in pairs(grouped_uris) do
-        local archive_data = provider.archive.get(data.uri, data.cache, temp_dir, available_compression_schemes)
-        if archive_data and archive_data.archive then
-            -- If archive_data.error, we should complain about not being able to get this item
-            local archive_status = target_provider.archive.put(target_uri, target_cache, archive_data.archive,
-                archive_data.compression_scheme)
-            if archive_status.error then
-                -- IDK Handle this somehow?
-                status[data.uri] = {
-                    error = archive_status.error
-                }
-                log.warn(string.format("Received Error while trying to process %s", data.uri), { error = archive_status.error })
+        local archive_data = provider.archive.get(data.uris, data.cache, temp_dir, available_compression_schemes)
+        log.debug("Archive Data", {uris = data.uris, archive_data=archive_data})
+        if archive_data.error then
+            -- Something happened!
+            local message = string.format("Received error while trying to archive uris on %s", provider.name)
+            notify.warn(message)
+            log.warn(message, archive_data.error)
+            -- TODO: Consider a way to let the archival resume on failure if the user wishes...?
+            return archive_data
+        end
+        local status = target_provider.archive.put(target_uri, target_cache, archive_data.archive_path, archive_data.scheme)
+        log.debug("Extract Status", status)
+        if status.error then
+            local message = string.format("Received error from %s while trying to upload archive", target_provider.name)
+            notify.warn(message)
+            log.warn(message, status)
+        end
+        for _, uri in ipairs(data.uris) do
+            status = provider.delete(uri, data.cache)
+            if status.error then
+                local message = string.format("Received error during cleanup of %s", uri)
+                notify.warn(message)
+                log.warn(message, status)
             end
         end
-        -- Remove the temporary file
-        assert(vim.loop.fs_unlink(archive_data.archive), string.format("Unable to remove %s", archive_data.archive))
+        -- -- Remove the temporary file
+        assert(vim.loop.fs_unlink(archive_data.archive_path), string.format("Unable to remove %s", archive_data.archive))
     end
-
-    return status
+    return {success = true}
 end
 
 function M.delete(uri)

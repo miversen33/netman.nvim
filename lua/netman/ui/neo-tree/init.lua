@@ -17,10 +17,23 @@ local CACHE_TIMEOUT = CACHE_FACTORY.FOREVER
 local M = {
     name = "remote",
     default_config = defaults,
+    -- Enum vars
+    constants = {
+        MARK = {
+            delete = "delete",
+            copy   = "copy",
+            cut    = "cut",
+            open   = "open"
+        }
+    },
     internal = {
-        sorter = {}
+        sorter = {},
+        -- Where we will keep track of nodes that have been
+        -- marked for cut/copy/delete/open/etc
+        marked_nodes = {}
     }
 }
+-- TODO: Figure out a way to make a constant variable????
 
 -- Sorts nodes in ascending order
 M.internal.sorter.ascending = function(a, b) return a.name < b.name end
@@ -372,10 +385,16 @@ M.internal.delete_item = function(uri)
     return true
 end
 
-M.delete_node = function(state)
+--- Deletes the selected or target node
+--- @param state NeotreeState
+--- @param target_node_id string
+---     The node to target for deletion. If not provided, will use the
+---     currently selected node in state
+M.delete_node = function(state, target_node_id)
+    -- TODO: Do we also delete the buffer if its open????
     local tree, node, node_name, parent_id
     tree = state.tree
-    node = tree:get_node()
+    node = tree:get_node(target_node_id)
     node_name = node.name
     parent_id = node:get_parent_id()
     log.debug(string.format("Deleting Node %s with parent id %s", node_name, parent_id))
@@ -409,11 +428,15 @@ M.internal.rename = function(old_uri, new_uri)
     return api.move(old_uri, new_uri)
 end
 
-M.rename_node = function(state)
-    -- Get the name to rename to
+--- Renames the selected or target node
+--- @param state NeotreeState
+--- @param target_node_id string
+---     The node to target for deletion. If not provided, will use the
+---     currently selected node in state
+M.rename_node = function(state, target_node_id)
     local tree, node, current_uri, parent_uri, parent_id
     tree = state.tree
-    node = tree:get_node()
+    node = tree:get_node(target_node_id)
     if not node.extra then
         log.warn(string.format("%s says its a netman node but its lyin", node.name))
         return
@@ -441,14 +464,127 @@ M.rename_node = function(state)
             return
         end
         M.refresh(state, {refresh_only_id=parent_id})
+        -- Rename any buffers that currently have the old uri as their name
+        for _, buffer_number in ipairs(vim.api.nvim_list_bufs()) do
+            if vim.api.nvim_buf_get_name(buffer_number) == current_uri then
+                vim.api.nvim_buf_set_name(buffer_number, new_uri)
+            end
+        end
     end
     input.input(message, default, callback)
+end
+
+--- Marks a node for later use.
+--- @param node NuiTreeNode
+--- @param mark string
+---     Valid marks
+---     - cut
+---     - delete
+---     - copy
+---     - open
+--- @return nil
+M.mark_node = function(node, mark)
+    assert(M.constants.MARK[mark], string.format("Invalid Mark %s", mark))
+    local marked_nodes = M.internal.marked_nodes[mark] or {}
+    table.insert(marked_nodes, node:get_id())
+    M.internal.marked_nodes[mark] = marked_nodes
+end
+
+--- Process marked nodes
+--- @param state NeotreeState
+--- @param target_marks table/nil
+--- @return nil
+M.process_marked_nodes = function(state, target_marks)
+    log.debug({target=target_marks, marks=M.internal.marked_nodes})
+    if not target_marks then
+        target_marks = {}
+        -- Adding all marks to process
+        for _, value in pairs(M.constants.MARK) do
+            table.insert(target_marks, value)
+        end
+    end
+    -- validating the target marks
+    for _, mark in ipairs(target_marks) do
+        -- Jump to end of loop if there is nothing for us to do with this mark
+        if not M.internal.marked_nodes[mark] then goto continue end
+        assert(M.constants.MARK[mark], string.format("Invalid Target Mark: %s", mark))
+        local nodes = {}
+        local tree = state.tree
+        local target_node = tree:get_node()
+        for _, node_id in ipairs(M.internal.marked_nodes[mark]) do
+            local node = tree:get_node(node_id)
+            table.insert(nodes, node)
+        end
+        if mark == M.constants.MARK.cut and #nodes > 0 then
+            M.move_nodes(state, nodes, target_node)
+        end
+        -- Clearing out the marked nodes for this mark
+        M.internal.marked_nodes[mark] = nil
+        ::continue::
+    end
+end
+
+--- Clears out the marked nodes
+--- @param target_marks table
+---     If provided, only clears out marks for the provided targets
+---     Valid marks can be found in @see mark_node
+M.clear_marked_nodes = function(target_marks)
+    if not target_marks then
+        target_marks = {}
+        -- Adding all marks to process
+        for _, value in pairs(M.constants.MARK) do
+            table.insert(target_marks, value)
+        end
+    end
+    -- validating the target marks
+    for _, mark in ipairs(target_marks) do
+        assert(M.constants.MARK[mark], string.format("Invalid Target Mark: %s", mark))
+        M.internal.marked_nodes[mark] = {}
+    end
 end
 
 M.move_node = function(state)
 
     notify.warn("Move is not currently supported!")
     return
+end
+
+M.move_nodes = function(state, nodes, target_node)
+    log.debug({nodes=nodes, target_node=target_node})
+    local uris = {}
+    local parents = {}
+    local bailout = true
+    for _, node in ipairs(nodes) do
+        table.insert(uris, node.extra.uri)
+        parents[node:get_parent_id()] = 1
+        bailout = false
+    end
+    if bailout then
+        log.debug("No nodes to move")
+        return
+    end
+    local target_uri = target_node.extra.uri
+    local success = api.move(uris, target_uri)
+    if success then
+        for parent, _ in pairs(parents) do
+            M.refresh(state, {refresh_only_id=parent})
+        end
+        M.refresh(state, {refresh_only_id=target_node:get_id()})
+    end
+end
+
+M.copy_nodes = function(state, nodes, target_node)
+    
+end
+
+M.open_nodes = function(state, nodes)
+
+end
+
+M.delete_nodes = function(state, nodes)
+    for _, node_id in ipairs(nodes) do
+        M.delete_node(state, node_id)
+    end
 end
 
 M.setup = function(neo_tree_config)
