@@ -307,8 +307,8 @@ M.navigate = function(state, opts)
         else
             node = tree:get_node()
         end
-        if not node.extra then
-            log.warn(string.format("Node %s doesn't have any extra attributes, not dealing with this shit today", node.name))
+        if not node or not node.extra then
+            log.warn("Node doesn't exist or is missing the extra attribute", {node=node, opts=opts})
             return
         end
         if node:is_expanded() then
@@ -558,8 +558,9 @@ M.clear_marked_nodes = function(target_marks)
     end
 end
 
-M.move_node = function(state)
 
+M.move_node = function(state)
+    require("netman.tools.utils").dump_callstack()
     notify.warn("Move is not currently supported!")
     return
 end
@@ -575,7 +576,6 @@ M.move_nodes = function(state, nodes, target_node)
         bailout = false
     end
     if bailout then
-        log.debug("No nodes to move")
         return
     end
     if target_node.type == 'netman_provider' then
