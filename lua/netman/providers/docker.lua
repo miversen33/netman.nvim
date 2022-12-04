@@ -1553,7 +1553,9 @@ function M.read(uri, cache)
     if not stat then
         return {
             success = false,
-            error = string.format("%s doesn't exist", uri:to_string())
+            error = {
+                message = string.format("%s doesn't exist", uri:to_string())
+            }
         }
     end
     -- If the container is running there is no reason we can't quickly stat the file in question...
@@ -1602,7 +1604,9 @@ function M.move(uris, target_uri, cache)
         if __.container ~= validation.container then
             return {
                 success = false,
-                error = string.format("%s and %s are not on the same container!", uri, target_uri)
+                error = {
+                    message = string.format("%s and %s are not on the same container!", uri, target_uri)
+                }
         }
         end
         table.insert(validated_uris, __.uri)

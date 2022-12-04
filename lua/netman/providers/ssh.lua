@@ -1537,7 +1537,9 @@ function M.read(uri, cache)
     if not stat then
         return {
             success = false,
-            error = string.format("%s doesn't exist", uri:to_string())
+            error = {
+                message = string.format("%s doesn't exist", uri:to_string())
+            }
         }
     end
     -- If the container is running there is no reason we can't quickly stat the file in question...
@@ -1584,7 +1586,9 @@ function M.write(uri, cache, data, opts)
             -- the results.
             if looped then
                 return_details = {
-                    error = string.format("Too many stat results returned for %s", uri:to_string('remote')),
+                    error = {
+                        message = string.format("Too many stat results returned for %s", uri:to_string('remote'))
+                    },
                     success = false
                 }
                 return

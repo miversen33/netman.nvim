@@ -97,7 +97,8 @@ M.internal.get_provider_children = function(provider)
     return hosts
 end
 
-M.internal.get_uri_children = function(state, uri)
+M.internal.get_uri_children = function(state, uri, opts)
+    opts = opts or {}
     local children = {}
     -- Get the output from netman.api.read
     -- Do stuff with that output?
@@ -124,9 +125,11 @@ M.internal.get_uri_children = function(state, uri)
             input.input(message, default, callback)
             return nil
         else
-            -- No callback was provided, display the error and move on with our lives
-            print(string.format("Unable to read %s, received error", message))
-            log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
+            if not opts.ignore_unhandled_errors then
+                -- No callback was provided, display the error and move on with our lives
+                print(string.format("Unable to read %s, received error", message))
+                log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
+            end
             return nil
         end
     end
@@ -177,7 +180,8 @@ M.internal.get_uri_children = function(state, uri)
     return children
 end
 
-M.internal.generate_node_children = function(state, node)
+M.internal.generate_node_children = function(state, node, opts)
+    opts = opts or {}
     local children = {}
     if not node then
         -- No node was provided, assume we want the root providers
@@ -188,19 +192,18 @@ M.internal.generate_node_children = function(state, node)
             log.error(string.format("Node %s says its a provider but doesn't have a provider. How tf????", node.name), {node=node})
             return children
         end
-        children = M.internal.get_provider_children(node.extra.provider)
+        children = M.internal.get_provider_children(node.extra.provider, opts)
     else
         if not node.extra.uri then
             -- SCREAM!
            log.error(string.format("Node %s says its a netman node, but has no URI. How tf????", node.name), {node=node})
            return children
         end
-        children = M.internal.get_uri_children(state, node.extra.uri)
+        children = M.internal.get_uri_children(state, node.extra.uri, opts)
     end
     return children
 end
 
--- BUG: When refresh is ran on a file, it is opened. Probably not great
 M.refresh = function(state, opts)
     local refresh_stack, return_stack, tree, head, children
     opts = opts or {}
@@ -248,6 +251,9 @@ M.refresh = function(state, opts)
     if not opts.auto then
         notify.info(message)
     end
+    local generate_node_children_opts = {
+        ignore_unhandled_errors = opts.auto or false
+    }
     while(#refresh_stack> 0) do
         -- - While there are things in the process stack
         head = table.remove(refresh_stack, 1)
@@ -266,7 +272,7 @@ M.refresh = function(state, opts)
             ::continue::
         end
         -- - Generate the nodes new children (assume all nodes will always have the same ID)
-        children = M.internal.generate_node_children(state, head)
+        children = M.internal.generate_node_children(state, head, generate_node_children_opts)
         if children and type(children) == 'table' then
             table.insert(return_stack, {children=children, parent_id=head_id})
         else
@@ -571,6 +577,7 @@ end
 
 
 M.move_node = function(state)
+    M.clear_marked_nodes()
     local node = state.tree:get_node()
     local status = M.mark_node(node, M.constants.MARK.cut)
     if status.success then
@@ -602,12 +609,8 @@ M.move_nodes = function(state, nodes, target_node)
     local success = api.move(uris, target_uri)
     if success then
         for parent, _ in pairs(parents) do
-            -- This can sometimes fail because the parent doesn't exist anymore.
-            -- Thats ok, lets just call this with pcall
             M.refresh(state, {refresh_only_id=parent, auto=true})
         end
-        -- This can sometimes fail because the target_node doesn't exist anymore.
-        -- Thats ok, lets just call this with pcall
         M.refresh(state, {refresh_only_id=target_node:get_id(), auto=true})
     end
     -- TODO: Highlight target?

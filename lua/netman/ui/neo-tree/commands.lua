@@ -59,6 +59,7 @@ end
 -- TODO:
 -- Takes the selected nodes and "marks" them as cut.
 M.cut_to_clipboard_visual = function(state, selected_nodes, callback)
+    ui.clear_marked_nodes()
     local message = string.format("Marked %s nodes for move", #selected_nodes)
     local status = {}
     for _, node in ipairs(selected_nodes) do
@@ -89,6 +90,7 @@ M.paste_from_clipboard = function(state, callback)
             ui.constants.MARK.cut,
             ui.constants.MARK.copy
         })
+        notify.info("Successfully pasted requested node(s)")
         do_callback(callback)
     end
     input.input(message, default, confirm_callback)

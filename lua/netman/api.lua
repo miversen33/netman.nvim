@@ -553,7 +553,9 @@ function M.read(uri, opts)
     if read_data == nil then
         log.info("Received no read_data. I'm gonna get angry!")
         return {
-            error = "Nil Read Data",
+            error = {
+                message = "Nil Read Data"
+            },
             success = false
         }
     end
@@ -565,7 +567,9 @@ function M.read(uri, opts)
     if netman_options.api.READ_TYPE[read_type] == nil then
         log.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
         return {
-            error = "Invalid Read Type",
+            error = {
+                message = "Invalid Read Type"
+            },
             success = false
         }
     end
