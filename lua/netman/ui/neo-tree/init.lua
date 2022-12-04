@@ -158,7 +158,8 @@ M.internal.get_uri_children = function(state, uri)
             id = item.URI,
             name = item.NAME,
             extra = {
-                uri = item.URI
+                uri = item.URI,
+                markable = true
             }
         }
         if item.FIELD_TYPE == 'LINK' then
@@ -497,12 +498,23 @@ end
 ---     - delete
 ---     - copy
 ---     - open
---- @return nil
+--- @return table
+---     Returns a table with the following key,value pairs
+---     - success : boolean
+---     - error   : string | Optional
+---         - If returned, the message/reason for failure
 M.mark_node = function(node, mark)
     assert(M.constants.MARK[mark], string.format("Invalid Mark %s", mark))
+    if not node.extra or not node.extra.markable then
+        return {
+            success = false,
+            error = string.format('%s is not a moveable node!', node.name)
+        }
+    end
     local marked_nodes = M.internal.marked_nodes[mark] or {}
     table.insert(marked_nodes, node:get_id())
     M.internal.marked_nodes[mark] = marked_nodes
+    return { success = true }
 end
 
 --- Process marked nodes
@@ -510,7 +522,6 @@ end
 --- @param target_marks table/nil
 --- @return nil
 M.process_marked_nodes = function(state, target_marks)
-    log.debug({target=target_marks, marks=M.internal.marked_nodes})
     if not target_marks then
         target_marks = {}
         -- Adding all marks to process
@@ -560,9 +571,13 @@ end
 
 
 M.move_node = function(state)
-    require("netman.tools.utils").dump_callstack()
-    notify.warn("Move is not currently supported!")
-    return
+    local node = state.tree:get_node()
+    local status = M.mark_node(node, M.constants.MARK.cut)
+    if status.success then
+        notify.info(string.format("Selected %s for cut", node.name))
+    else
+        notify.warn(status.error)
+    end
 end
 
 M.move_nodes = function(state, nodes, target_node)
@@ -595,6 +610,7 @@ M.move_nodes = function(state, nodes, target_node)
         -- Thats ok, lets just call this with pcall
         M.refresh(state, {refresh_only_id=target_node:get_id(), auto=true})
     end
+    -- TODO: Highlight target?
 end
 
 M.copy_nodes = function(state, nodes, target_node)

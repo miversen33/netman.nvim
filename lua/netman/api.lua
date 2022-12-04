@@ -905,17 +905,18 @@ function M.load_provider(provider_path)
     log.trace("Initializing " .. provider_path .. ":" .. provider.version)
     M._providers.path_to_provider[provider_path] = { provider = provider,
         cache = cache_generator:new(cache_generator.MINUTE) }
+    -- TODO(Mike): Figure out how to load configuration options for providers
+    local provider_config = M.internal.config:get(provider_path)
+    log.debug(string.format("Fetching Config for %s", provider_path), {config=provider_config})
+    if not provider_config then
+        provider_config = require("netman.tools.configuration"):new()
+        provider_config.save = function(_) M.internal.config:save() end
+        M.internal.config:set(provider_path, provider_config)
+    end
+    provider_config:set('_last_loaded', vim.loop.now())
+    M.internal.config:save()
     if provider.init then
         log.trace("Found init function for provider!")
-        -- TODO(Mike): Figure out how to load configuration options for providers
-        local provider_config = M.internal.config:get(provider_path)
-        if not provider_config then
-            provider_config = require("netman.tools.configuration"):new()
-            provider_config.save = function(_) M.internal.config:save() end
-            M.internal.config:set(provider_path, provider_config)
-        end
-        provider_config:set('_last_loaded', vim.loop.now())
-        M.internal.config:save()
         -- Consider having this being a timeout based async job?
         -- Bad actors will break the plugin altogether
         local valid = nil
