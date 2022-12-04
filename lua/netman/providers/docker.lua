@@ -1444,7 +1444,13 @@ function URI:parent()
     for _, _item in ipairs(self.path) do
         table.insert(_path, _item)
     end
-    table.remove(_path, #_path)
+    local tail = table.remove(_path, #_path)
+    -- If this is a shell variable, we have no idea what it could be or what it will expand to,
+    -- so just use generic `..`
+    if tail:match('^%$') then
+        table.insert(_path, tail)
+        table.insert(_path, '..')
+    end
     if #_path == 0 then _path = { '/' } end
 
     return URI:new(
