@@ -52,8 +52,6 @@ local Container = {
         },
         -- Maximimum number of bytes we are willing to read in at once from a file
         IO_BYTE_LIMIT = 2 ^ 13,
-        -- The exit code we will pass once we are done writing to shell
-        END_IO_EXIT_CODE = -10,
         STAT_FLAGS = {
             MODE = 'MODE',
             BLOCKS = 'BLOCKS',
@@ -110,7 +108,6 @@ function Container:new(container_name, provider_cache)
         Container.internal.DOCKER_ENABLED = true
     end
     local _container = {}
-    -- self.__index = self
     self.__index = function(_table, _key)
         if _key == 'os' then
             return Container._get_os(_table)
@@ -129,7 +126,7 @@ function Container:new(container_name, provider_cache)
     setmetatable(_container, self)
     _container.name = container_name
 
-    _container.__type = 'netman_docker_container'
+    _container.__type = 'netman_provider_docker'
     _container.protocol = 'docker'
     -- These are all lazy loaded via the index function
     -- _container.os = ''
@@ -159,9 +156,7 @@ end
 
 function Container:_get_archive_availability_details()
     log.trace(string.format("Checking Available Archive Formats for %s", self.name))
-    local output = self:run_command('tar --version', {
-        dont_start = true
-    })
+    local output = self:run_command('tar --version', { [command_flags.STDERR_JOIN] = '' })
     if output.exit_code ~= 0 then
         -- complain about being unable to find archive details...
         log.warn(string.format("Unable to establish archive details for %s", self.name))
@@ -177,7 +172,7 @@ function Container:_get_archive_availability_details()
     local tar_type = output.stdout[1]
     if tar_type:match('busybox') then
         -- Found a busybox version of tar. Get ready for the fuckery!
-        archive_commands['tar.gz'] = function(locations, cache)
+        archive_commands['tar.gz'] = function(locations)
             local formatted_command = ''
             local pre_format_command = "%s (%s tar -cf - -C %s %s)"
             local header_offset = ''
@@ -185,7 +180,7 @@ function Container:_get_archive_availability_details()
             for _, location in ipairs(locations) do
                 assert(location.__type and location.__type == 'netman_uri',
                     string.format("%s is not a compatible netman uri", location))
-                local parent = location:parent(cache):to_string()
+                local parent = location:parent():to_string()
                 local chain = ''
                 if not first_pass then
                     header_offset = 'head -c -1024 &&'
@@ -201,7 +196,7 @@ function Container:_get_archive_availability_details()
         end
     else
         -- GNU Tar. Ya!!!
-        archive_commands['tar.gz'] = function(locations, cache)
+        archive_commands['tar.gz'] = function(locations)
             local formatted_command = ''
             local pre_format_command = "%s (%s tar --blocking-factor 1 -cf - -C %s %s)"
             local header_offset = ''
@@ -209,7 +204,7 @@ function Container:_get_archive_availability_details()
             for _, location in ipairs(locations) do
                 assert(location.__type and location.__type == 'netman_uri',
                     string.format("%s is not a compatible netman uri", location))
-                local parent = location:parent(cache):to_string()
+                local parent = location:parent():to_string()
                 local chain = ''
                 if not first_pass then
                     header_offset = 'head -c -1024 &&'
@@ -230,7 +225,6 @@ function Container:_get_archive_availability_details()
     end
     archive_commands['tar'] = archive_commands['tar.gz']
     extract_commands['tar'] = extract_commands['tar.gz']
-    -- local _check_zip = 'type zip'
     return {
         archive_commands = archive_commands,
         extract_commands = extract_commands,
@@ -246,10 +240,6 @@ end
 ---     A table of command options. @see netman.tools.shell for details. Additional key/value options
 ---     - no_shell
 ---         - If provided, the command will not be wrapped in a `/bin/sh -c` execution context. Note, this will be set if you provide a table for command
----    - dont_start
----         - If provided, run_command will just return an empty table if the container is not currently running. Default is to start the container
----         If this is provided, a table with the following details will be returned
----         {stdout = '', exit_code = -1, stderr = 'Container Not Running'}
 --- @return table
 ---     Returns a table with the following key value pairs
 ---     - exit_code: integer
@@ -570,7 +560,7 @@ function Container:archive(locations, archive_dir, compatible_scheme_list, provi
     end
     locations = converted_locations
     local archive_name = opts.output_file_name or string.format("%s.%s", string_generator(10), selected_compression)
-    local compress_command = compression_function(locations, provider_cache)
+    local compress_command = compression_function(locations)
     local archive_path = string.format("%s/%s", archive_dir, archive_name)
     local finish_callback = function(output)
         log.trace(output)
@@ -678,7 +668,7 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
     self:mkdir(target_dir, { force = true })
     local finish_callback = function(command_output)
         log.trace(command_output)
-        if command_output.exit_code ~= 0 and command_output.exit_code ~= Container.CONSTANTS.END_IO_EXIT_CODE then
+        if command_output.exit_code ~= 0 then
             local _error = string.format("Unable to extract %s", archive)
             log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
             return_details = { error = _error, success = false }
@@ -761,7 +751,6 @@ end
 ---     local container = Container:new('ubuntu')
 ---     container:mv('/tmp/testfile.txt', '/tmp/testfile2.txt')
 function Container:mv(locations, target_location, opts)
-    log.debug({locations=locations, target_location=target_locations})
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
     if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
@@ -1000,11 +989,6 @@ function Container:find(location, opts)
         end
     end
     return self:run_command(table.concat(find_command, ' '), command_options).stdout
-    -- error("Not implemented")
-end
-
-function Container:grep()
-    error("Not implemented")
 end
 
 --- Uploads a file to the container, placing it in the provided location
@@ -1641,6 +1625,7 @@ function M.get_metadata(uri, cache)
 end
 
 function M.update_metadata(uri, cache, updates)
+    -- TODO:
     local container = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end

@@ -200,7 +200,6 @@ M.internal.generate_node_children = function(state, node)
 end
 
 -- BUG: When refresh is ran on a file, it is opened. Probably not great
--- Need a way to indicate that we only want to refresh a certain id
 M.refresh = function(state, opts)
     local refresh_stack, return_stack, tree, head, children
     opts = opts or {}
