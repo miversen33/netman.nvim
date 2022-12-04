@@ -17,10 +17,23 @@ local CACHE_TIMEOUT = CACHE_FACTORY.FOREVER
 local M = {
     name = "remote",
     default_config = defaults,
+    -- Enum vars
+    constants = {
+        MARK = {
+            delete = "delete",
+            copy   = "copy",
+            cut    = "cut",
+            open   = "open"
+        }
+    },
     internal = {
-        sorter = {}
+        sorter = {},
+        -- Where we will keep track of nodes that have been
+        -- marked for cut/copy/delete/open/etc
+        marked_nodes = {}
     }
 }
+-- TODO: Figure out a way to make a constant variable????
 
 -- Sorts nodes in ascending order
 M.internal.sorter.ascending = function(a, b) return a.name < b.name end
@@ -105,7 +118,7 @@ M.internal.get_uri_children = function(state, uri)
                 local response = _error.callback(_)
                 if response.retry then
                     -- Do a retry of ourselves???
-                    M.refresh(state, {refresh_only_id=parent_id})
+                    M.refresh(state, {refresh_only_id=parent_id, auto=true})
                 end
             end
             input.input(message, default, callback)
@@ -145,7 +158,8 @@ M.internal.get_uri_children = function(state, uri)
             id = item.URI,
             name = item.NAME,
             extra = {
-                uri = item.URI
+                uri = item.URI,
+                markable = true
             }
         }
         if item.FIELD_TYPE == 'LINK' then
@@ -187,7 +201,6 @@ M.internal.generate_node_children = function(state, node)
 end
 
 -- BUG: When refresh is ran on a file, it is opened. Probably not great
--- Need a way to indicate that we only want to refresh a certain id
 M.refresh = function(state, opts)
     local refresh_stack, return_stack, tree, head, children
     opts = opts or {}
@@ -205,12 +218,13 @@ M.refresh = function(state, opts)
         return M.navigate(state)
     end
     tree = state.tree
+    local message = ''
     if opts.do_all then
         -- Iterate over the "root nodes" (providers) and add them to the refresh stack
         for _, child in ipairs(tree:get_nodes()) do
             table.insert(refresh_stack, child)
         end
-        log.debug("Running full refresh of all providers")
+        message = "Running full refresh of all providers"
     elseif opts.refresh_only_id then
         -- We are going to start our refresh at this node, regardless of what node
         -- we are currently looking at
@@ -218,14 +232,21 @@ M.refresh = function(state, opts)
         -- function call into the table.insert statement so 🤷
         local _ = state.tree:get_node(opts.refresh_only_id)
         table.insert(refresh_stack, _)
-        log.debug(string.format("Running Targetted Refresh of %s", opts.refresh_only_id))
+        message = string.format("Running Targetted Refresh of %s", opts.refresh_only_id)
     else
         -- Add the current node found at state.tree:get_node() to the process stack
         -- NOTE: Not really sure why but lua shits the bed if you move the
         -- function call into the table.insert statement so 🤷
         local _ = state.tree:get_node()
+        -- If the refresh is being ran on a file, refresh the parent directory instead
+        if _.type ~= 'directory' then _ = state.tree:get_node(_:get_parent_id()) end
         table.insert(refresh_stack, _)
-        log.debug(string.format("Running full refresh on %s", _.name))
+        message = string.format("Running full refresh on %s", _.name)
+    end
+    -- Auto will be passed by anything inside this file. External calls to refresh will
+    -- notify the user that a refresh was triggered
+    if not opts.auto then
+        notify.info(message)
     end
     while(#refresh_stack> 0) do
         -- - While there are things in the process stack
@@ -287,8 +308,8 @@ M.navigate = function(state, opts)
         else
             node = tree:get_node()
         end
-        if not node.extra then
-            log.warn(string.format("Node %s doesn't have any extra attributes, not dealing with this shit today", node.name))
+        if not node or not node.extra then
+            log.warn("Node doesn't exist or is missing the extra attribute", {node=node, opts=opts})
             return
         end
         if node:is_expanded() then
@@ -325,13 +346,19 @@ M.internal.add_item_to_node = function(state, node, item)
         head_child = table.remove(children, 1)
         uri = string.format("%s%s/", uri, head_child)
         api.write(nil, uri)
-        M.refresh(state, {refresh_only_id=parent_id})
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
         parent_id = uri
     end
     if tail_child then
         uri = string.format("%s%s", uri, tail_child)
-        api.write(nil, uri)
-        M.refresh(state, {refresh_only_id=parent_id})
+        local write_status = api.write(nil, uri)
+        if not write_status.success then
+            -- IDK, complain?
+            error(write_status.error)
+            return
+        end
+        uri = write_status.uri
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
         M.navigate(state, {target_id=uri})
     end
 end
@@ -353,6 +380,8 @@ M.add_node = function(state, opts)
         if opts.force_dir and response:sub(-1, -1) ~= '/' then
             response = string.format("%s/", response)
         end
+        -- Check to see if node is a directory. If not, get its parent
+        if node.type ~= 'directory' then tree:get_node(node:get_parent_id()) end
         M.internal.add_item_to_node(state, node, response)
     end
     -- Check if the node is active before trying to add to it
@@ -372,10 +401,16 @@ M.internal.delete_item = function(uri)
     return true
 end
 
-M.delete_node = function(state)
+--- Deletes the selected or target node
+--- @param state NeotreeState
+--- @param target_node_id string
+---     The node to target for deletion. If not provided, will use the
+---     currently selected node in state
+M.delete_node = function(state, target_node_id)
+    -- TODO: Do we also delete the buffer if its open????
     local tree, node, node_name, parent_id
     tree = state.tree
-    node = tree:get_node()
+    node = tree:get_node(target_node_id)
     node_name = node.name
     parent_id = node:get_parent_id()
     log.debug(string.format("Deleting Node %s with parent id %s", node_name, parent_id))
@@ -400,7 +435,7 @@ M.delete_node = function(state)
             notify.warn(string.format("Unable to delete %s. Received error, check netman logs for details!", node_name))
             return
         end
-        M.refresh(state, {refresh_only_id=parent_id})
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
     end
     input.input(message, default, callback)
 end
@@ -409,11 +444,15 @@ M.internal.rename = function(old_uri, new_uri)
     return api.move(old_uri, new_uri)
 end
 
-M.rename_node = function(state)
-    -- Get the name to rename to
+--- Renames the selected or target node
+--- @param state NeotreeState
+--- @param target_node_id string
+---     The node to target for deletion. If not provided, will use the
+---     currently selected node in state
+M.rename_node = function(state, target_node_id)
     local tree, node, current_uri, parent_uri, parent_id
     tree = state.tree
-    node = tree:get_node()
+    node = tree:get_node(target_node_id)
     if not node.extra then
         log.warn(string.format("%s says its a netman node but its lyin", node.name))
         return
@@ -440,15 +479,152 @@ M.rename_node = function(state)
             notify.warn(string.format("Unable to move %s to %s. Please check netman logs for more details", current_uri, new_uri))
             return
         end
-        M.refresh(state, {refresh_only_id=parent_id})
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
+        -- Rename any buffers that currently have the old uri as their name
+        for _, buffer_number in ipairs(vim.api.nvim_list_bufs()) do
+            if vim.api.nvim_buf_get_name(buffer_number) == current_uri then
+                vim.api.nvim_buf_set_name(buffer_number, new_uri)
+            end
+        end
     end
     input.input(message, default, callback)
 end
 
-M.move_node = function(state)
+--- Marks a node for later use.
+--- @param node NuiTreeNode
+--- @param mark string
+---     Valid marks
+---     - cut
+---     - delete
+---     - copy
+---     - open
+--- @return table
+---     Returns a table with the following key,value pairs
+---     - success : boolean
+---     - error   : string | Optional
+---         - If returned, the message/reason for failure
+M.mark_node = function(node, mark)
+    assert(M.constants.MARK[mark], string.format("Invalid Mark %s", mark))
+    if not node.extra or not node.extra.markable then
+        return {
+            success = false,
+            error = string.format('%s is not a moveable node!', node.name)
+        }
+    end
+    local marked_nodes = M.internal.marked_nodes[mark] or {}
+    table.insert(marked_nodes, node:get_id())
+    M.internal.marked_nodes[mark] = marked_nodes
+    return { success = true }
+end
 
-    notify.warn("Move is not currently supported!")
-    return
+--- Process marked nodes
+--- @param state NeotreeState
+--- @param target_marks table/nil
+--- @return nil
+M.process_marked_nodes = function(state, target_marks)
+    if not target_marks then
+        target_marks = {}
+        -- Adding all marks to process
+        for _, value in pairs(M.constants.MARK) do
+            table.insert(target_marks, value)
+        end
+    end
+    -- validating the target marks
+    for _, mark in ipairs(target_marks) do
+        -- Jump to end of loop if there is nothing for us to do with this mark
+        if not M.internal.marked_nodes[mark] then goto continue end
+        assert(M.constants.MARK[mark], string.format("Invalid Target Mark: %s", mark))
+        local nodes = {}
+        local tree = state.tree
+        local target_node = tree:get_node()
+        for _, node_id in ipairs(M.internal.marked_nodes[mark]) do
+            local node = tree:get_node(node_id)
+            table.insert(nodes, node)
+        end
+        if mark == M.constants.MARK.cut and #nodes > 0 then
+            M.move_nodes(state, nodes, target_node)
+        end
+        -- Clearing out the marked nodes for this mark
+        M.internal.marked_nodes[mark] = nil
+        ::continue::
+    end
+end
+
+--- Clears out the marked nodes
+--- @param target_marks table
+---     If provided, only clears out marks for the provided targets
+---     Valid marks can be found in @see mark_node
+M.clear_marked_nodes = function(target_marks)
+    if not target_marks then
+        target_marks = {}
+        -- Adding all marks to process
+        for _, value in pairs(M.constants.MARK) do
+            table.insert(target_marks, value)
+        end
+    end
+    -- validating the target marks
+    for _, mark in ipairs(target_marks) do
+        assert(M.constants.MARK[mark], string.format("Invalid Target Mark: %s", mark))
+        M.internal.marked_nodes[mark] = {}
+    end
+end
+
+
+M.move_node = function(state)
+    local node = state.tree:get_node()
+    local status = M.mark_node(node, M.constants.MARK.cut)
+    if status.success then
+        notify.info(string.format("Selected %s for cut", node.name))
+    else
+        notify.warn(status.error)
+    end
+end
+
+M.move_nodes = function(state, nodes, target_node)
+    log.debug({nodes=nodes, target_node=target_node})
+    local uris = {}
+    local parents = {}
+    local bailout = true
+    for _, node in ipairs(nodes) do
+        table.insert(uris, node.extra.uri)
+        parents[node:get_parent_id()] = 1
+        bailout = false
+    end
+    if bailout then
+        return
+    end
+    if target_node.type == 'netman_provider' then
+        notify.info(string.format("Cant move target into a provider"))
+        return
+    end
+    if target_node.type ~= 'directory' and target_node.type ~= 'netman_host' then target_node = state.tree:get_node(target_node:get_parent_id()) end
+    local target_uri = target_node.extra.uri
+    local success = api.move(uris, target_uri)
+    if success then
+        for parent, _ in pairs(parents) do
+            -- This can sometimes fail because the parent doesn't exist anymore.
+            -- Thats ok, lets just call this with pcall
+            M.refresh(state, {refresh_only_id=parent, auto=true})
+        end
+        -- This can sometimes fail because the target_node doesn't exist anymore.
+        -- Thats ok, lets just call this with pcall
+        M.refresh(state, {refresh_only_id=target_node:get_id(), auto=true})
+    end
+    -- TODO: Highlight target?
+end
+
+M.copy_nodes = function(state, nodes, target_node)
+    
+end
+
+M.open_nodes = function(state, nodes)
+
+end
+
+M.delete_nodes = function(state, nodes)
+    for _, node_id in ipairs(nodes) do
+        M.delete_node(state, node_id)
+    end
 end
 
 M.setup = function(neo_tree_config)
