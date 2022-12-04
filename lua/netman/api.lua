@@ -598,10 +598,11 @@ function M.read(uri, opts)
     }
 end
 
-function M.write(buffer_index, uri)
+function M.write(buffer_index, uri, options)
+    options = options or {}
     local provider, cache, lines = nil, nil, {}
     uri, provider, cache = M.internal.validate_uri(uri)
-    if not uri or not provider then return nil end
+    if not uri or not provider then return {success = false, error="Unable to find matching provider, or unable to validate uri!"} end
     log.info(string.format("Reaching out to %s to write %s", provider.name, uri))
     if buffer_index then
         lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
@@ -613,7 +614,18 @@ function M.write(buffer_index, uri)
         end
     end
     -- TODO: Do this asynchronously
-    provider.write(uri, cache, lines)
+    local status = provider.write(uri, cache, lines, options)
+    if not status.success then
+        log.warn(string.format("Received error from %s provider while trying to write %s", provider.name, uri), {error=status.error})
+        return status
+    end
+    if not status.uri then
+        log.trace("No URI returned on write. Setting the return URI to itself")
+        uri = uri
+    else
+        uri = status.uri
+    end
+    return {success = true, uri = uri}
 end
 
 --- @param uris table
@@ -627,6 +639,8 @@ end
 ---             - message
 ---             - callback (optional)
 function M.move(uris, target_uri)
+    require("netman.tools.utils").dump_callstack()
+    log.trace("MOVE!", {uris=uris, target_uri=target_uri})
     -- Wrapping a single URI in a table so all logic is consistent
     if type(uris) == 'string' then uris = { uris } end
     local grouped_uris = {}
