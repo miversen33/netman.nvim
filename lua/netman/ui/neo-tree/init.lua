@@ -118,7 +118,7 @@ M.internal.get_uri_children = function(state, uri)
                 local response = _error.callback(_)
                 if response.retry then
                     -- Do a retry of ourselves???
-                    M.refresh(state, {refresh_only_id=parent_id})
+                    M.refresh(state, {refresh_only_id=parent_id, auto=true})
                 end
             end
             input.input(message, default, callback)
@@ -217,12 +217,13 @@ M.refresh = function(state, opts)
         return M.navigate(state)
     end
     tree = state.tree
+    local message = ''
     if opts.do_all then
         -- Iterate over the "root nodes" (providers) and add them to the refresh stack
         for _, child in ipairs(tree:get_nodes()) do
             table.insert(refresh_stack, child)
         end
-        log.debug("Running full refresh of all providers")
+        message = "Running full refresh of all providers"
     elseif opts.refresh_only_id then
         -- We are going to start our refresh at this node, regardless of what node
         -- we are currently looking at
@@ -230,14 +231,21 @@ M.refresh = function(state, opts)
         -- function call into the table.insert statement so 🤷
         local _ = state.tree:get_node(opts.refresh_only_id)
         table.insert(refresh_stack, _)
-        log.debug(string.format("Running Targetted Refresh of %s", opts.refresh_only_id))
+        message = string.format("Running Targetted Refresh of %s", opts.refresh_only_id)
     else
         -- Add the current node found at state.tree:get_node() to the process stack
         -- NOTE: Not really sure why but lua shits the bed if you move the
         -- function call into the table.insert statement so 🤷
         local _ = state.tree:get_node()
+        -- If the refresh is being ran on a file, refresh the parent directory instead
+        if _.type ~= 'directory' then _ = state.tree:get_node(_:get_parent_id()) end
         table.insert(refresh_stack, _)
-        log.debug(string.format("Running full refresh on %s", _.name))
+        message = string.format("Running full refresh on %s", _.name)
+    end
+    -- Auto will be passed by anything inside this file. External calls to refresh will
+    -- notify the user that a refresh was triggered
+    if not opts.auto then
+        notify.info(message)
     end
     while(#refresh_stack> 0) do
         -- - While there are things in the process stack
@@ -337,13 +345,19 @@ M.internal.add_item_to_node = function(state, node, item)
         head_child = table.remove(children, 1)
         uri = string.format("%s%s/", uri, head_child)
         api.write(nil, uri)
-        M.refresh(state, {refresh_only_id=parent_id})
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
         parent_id = uri
     end
     if tail_child then
         uri = string.format("%s%s", uri, tail_child)
-        api.write(nil, uri)
-        M.refresh(state, {refresh_only_id=parent_id})
+        local write_status = api.write(nil, uri)
+        if not write_status.success then
+            -- IDK, complain?
+            error(write_status.error)
+            return
+        end
+        uri = write_status.uri
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
         M.navigate(state, {target_id=uri})
     end
 end
@@ -365,6 +379,8 @@ M.add_node = function(state, opts)
         if opts.force_dir and response:sub(-1, -1) ~= '/' then
             response = string.format("%s/", response)
         end
+        -- Check to see if node is a directory. If not, get its parent
+        if node.type ~= 'directory' then tree:get_node(node:get_parent_id()) end
         M.internal.add_item_to_node(state, node, response)
     end
     -- Check if the node is active before trying to add to it
@@ -418,7 +434,7 @@ M.delete_node = function(state, target_node_id)
             notify.warn(string.format("Unable to delete %s. Received error, check netman logs for details!", node_name))
             return
         end
-        M.refresh(state, {refresh_only_id=parent_id})
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
     end
     input.input(message, default, callback)
 end
@@ -462,7 +478,7 @@ M.rename_node = function(state, target_node_id)
             notify.warn(string.format("Unable to move %s to %s. Please check netman logs for more details", current_uri, new_uri))
             return
         end
-        M.refresh(state, {refresh_only_id=parent_id})
+        M.refresh(state, {refresh_only_id=parent_id, auto=true})
         -- Rename any buffers that currently have the old uri as their name
         for _, buffer_number in ipairs(vim.api.nvim_list_bufs()) do
             if vim.api.nvim_buf_get_name(buffer_number) == current_uri then
@@ -562,13 +578,22 @@ M.move_nodes = function(state, nodes, target_node)
         log.debug("No nodes to move")
         return
     end
+    if target_node.type == 'netman_provider' then
+        notify.info(string.format("Cant move target into a provider"))
+        return
+    end
+    if target_node.type ~= 'directory' and target_node.type ~= 'netman_host' then target_node = state.tree:get_node(target_node:get_parent_id()) end
     local target_uri = target_node.extra.uri
     local success = api.move(uris, target_uri)
     if success then
         for parent, _ in pairs(parents) do
-            M.refresh(state, {refresh_only_id=parent})
+            -- This can sometimes fail because the parent doesn't exist anymore.
+            -- Thats ok, lets just call this with pcall
+            M.refresh(state, {refresh_only_id=parent, auto=true})
         end
-        M.refresh(state, {refresh_only_id=target_node:get_id()})
+        -- This can sometimes fail because the target_node doesn't exist anymore.
+        -- Thats ok, lets just call this with pcall
+        M.refresh(state, {refresh_only_id=target_node:get_id(), auto=true})
     end
 end
 
