@@ -144,7 +144,6 @@ function Container:_get_os()
     log.trace(string.format("Checking OS For Container %s", self.name))
     local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
     local output = self:run_command(_get_os_command, {
-        dont_start = true,
         [command_flags.STDOUT_JOIN] = ''
     })
     if output.exit_code ~= 0 then
