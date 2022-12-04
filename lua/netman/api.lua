@@ -169,7 +169,7 @@ end
 --- @return table
 function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
-    for _, data in pairs(read_data.remote_files) do
+    for _, data in pairs(read_data) do
         for key, value in ipairs(data) do
             if netman_options.explorer.FIELDS[key] == nil then
                 log.warn("Removing " .. key .. " from directory data as it " ..
@@ -523,9 +523,15 @@ end
 
 --- TODO: Where Doc?
 function M.read(uri, opts)
+    local orig_uri = uri
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
-    if not uri or not provider then return nil end
+    if not uri or not provider then
+        return {
+            success = false,
+            error = string.format("Unable to read %s or unable to find provider for it", orig_uri)
+        }
+    end
     opts = opts or {}
     log.info(
         string.format("Reaching out to %s to read %s", provider.name, uri)
@@ -543,48 +549,49 @@ function M.read(uri, opts)
         log.trace('Short circuiting provider reach out')
         return _data
     end
-    local read_data, read_type = provider.read(uri, cache)
-    if read_type == nil then
-        log.info("Setting read type to api.READ_TYPE.STREAM")
-        log.debug("back in my day we didn't have optional return values...")
-        read_type = netman_options.api.READ_TYPE.STREAM
-    end
-    if netman_options.api.READ_TYPE[read_type] == nil then
-        notify.error("Unable to figure out how to display: " .. uri .. '!')
-        log.warn("Received invalid read type: " ..
-            read_type .. ". This should be either api.READ_TYPE.STREAM or api.READ_TYPE.FILE!")
-        return nil
-    end
+    local read_data = provider.read(uri, cache)
     if read_data == nil then
-        log.info("Received nothing to display to the user, this seems wrong but I just do what I'm told...")
-        return nil
+        log.info("Received no read_data. I'm gonna get angry!")
+        return {
+            error = "Nil Read Data",
+            success = false
+        }
     end
-    if type(read_data) ~= 'table' then
-        log.warn("Data returned is not in a table. Attempting to make it a table")
-        log.debug("grumble grumble, kids these days not following spec...")
-        read_data = { read_data }
+    if not read_data.success then
+        -- We failed to read data, return the error up
+        return read_data
+    end
+    local read_type = read_data.type
+    if netman_options.api.READ_TYPE[read_type] == nil then
+        log.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
+        return {
+            error = "Invalid Read Type",
+            success = false
+        }
+    end
+    if not read_data.data then
+        log.warn(string.format("No data passed back with read of %s ????", uri))
+        return {
+            success = true
+        }
     end
     local _data = nil
     if read_type == netman_options.api.READ_TYPE.EXPLORE then
-        _data = M.internal.sanitize_explore_data(read_data)
+        _data = M.internal.sanitize_explore_data(read_data.data)
     elseif read_type == netman_options.api.READ_TYPE.FILE then
-        _data = M.internal.sanitize_file_data(read_data)
+        _data = M.internal.sanitize_file_data(read_data.data)
         if not _data.error and _data.local_path then
             log.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
             M._providers.file_cache[uri] = _data.local_path
         end
     elseif read_type == netman_options.api.READ_TYPE.STREAM then
-        _data = read_data
-    else
-        log.warn(string.format("I have no idea what you expect me to do with read type %s, how did you even get this here?"
-            , read_type))
-        return nil
+        _data = read_data.data
     end
-    log.trace(string.format("Getting %s contents for path %s", read_type:lower(), uri), { data = _data })
     local _error = _data.error
     -- Removing error key value from data as it will be a parent level attribute
     _data.error = nil
     return {
+        success = true,
         error = _error,
         data = _data,
         type = read_type

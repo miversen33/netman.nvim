@@ -1497,31 +1497,24 @@ function M.internal.read_directory(uri, host)
             METADATA = metadata
         }
     end
-    return
-        { remote_files = _},
-        api_flags.READ_TYPE.EXPLORE
-    -- -- TODO: for when we clean up how the API requests data...
-    -- return {
-    --     data = _,
-    --     type = api_flags.READ_TYPE.EXPLORE
-    -- }
+    return {
+        success = true,
+        data = _,
+        type = api_flags.READ_TYPE.EXPLORE
+    }
 end
 
 function M.internal.read_file(uri, host)
     local status = host:get(uri, local_files, {new_file_name = uri.unique_name})
     if status.success then
         return {
-            local_path = string.format("%s%s", local_files, uri.unique_name),
-            origin_path = uri:to_string()
-        }, api_flags.READ_TYPE.FILE
-        -- -- TODO: for when we clean up how the API requests data...
-        -- return {
-        --     data = {
-        --         local_path = string.format("%s%s", local_files, uri.unique_name),
-        --         origin_path = uri:to_string()
-        --     },
-        --     type = api_flags.READ_TYPE.FILE
-        -- }
+            success = true,
+            data = {
+                local_path = string.format("%s%s", local_files, uri.unique_name),
+                origin_path = uri:to_string()
+            },
+            type = api_flags.READ_TYPE.FILE
+        }
     else
         return status
     end
