@@ -642,12 +642,15 @@ function SSH:mv(locations, target_location, opts)
     if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
     if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
     local mv_command = { 'mv' }
+    local __ = {}
     for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then
             location = location:to_string()
         end
+        table.insert(__, location)
         table.insert(mv_command, location)
     end
+    locations = __
     table.insert(mv_command, target_location)
     mv_command = table.concat(mv_command, ' ')
     -- local mv_command = string.format("mv %s %s", location, target_location)
