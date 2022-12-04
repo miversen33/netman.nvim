@@ -135,7 +135,7 @@ function Container:new(container_name, provider_cache)
     -- _container.archive_schemes = {}
     _container.cache = CACHE:new(CACHE.FOREVER)
     -- Might be worth trying to establish the actual default shell?
-    _container.console_command = string.format("docker exec -it %s /bin/sh", _container.name)
+    _container.console_command = {"docker", "exec", "-it", _container.name, "/bin/sh"}
     provider_cache:add_item(_container.name, _container)
     return _container
 end
