@@ -1549,7 +1549,13 @@ function M.read(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     container = validation.container
-    local stat = container:stat(uri, {M.internal.Container.CONSTANTS.STAT_FLAGS.TYPE})[uri:to_string()]
+    local _, stat = next(container:stat(uri, {M.internal.Container.CONSTANTS.STAT_FLAGS.TYPE}))
+    if not stat then
+        return {
+            success = false,
+            error = string.format("%s doesn't exist", uri:to_string())
+        }
+    end
     -- If the container is running there is no reason we can't quickly stat the file in question...
     if stat.TYPE == 'directory' then
         return M.internal.read_directory(uri, container)

@@ -1533,17 +1533,12 @@ function M.read(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    local ___ = host:stat(uri, {M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE})
-    local looped = false
-    local stat = nil
-    for _, __ in pairs(___) do
-        -- Kinda jank but when run stat on a directory, we are expecting 1 result.
-        -- Since the find command that is ran will resolve variables, we may not get back
-        -- the same name as we expect, and thus we do this to "retrieve" the first entry in
-        -- the results.
-        assert(not looped, string.format("Too many stat results returned for %s", uri:to_string('remote')))
-        looped = true
-        stat = __
+    local _, stat = next(host:stat(uri, {M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE}))
+    if not stat then
+        return {
+            success = false,
+            error = string.format("%s doesn't exist", uri:to_string())
+        }
     end
     -- If the container is running there is no reason we can't quickly stat the file in question...
     if stat.TYPE == 'directory' then
