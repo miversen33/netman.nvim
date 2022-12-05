@@ -16,8 +16,8 @@ local find_pattern_globs = {
     '^(BLOCKS)=([%d]+),',
     '^(BLKSIZE)=([%d]+),',
     '^(MTIME_SEC)=([%d]+),',
-    '^(USER)=([%w]+),',
-    '^(GROUP)=([%w]+),',
+    '^(USER)=([%w%-._]+),',
+    '^(GROUP)=([%w%-._]+),',
     '^(INODE)=([%d]+),',
     '^(PERMISSIONS)=([%d]+),',
     '^(SIZE)=([%d]+),',
@@ -788,7 +788,7 @@ function SSH:rm(locations, opts)
     return { success = true }
 end
 
---- 
+--- Runs find within the host
 --- @param location string or URI
 ---     The location to find from
 --- @param search_param string
@@ -829,6 +829,8 @@ end
 ---         Note: the `string` form of this needs to be a find compliant shell string. @see man find for details
 ---         Alternatively, you can provide a function that will be called with every match that find gets. Note, this will be significantly slower
 ---         than simply providing a shell string command, so if performance is your goal, use `string`
+--- @return table
+---     Returns the return value of @see SSH:run_command
 function SSH:find(location, opts)
     local default_opts = {
         follow_symlinks = true,
@@ -865,7 +867,9 @@ function SSH:find(location, opts)
         end
         table.insert(find_command, opts.search_param)
     end
-    local command_options = {}
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
     if opts.exec then
         if type(opts.exec) == 'string' then
             table.insert(find_command, "-exec")
@@ -877,7 +881,13 @@ function SSH:find(location, opts)
             -- complain about invalid exec type?
         end
     end
-    return self:run_command(table.concat(find_command, ' '), command_options).stdout
+    local output =  self:run_command(table.concat(find_command, ' '), command_options)
+    if output.exit_code ~= 0 then
+        return {
+            error = output.stderr
+        }
+    end
+    return output.stdout
 end
 
 --- Uploads a file to the host, placing it in the provided location
@@ -1433,7 +1443,7 @@ function M.ui.get_host_details(config, host, provider_cache)
     SSH:new(host, provider_cache)
     return {
         NAME = host,
-        URI = string.format("ssh://%s/", host),
+        URI = string.format("ssh://%s///", host),
     }
 end
 
@@ -1478,13 +1488,26 @@ function M.internal.validate(uri, cache)
 end
 
 function M.internal.read_directory(uri, host)
-    -- Need some sort of error wrapping?
-    local children =
-        host:_stat_parse(
-            host:find(uri,
-                { exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n' }
-            )
-        )
+    local raw_children = host:find(uri,
+        { exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n' }
+    )
+    if raw_children.error then
+        -- Something happened during find.
+        if raw_children.error:match('[pP]ermission%s+[dD]enied') then
+            return {
+                success = false,
+                error = {
+                    message = string.format("Permission Denied when accessing %s", uri:to_string())
+                }
+            }
+        end
+        -- Handle other errors as we find them
+        return {
+            success = false,
+            error = raw_children.error
+        }
+    end
+    local children = host:_stat_parse(raw_children)
     local _ = {}
     for child, metadata in pairs(children) do
         _[metadata.URI] = {
