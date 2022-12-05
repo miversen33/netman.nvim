@@ -754,12 +754,15 @@ function Container:mv(locations, target_location, opts)
     if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
     if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
     local mv_command = { 'mv' }
+    local __ = {}
     for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then
             location = location:to_string()
         end
         table.insert(mv_command, location)
+        table.insert(__, location)
     end
+    locations = __
     table.insert(mv_command, '-t')
     table.insert(mv_command, target_location)
     mv_command = table.concat(mv_command, ' ')
@@ -797,10 +800,13 @@ function Container:touch(locations, opts)
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     local touch_command = {"touch"}
-     for _, location in ipairs(locations) do
+    local __ = {}
+    for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
         table.insert(touch_command, location)
+        table.insert(__, location)
     end
+    locations = __
     local output = self:run_command(touch_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
@@ -835,10 +841,13 @@ function Container:mkdir(locations, opts)
     -- test -d location || mkdir -p location
     -- instead, though I don't know that that is preferrable...?
     local mkdir_command = { "mkdir", "-p" }
+    local __ = {}
     for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
         table.insert(mkdir_command, location)
+        table.insert(__, location)
     end
+    locations = __
     local output = self:run_command(mkdir_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to make %s", table.concat(locations, ' '))

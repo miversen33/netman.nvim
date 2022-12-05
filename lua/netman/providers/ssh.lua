@@ -135,9 +135,9 @@ function SSH:new(auth_details, provider_cache)
     end
 
     table.insert(_ssh.console_command, '-o')
-    table.insert(_ssh.console_command, 'Controlmaster=auto')
+    table.insert(_ssh.console_command, 'ControlMaster=auto')
     table.insert(_ssh._put_command, '-o')
-    table.insert(_ssh._put_command, 'Controlmaster=auto')
+    table.insert(_ssh._put_command, 'ControlMaster=auto')
 
     table.insert(_ssh.console_command, '-o')
     table.insert(_ssh.console_command, string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
@@ -687,10 +687,13 @@ function SSH:touch(locations, opts)
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     local touch_command = {"touch"}
-     for _, location in ipairs(locations) do
+    local __ = {}
+    for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
         table.insert(touch_command, location)
+        table.insert(__, location)
     end
+    locations = __
     local output = self:run_command(touch_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
@@ -725,10 +728,13 @@ function SSH:mkdir(locations, opts)
     -- test -d location || mkdir -p location
     -- instead, though I don't know that that is preferrable...?
     local mkdir_command = { "mkdir", "-p" }
+    local __ = {}
     for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
         table.insert(mkdir_command, location)
+        table.insert(__, location)
     end
+    locations = __
     local output = self:run_command(mkdir_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to make %s", table.concat(locations, ' '))
@@ -767,6 +773,7 @@ function SSH:rm(locations, opts)
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     local rm_command = {'rm', '-r'}
     if opts.force then table.insert(rm_command, '-f') end
+    local __ = {}
     for _, location in ipairs(locations) do
         if type(location) == 'string' then
             if not location:match(SSH.CONSTANTS.SSH_PROTO_GLOB) then
@@ -778,7 +785,9 @@ function SSH:rm(locations, opts)
         end
         assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman uri", location))
         table.insert(rm_command, location:to_string())
+        table.insert(__, location:to_string())
     end
+    locations = __
     local output = self:run_command(rm_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to remove %s", table.concat(locations, ' '))
