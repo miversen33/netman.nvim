@@ -127,7 +127,7 @@ M.internal.get_uri_children = function(state, uri, opts)
         else
             if not opts.ignore_unhandled_errors then
                 -- No callback was provided, display the error and move on with our lives
-                print(string.format("Unable to read %s, received error", message))
+                print(string.format("Unable to read %s, received error %s", uri, message))
                 log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
             end
             return nil

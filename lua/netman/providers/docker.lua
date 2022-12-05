@@ -975,7 +975,9 @@ function Container:find(location, opts)
         end
         table.insert(find_command, opts.search_param)
     end
-    local command_options = {}
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
     if opts.exec then
         if type(opts.exec) == 'string' then
             table.insert(find_command, "-exec")
@@ -987,7 +989,13 @@ function Container:find(location, opts)
             -- complain about invalid exec type?
         end
     end
-    return self:run_command(table.concat(find_command, ' '), command_options).stdout
+    local output =  self:run_command(table.concat(find_command, ' '), command_options)
+    if output.exit_code ~= 0 then
+        return {
+            error = output.stderr
+        }
+    end
+    return output.stdout
 end
 
 --- Uploads a file to the container, placing it in the provided location
@@ -1494,13 +1502,26 @@ function M.internal.validate(uri, cache)
 end
 
 function M.internal.read_directory(uri, container)
-    -- Need some sort of error wrapping?
-    local children =
-        container:_stat_parse(
-            container:find(uri,
-                { exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n' }
-            )
-        )
+    local raw_children = container:find(uri,
+        { exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n' }
+    )
+    if raw_children.error then
+        -- Something happened during find.
+        if raw_children.error:match('[pP]ermission%s+[dD]enied') then
+            return {
+                success = false,
+                error = {
+                    message = string.format("Permission Denied when accessing %s", uri:to_string())
+                }
+            }
+        end
+        -- Handle other errors as we find them
+        return {
+            success = false,
+            error = raw_children.error
+        }
+    end
+    local children = container:_stat_parse(raw_children)
     local _ = {}
     for child, metadata in pairs(children) do
         _[metadata.URI] = {
