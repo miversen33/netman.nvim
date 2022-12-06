@@ -142,7 +142,7 @@ local _log = function(level, do_notify, ...)
     end
     log_file:write(table.concat(parts, '\t'), "\n")
     log_file:flush()
-    if do_notify or level == 'ERROR' then
+    if do_notify then
         vim.api.nvim_notify(table.concat(headerless_parts, '\t'), log_level_map[level], {})
     end
 end
