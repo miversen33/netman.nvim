@@ -57,7 +57,8 @@ local SSH = {
         },
         SSH_CONNECTION_TIMEOUT = 10,
         SSH_SOCKET_FILE_NAME = '%h-%p-%r',
-        SSH_PROTO_GLOB = '^([sftcp]+)://'
+        SSH_PROTO_GLOB = '^([sftcp]+)://',
+        MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
     },
     internal = {
         -- TODO: Set these to false
@@ -546,7 +547,15 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
     -- If the archive isn't remote, we will want to craft a different command to extract it.
     local extract_command = nil
     local cleanup = nil
-    self:mkdir(target_dir, { force = true })
+    local mkdir_status = self:mkdir(target_dir, { force = true })
+    if not mkdir_status or not mkdir_status.success then
+        return_details = { success = false, error = mkdir_status.error or SSH.CONSTANTS.MKDIR_UNKNOWN_ERROR }
+        if opts.finish_callback then
+            opts.finish_callback(return_details)
+            return
+        end
+        return return_details
+    end
     local finish_callback = function(command_output)
         log.trace(command_output)
         if command_output.exit_code ~= 0 then
@@ -940,33 +949,30 @@ function SSH:put(file, location, opts)
     end
     assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman URI", location))
     local file_name = location:to_string()
-        if location.type ~= api_flags.ATTRIBUTES.DIRECTORY then
+    if location.type ~= api_flags.ATTRIBUTES.DIRECTORY then
         local _error = string.format("Unable to verify that %s is a directory, you might see errors!", location:to_string())
         local status, ___ = pcall(SSH.stat, self, location, {SSH.CONSTANTS.STAT_FLAGS.TYPE})
         -- Running this in protected mode because `location` may not exist. If it doesn't we will get an error,
         -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
         -- if we get an error. Thus, error == gud
         if status == true then
-            local looped = false
-            local failed = false
-            local _stat = nil
-            for _, __ in pairs(___) do
-                -- Kinda jank but when run stat on a directory, we are expecting 1 result.
-                -- Since the find command that is ran will resolve variables, we may not get back
-                -- the same name as we expect, and thus we do this to "retrieve" the first entry in
-                -- the results.
-                if looped then failed = true end
-                looped = true
-                _stat = __
-            end
-            if failed or _stat.TYPE ~= 'directory' then
+            local _, _stat = next(___)
+            if _stat.TYPE ~= 'directory' then
                 log.warn(_error)
                 file_name = location:to_string()
                 location = location:parent()
             end
         end
     end
-    self:mkdir(location)
+    local mkdir_status = self:mkdir(location)
+    if not mkdir_status or not mkdir_status.success then
+        return_details = { success = false, error = mkdir_status.error or SSH.CONSTANTS.MKDIR_UNKNOWN_ERROR }
+        if opts.finish_callback then
+            opts.finish_callback(return_details)
+            return
+        end
+        return return_details
+    end
     if opts.new_file_name then
         file_name = string.format("%s/%s", location:to_string(), opts.new_file_name)
     end
@@ -1592,10 +1598,30 @@ function M.write(uri, cache, data, opts)
     uri = validation.uri
     host = validation.host
     if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
-        return host:mkdir(uri)
+        local _ = host:mkdir(uri)
+        if not _.success then
+            return {
+                success = false, error = { message = _.error }
+            }
+        end
+        local _ = host:stat(uri)
+        if not _ then
+            return {
+                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string())}
+            }
+        end
+        local _, _stat = next(_)
+        return {
+            success = true, uri = _stat.URI
+        }
     end
     -- Lets make sure the file exists?
-    host:touch(uri)
+    local touch_status = host:touch(uri)
+    if not touch_status.success then
+        return {
+            success = false, error = { message = touch_status.error or "touch failed with unknown error"}
+        }
+    end
     data = data or {}
     data = table.concat(data, '')
     local local_file = string.format("%s%s", local_files, uri.unique_name)
@@ -1609,35 +1635,28 @@ function M.write(uri, cache, data, opts)
         return_details = status
         if status.error then return end
         local ___ = host:stat(uri)
-        local looped = false
-        local stat = nil
-        for _, __ in pairs(___) do
-            -- Kinda jank but when run stat on a directory, we are expecting 1 result.
-            -- Since the find command that is ran will resolve variables, we may not get back
-            -- the same name as we expect, and thus we do this to "retrieve" the first entry in
-            -- the results.
-            if looped then
-                return_details = {
-                    error = {
-                        message = string.format("Too many stat results returned for %s", uri:to_string('remote'))
-                    },
-                    success = false
-                }
-                return
-            end
-            looped = true
-            stat = __
+        local _, stat = next(___)
+        if not _ then
+            return_details = {
+                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string())}
+            }
+        else
+            return_details = {
+                success = true,
+                uri = stat.URI
+            }
         end
-        return_details = {
-            success = true,
-            uri = stat.URI
-        }
+        -- Provide a way to return this inside this callback if the user reqeusts it
+        -- return return_details
     end
     local write_opts = {
         finish_callback = finish_callback,
         async = opts.async or false
     }
-    host:put(local_file, uri, write_opts)
+    local _ = host:put(local_file, uri, write_opts)
+    if not _.success then
+        return_details = { uri = return_details.uri or nil, success = false, error = { message = _.error } }
+    end
     return return_details
 end
 
