@@ -1,4 +1,3 @@
-vim.g.netman_log_level = 0
 vim.g.loaded_netrwPlugin = 1
 vim.g.loaded_netrw = 1
 
@@ -71,8 +70,13 @@ function M.write(uri)
         return
     end
     local buffer_index = vim.fn.bufnr(uri)
-    notify.info("Saving File: " .. uri .. " on buffer: " .. buffer_index)
-    api.write(buffer_index, uri)
+    notify.info(string.format("Saving File: %s", uri))
+    local write_status = api.write(buffer_index, uri)
+    if not write_status.success then
+        notify.error(write_status.error.message)
+        log.error(write_status)
+        return
+    end
     vim.api.nvim_command('sil! set nomodified')
 end
 
@@ -116,24 +120,6 @@ M.log = utils.log
 M.notify = utils.notify
 M.libruv = libruv
 M.utils = utils
-
-M.do_test = function()
-
-    local stdout = vim.loop.new_pipe()
-    local stderr = vim.loop.new_pipe()
-    local stdin = vim.loop.new_pipe()
-    vim.loop.read_start(stdout, function(data)
-        -- Not sure why but stdout is not getting called here for this command?
-        print(string.format("STDOUT: %s", data))
-    end)
-    vim.loop.read_start(stderr, function(data)
-        print(string.format("STDERR: %s", data))
-    end)
-    vim.loop.spawn("ssh", {
-        args = {"piserver"},
-        stdio = {stdin, stdout, stderr}
-    })
-end
 
 M.init()
 return M

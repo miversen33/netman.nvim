@@ -66,7 +66,8 @@ local Container = {
             NAME = 'NAME',
             RAW = 'RAW',
             URI = 'URI'
-        }
+        },
+        MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
     },
     internal = {
         DOCKER_ENABLED = false
@@ -664,7 +665,15 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
     -- If the archive isn't remote, we will want to craft a different command to extract it.
     local extract_command = nil
     local cleanup = nil
-    self:mkdir(target_dir, { force = true })
+    local mkdir_status = self:mkdir(target_dir, { force = true })
+    if not mkdir_status or not mkdir_status.success then
+        return_details = { success = false, error = mkdir_status.error or Container.CONSTANTS.MKDIR_UNKNOWN_ERROR }
+        if opts.finish_callback then
+            opts.finish_callback(return_details)
+            return
+        end
+        return return_details
+    end
     local finish_callback = function(command_output)
         log.trace(command_output)
         if command_output.exit_code ~= 0 then
@@ -1059,7 +1068,15 @@ function Container:put(file, location, opts)
             location = location:parent()
         end
     end
-    self:mkdir(location)
+    local mkdir_status = self:mkdir(location)
+    if not mkdir_status or not mkdir_status.success then
+        return_details = { success = false, error = mkdir_status.error or Container.CONSTANTS.MKDIR_UNKNOWN_ERROR }
+        if opts.finish_callback then
+            opts.finish_callback(return_details)
+            return
+        end
+        return return_details
+    end
     if opts.new_file_name then
         file_name = string.format("%s/%s", location:to_string(), opts.new_file_name)
     end
@@ -1605,10 +1622,30 @@ function M.write(uri, cache, data)
     uri = validation.uri
     container = validation.container
     if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
-        return container:mkdir(uri)
+        local _ = container:mkdir(uri)
+        if not _.success then
+            return {
+                success = false, error = { message = _.error }
+            }
+        end
+        local _ = container:stat(uri)
+        if not _ then
+            return {
+                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string())}
+            }
+        end
+        local _, _stat = next(_)
+        return {
+            success = true, uri = _stat.URI
+        }
     end
     -- Lets make sure the file exists?
-    container:touch(uri)
+    local touch_status = container:touch(uri)
+    if not touch_status.success then
+        return {
+            success = false, error = { message = touch_status.error or "touch failed with unknown error"}
+        }
+    end
     data = data or {}
     data = table.concat(data, '')
     local local_file = string.format("%s%s", local_files, uri.unique_name)
@@ -1617,7 +1654,11 @@ function M.write(uri, cache, data)
     assert(fh:write(data), string.format("Unable to write to local file %s for %s", local_file, uri:to_string('remote')))
     assert(fh:flush(), string.format('Unable to save local file %s for %s', local_file, uri:to_string('remote')))
     assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
-    return container:put(local_file, uri)
+    local _ = container:put(local_file, uri)
+    if not _.success then
+        return { uri = uri, success = false, error = { message = _.error } }
+    end
+    return { success = true, uri = uri }
 end
 
 function M.move(uris, target_uri, cache)

@@ -351,7 +351,11 @@ M.internal.add_item_to_node = function(state, node, item)
     while(#children > 0) do
         head_child = table.remove(children, 1)
         uri = string.format("%s%s/", uri, head_child)
-        api.write(nil, uri)
+        local write_status = api.write(nil, uri)
+        if not write_status.success then
+            notify.error(write_status.error.message)
+            return
+        end
         M.refresh(state, {refresh_only_id=parent_id, auto=true})
         parent_id = uri
     end
@@ -360,7 +364,7 @@ M.internal.add_item_to_node = function(state, node, item)
         local write_status = api.write(nil, uri)
         if not write_status.success then
             -- IDK, complain?
-            error(write_status.error)
+            notify.error(write_status.error.message)
             return
         end
         uri = write_status.uri
