@@ -1616,11 +1616,9 @@ function M.write(uri, cache, data, opts)
         }
     end
     -- Lets make sure the file exists?
-    local touch_status = host:touch(uri)
-    if not touch_status.success then
-        return {
-            success = false, error = { message = touch_status.error or "touch failed with unknown error"}
-        }
+    local _ = host:touch(uri)
+    if not _.success then
+        return { success = false, error = { message = _.error or string.format("Unable to create %s", uri)}}
     end
     data = data or {}
     data = table.concat(data, '')
