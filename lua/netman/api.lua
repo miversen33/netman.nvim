@@ -3,7 +3,6 @@ local notify = require("netman.tools.utils").notify
 local log = require("netman.tools.utils").log
 local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
-local libruv = require('netman.tools.libruv')
 
 local M = {}
 
@@ -101,7 +100,7 @@ function M.internal.init_config()
         M.internal.config:save()
     end
 
-    log.trace(string.format("Loaded Configuration: %s", M.internal.config:serialize()))
+    log.trace("Loaded Configuration")
 end
 
 --- WARN: Do not rely on these functions existing
@@ -145,15 +144,10 @@ end
 --- these functions is not working in your plugin, you will
 --- be laughed at and ridiculed
 function M.internal.validate_uri(uri)
-    local is_shortcut = false
     local provider, cache, protocol = M.internal.get_provider_for_uri(uri)
-    uri, is_shortcut = M.check_if_path_is_shortcut(uri)
-    if not is_shortcut and not provider then
-        log.warn(tostring(uri) .. " is not ours to deal with")
+    if not provider then
+        log.warn(string.format("%s is not ours to deal with", uri))
         return nil -- Nothing to do here, this isn't ours to handle
-    elseif is_shortcut and not provider then
-        log.trace("Searching for provider for " .. uri)
-        provider, cache, protocol = M.internal.get_provider_for_uri(uri)
     end
     return uri, provider, cache, protocol
 end
@@ -242,89 +236,74 @@ function M.internal.sanitize_file_data(read_data)
     return read_data
 end
 
---- Initializes the Netman Augroups, what did you think it does?
-function M.internal.init_augroups()
-    local read_callback = function(callback_details)
-        local uri = callback_details.match
-        if M.internal.get_provider_for_uri(uri) then
-            require("netman").read(uri)
-            return
-        else
-            local command = 'edit'
-            if callback_details.event == 'FileReadCmd' then
-                command = 'read'
-            end
-            -- WARN: This may be an issue with opening files with swap already open...?
-            pcall(vim.api.nvim_command, string.format('%s %s | filetype detect', command, uri))
-        end
+function M.internal.read_au_callback(callback_details)
+    local uri = callback_details.match
+    if M.internal.get_provider_for_uri(uri) then
+        log.trace(string.format("Reading %s", uri))
+        require("netman").read(uri)
+        return
     end
-    local write_callback = function(callback_details)
-        local uri, is_shortcut = M.check_if_path_is_shortcut(callback_details.match)
-        if is_shortcut or M.internal.get_provider_for_uri(uri) then
-            require("netman").write(uri)
-            return
-        else
-            return vim.api.nvim_command("w " .. uri)
-        end
-    end
-    local buf_focus_callback = function(callback_details)
-        if M.internal.get_provider_for_uri(callback_details.file) then
-            log.trace("Setting Remote CWD To parent of " .. tostring(callback_details.file))
-            libruv.change_buffer(callback_details.file)
-        else
-            libruv.clear_rcwd()
-        end
-    end
-    local au_commands = {
-        { 'BufEnter', {
-            group = 'Netman'
-            , pattern = '*'
-            , desc = 'Netman BufEnter Autocommand'
-            , callback = buf_focus_callback
-        }
-        }
-        , { 'FileReadCmd', {
-            group = "Netman"
-            , pattern = "*"
-            , desc = "Netman FileReadCmd Autocommand"
-            , callback = read_callback
-        }
-        }
-        , { 'BufReadCmd', {
-            group = "Netman"
-            , pattern = "*"
-            , desc = "Netman BufReadCmd Autocommand"
-            , callback = read_callback
-        }
-        }
-        , { 'FileWriteCmd', {
-            group = "Netman"
-            , pattern = "*"
-            , desc = "Netman FileWriteCmd Autocommand"
-            , callback = write_callback
-        }
-        }
-        , { 'BufWriteCmd', {
-            group = "Netman"
-            , pattern = "*"
-            , desc = "Netman BufWriteCmd Autocommand"
-            , callback = write_callback
-        }
-        }
-        , { "BufUnload", {
-            group = "Netman"
-            , pattern = "*"
-            , desc = "Netman BufUnload Autocommand"
-            , callback = function(callback_details) M.unload_buffer(callback_details.file, callback_details.buff) end
-        }
-        }
-    }
+    log.warn(string.format("Cannot find provider match for %s | Unable to read %s", uri, uri))
+end
 
-    vim.api.nvim_create_augroup("Netman", { clear = true })
-    for _, au_command in ipairs(au_commands) do
-        log.info(string.format("Creating Auto Command %s|%s", au_command[1], au_command[2].desc))
+function M.internal.write_au_callback(callback_details)
+    -- For some reason, providers aren't being found on write?
+    log.debug({callback=callback_details})
+    local uri = callback_details.match
+    if M.internal.get_provider_for_uri(uri) then
+        log.trace(string.format("Writing contents of buffer to %s", uri))
+        require("netman").write(uri)
+        return
+    end
+    log.warn(string.format("Cannot find provider match for %s | Unable to write to %s", uri, uri))
+    return false
+end
+
+function M.internal.buf_focus_au_callback(callback_detail)
+    -- For the time being, we probably dont care about when a buffer is focused.
+    -- However in the future, it would be helpful if we can tell the UIs that one of their open
+    -- files is in focus. Idk, it might make more sense to let them track that
+end
+
+function M.internal.buf_close_au_callback(callback_details)
+    local uri = callback_details.match
+    if M.internal.get_provider_for_uri(uri) then
+        M.unload_buffer(uri)
+    end
+    log.info(string.format("Cannot find provider match for %s | It appears that the uri was abandoned?", uri))
+end
+
+function M.internal.init_provider_autocmds(provider, protocols)
+    local aus = {}
+    local cmd_map = {
+        BufEnter = M.internal.buf_focus_au_callback,
+        FileReadCmd = M.internal.read_au_callback,
+        FileWriteCmd = M.internal.write_au_callback,
+        BufReadCmd = M.internal.read_au_callback,
+        BufWriteCmd = M.internal.write_au_callback,
+        BufUnload = M.internal.buf_close_au_callback
+    }
+    for _, protocol in ipairs(protocols) do
+        for command, func in pairs(cmd_map) do
+            table.insert(aus, {
+                command, {
+                    group = 'Netman',
+                    pattern = string.format("%s://*", protocol),
+                    desc = string.format("Netman %s Autocommand for %s", command, provider.name),
+                    callback = func
+                }
+            })
+            log.debug(string.format("Creating Autocommand %s for Provider %s on Protocol %s", command, provider.name, protocol))
+        end
+    end
+    for _, au_command in ipairs(aus) do
         vim.api.nvim_create_autocmd(au_command[1], au_command[2])
     end
+end
+
+--- Initializes the Netman Augroups, what did you think it does?
+function M.internal.init_augroups()
+    vim.api.nvim_create_augroup('Netman', {clear = true})
 end
 
 --- Returns the associated config for the config owner.
@@ -489,36 +468,6 @@ function M.clear_unused_configs(assume_yes)
         ::continue::
     end
     if not ran then print("There are currently no unused netman provider configurations") end
-end
-
---- @deprecated
---- Checks if the path is a URI that netman can manage
---- @param uri string
----     The uri to check
---- @return boolean
----     Returns true/false depending on if Netman can handle the uri
-function M.is_path_netman_uri(uri)
-    if M.internal.get_provider_for_uri(uri) then return true else return false end
-end
-
---- @deprecated
---- Checks with the libruv to see if the provided path
---- is a shortcut path to a uri
---- @param path string
----     The path to compare
---- @return string, boolean
----     Returns the real path if it exists, or it returns the original path
----     Returns True if the path was a shortcut and false if it isn't
-function M.check_if_path_is_shortcut(path, direction)
-    direction = direction or 'local_to_remote'
-    if direction == 'local_to_remote' then
-        return libruv.is_path_local_to_remote_map(path)
-    elseif direction == 'remote_to_local' then
-        return libruv.is_path_remote_to_local_map(path)
-    else
-        log.error('Unknown Shortcut Direction ' .. tostring(direction) .. ' for path ' .. path)
-        error('Invalid Netman Path Shortcut Direction Check')
-    end
 end
 
 --- TODO: Where Doc?
@@ -790,35 +739,6 @@ function M.unload_buffer(uri, buffer_handle)
     M._providers.file_cache[uri] = nil
 end
 
---- @deprecated
---- Registers an explorer package which will be used to determine
---- what path to feed on cwd fetches
---- See netman.tools.options.explorer.EXPLORER_PACKAGES for predefined
---- packages that netman respects as explorers
---- @param explorer_package string
----     The name of the package to register
---- @return nil
-function M.register_explorer_package(explorer_package)
-    if not explorer_package then return end
-    log.info(
-        string.format("Registering %s an explorer package in netman!", explorer_package)
-    )
-    local sanitized_package = explorer_package:gsub(package_path_sanitizer_glob, '%%' .. '%1')
-    M._explorers[explorer_package] = sanitized_package
-end
-
---- @deprecated
---- Gets a list of all registered explorer packages with netman
---- See netman.api.register_explorer_packages for more details on how to
---- register a package
-function M.get_explorer_packages()
-    local explorers = {}
-    for _, explorer in pairs(M._explorers) do
-        table.insert(explorers, explorer)
-    end
-    return explorers
-end
-
 --- Unload Provider is a function that is provided to allow a user (developer)
 --- to remove a provider from Netman. This is most useful when changes have been
 --- made to the provider and you wish to reflect those changes without
@@ -911,7 +831,6 @@ function M.load_provider(provider_path)
         cache = cache_generator:new(cache_generator.MINUTE) }
     -- TODO(Mike): Figure out how to load configuration options for providers
     local provider_config = M.internal.config:get(provider_path)
-    log.debug(string.format("Fetching Config for %s", provider_path), {config=provider_config})
     if not provider_config then
         provider_config = require("netman.tools.configuration"):new()
         provider_config.save = function(_) M.internal.config:save() end
@@ -920,7 +839,6 @@ function M.load_provider(provider_path)
     provider_config:set('_last_loaded', vim.loop.now())
     M.internal.config:save()
     if provider.init then
-        log.trace("Found init function for provider!")
         -- Consider having this being a timeout based async job?
         -- Bad actors will break the plugin altogether
         local valid = nil
@@ -977,6 +895,7 @@ function M.load_provider(provider_path)
         M._providers.protocol_to_path[new_pattern] = provider_path
     end
     M._providers.uninitialized[provider_path] = nil
+    M.internal.init_provider_autocmds(provider, provider.protocol_patterns)
     log.info("Initialized " .. provider_path .. " successfully!")
     ::exit::
 end
@@ -992,7 +911,8 @@ function M.init()
         return
     end
     log.info("--------------------Netman API initialization started!---------------------")
-    M.internal.init_augroups()
+    log.info("Creating Netman augroup")
+    vim.api.nvim_create_augroup('Netman', {clear = true})
     M.internal.init_config()
     local core_providers = require("netman.providers")
     for _, provider in ipairs(core_providers) do

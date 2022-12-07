@@ -7,8 +7,6 @@ local utils  = require("netman.tools.utils")
 local api    = require('netman.api')
 local log    = utils.log
 local notify = utils.notify
-local libruv = require('netman.tools.libruv')
-local netman_enums = require("netman.tools.options")
 
 local M = {}
 
@@ -70,11 +68,10 @@ function M.write(uri)
         return
     end
     local buffer_index = vim.fn.bufnr(uri)
-    notify.info(string.format("Saving File: %s", uri))
-    local write_status = api.write(buffer_index, uri)
-    if not write_status.success then
-        notify.error(write_status.error.message)
-        log.error(write_status)
+    local status = api.write(buffer_index, uri)
+    if not status.success then
+        notify.error(status.error.message)
+        log.error(status)
         return
     end
     vim.api.nvim_command('sil! set nomodified')
@@ -92,22 +89,18 @@ function M.init()
     if not M._setup_commands then
         log.trace("Setting Commands")
         local commands = {
-            'command -nargs=1 NmloadProvider lua require("netman.api").load_provider(<f-args>)'
+             'command -nargs=1 NmloadProvider   lua require("netman.api").load_provider(<f-args>)'
             ,'command -nargs=1 NmunloadProvider lua require("netman.api").unload_provider(<f-args>)'
             ,'command -nargs=1 NmreloadProvider lua require("netman.api").reload_provider(<f-args>)'
-            ,'command -nargs=? Nmlogs         lua require("netman.api").dump_info(<f-args>)'
-            ,'command -nargs=1 Nmdelete       lua require("netman").delete(<f-args>)'
-            ,'command -nargs=+ Nmread         lua require("netman").read(<f-args>)'
-            ,'command          Nmwrite        lua require("netman").write()'
-            ,'command -nargs=1 Nmbrowse       lua require("netman").read(nil, <f-args>)'
+            ,'command -nargs=? Nmlogs           lua require("netman.api").dump_info(<f-args>)'
+            ,'command -nargs=1 Nmdelete         lua require("netman").delete(<f-args>)'
+            ,'command -nargs=+ Nmread           lua require("netman").read(<f-args>)'
+            ,'command          Nmwrite          lua require("netman").write()'
+            ,'command -nargs=1 Nmbrowse         lua require("netman").read(nil, <f-args>)'
         }
         for _, command in ipairs(commands) do
             log.trace("Setting Vim Command: " .. command)
             vim.api.nvim_command(command)
-        end
-        log.trace("Overriding File Explorers for Remote Resource Interactions")
-        for _, _package in ipairs(netman_enums.explorer.EXPLORER_PACKAGES) do
-            api.register_explorer_package(_package)
         end
         M._setup_commands = true
     end
@@ -118,7 +111,6 @@ end
 M.api = api
 M.log = utils.log
 M.notify = utils.notify
-M.libruv = libruv
 M.utils = utils
 
 M.init()
