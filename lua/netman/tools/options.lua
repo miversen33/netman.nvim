@@ -25,8 +25,7 @@ return {
         EXPLORE = 'EXPLORE'
     }
     ,explorer = {
-        EXPLORER_PACKAGES = {'plenary.nvim', 'neo-tree.nvim', 'telescope-file-browser.nvim', 'telescope.nvim'}
-        ,METADATA = {
+        METADATA = {
             -- This should match what is available from libuv's fs_statpath https://github.com/luvit/luv/blob/master/docs.md#uvfs_statpath-callback
             -- Consider trying to interface with `stat` in your provider (if possible) as most of these are pretty easy
             -- to get from that
