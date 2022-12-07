@@ -1633,7 +1633,15 @@ function M.write(uri, cache, data, opts)
     local return_details = nil
     local finish_callback = function(status)
         return_details = status
-        if status.error then return end
+        if status.error then
+            return_details = {
+                success = false,
+                error = {
+                    message = status.error
+                }
+            }
+            return
+        end
         local ___ = host:stat(uri)
         local _, stat = next(___)
         if not _ then
