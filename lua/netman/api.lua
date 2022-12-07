@@ -664,7 +664,6 @@ function M.move(uris, target_uri)
     -- we can properly "utilize" multiprocessing
     for provider, data in pairs(grouped_uris) do
         local archive_data = provider.archive.get(data.uris, data.cache, temp_dir, available_compression_schemes)
-        log.debug("Archive Data", {uris = data.uris, archive_data=archive_data})
         if archive_data.error then
             -- Something happened!
             local message = string.format("Received error while trying to archive uris on %s", provider.name)
@@ -674,7 +673,6 @@ function M.move(uris, target_uri)
             return archive_data
         end
         local status = target_provider.archive.put(target_uri, target_cache, archive_data.archive_path, archive_data.scheme)
-        log.debug("Extract Status", status)
         if status.error then
             local message = string.format("Received error from %s while trying to upload archive", target_provider.name)
             notify.warn(message)
