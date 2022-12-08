@@ -304,7 +304,7 @@ M.navigate = function(state, opts)
     opts = opts or {}
     -- Check to see if there is even a tree built
     tree = state.tree
-    if not tree then
+    if not tree or not renderer.window_exists(state) then
         -- Somehow there was no providers rendered.
         nodes = M.internal.generate_node_children(state)
         parent_id = nil
