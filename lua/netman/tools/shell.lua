@@ -114,9 +114,13 @@ function Shell:new(command, options)
 end
 
 function Shell:reset(command, options)
+    command = command or self._orig_command or {}
     assert(type(command) == "table", "Command must be a table!")
     assert(#command > 0, "Cannot run empty command!")
+    self.__type = 'netman_shell'
+    self._orig_command = command
     self._command = command[1]
+    options = options or self._options or {}
     self._options = options
     self._args = { compat.unpack(command, 2) }
     self._command_as_string = table.concat(command, " ")
@@ -141,12 +145,14 @@ function Shell:reset(command, options)
     self._uid = options[Shell.CONSTANTS.FLAGS.UID]
     self._gid = options[Shell.CONSTANTS.FLAGS.GID]
     self._stdin_pipe = nil
+    self._attempted_kill = false
     self._running = false
     self._stdout_pipe = nil
     self._stderr_pipe = nil
     self.stdout = {}
     self.stderr = {}
-    self._handle = nil
+    self._process_handle = nil
+    self.handle = nil
     self.signal = nil
     self.exit_code = nil
     self._pid = nil
@@ -197,6 +203,37 @@ function Shell:_prepare()
         self._stderr_filehandle = io.open(self._stderr_file, string.format("%s%s", flag, mode))
         assert(self._stderr_filehandle, string.format("Unable to open STDERR File %s", self._stderr_file))
     end
+    -- Generates a passable handle that can be used to read from, write to, and stop the process
+    self.handle = {
+        __type = 'netman_shell_handle',
+        pid = nil,
+        close = function(force)
+            Shell.close(self, force)
+        end,
+        write = function(data)
+            Shell.write(self, data)
+        end,
+        read = function(read_target, save)
+            read_target = read_target or 'stdout'
+            assert(read_target == 'stdout' or read_target == 'stderr', string.format("Invalid read target %s. Read target must be stdout or stderr", read_target))
+            local pipe = {}
+            local target_pipe = nil
+            if read_target == 'stdout' then
+                target_pipe = self.stdout
+            else
+                target_pipe = self.stderr
+            end
+            local pipe_length = #target_pipe
+            for index=1, pipe_length do
+                table.insert(pipe, target_pipe[index])
+                if not save then target_pipe[index] = nil end
+            end
+            return pipe
+        end,
+        _add_exit_callback = function(callback)
+            Shell.add_exit_callback(self, callback)
+        end
+    }
 end
 
 function Shell:_stdout_callback(err, data)
@@ -244,11 +281,16 @@ end
 
 --- Stops the current running process and cleanly closes everything out
 --- This is safe to run even if the process isn't currently running
-function Shell:close()
-    if self._stdin_pipe then
-        self._stdin_pipe:shutdown()
-    end
+function Shell:close(force)
     self._running = false
+    local signal = 15
+    if force or self._attempted_kill then signal = 9 end
+    self._stdin_pipe:shutdown()
+    if self._is_async then
+        uv.kill(self._pid, signal)
+    end
+
+    self._attempted_kill = true
 end
 
 --- Runs the command information provided in new. Can be chained (EG Shell:new():run())
@@ -259,15 +301,39 @@ end
 --- @return table/nil
 ---     @see Shell:dump_self_as_table()
 ---     Note: If the shell process is asynchronous, this
----     will return nil. If you care about the return info
----     from the process in this situation, you will
----     want to provide callbacks. Check out @see Shell.CONSTANTS.FLAGS for valid Callbacks that can be provided
+---     will return instead a table that contains a handle to the process, as well as 
+---     the pid of the process. This will look like
+---     { handle: table, pid: integer }
+---     This handle will contain the following 4 attriutes.
+---     - pid integer
+---         - The current process pid
+---     - read function
+---         - @param read_target string | Optional
+---             - Default: 'stdout'
+---             - Valid Options ('stdout', 'stderr')
+---             - This will read out the contents of either the stdout or stderr pipe
+---         - @param save boolean | Optional
+---             - Default: false
+---             - If provided, will _not_ clear the pipe on read
+---         - @return table
+---             - A table containing each (single) line from the requested read target.
+---     - write function
+---         - @param data string
+---             - Data to write to stdin
+---             - WARN: This will throw an error if you try to write after the process is closed!
+---     - close function
+---         - @param force boolean | Optional
+---             - Default: false
+---             - This will close the shell process. Force will execute a kill -9 on the process.
+---     NOTE: This handle will only be valid for the life of this current process. The handle will throw an error
+---     if you try to use it after the life of the process (with the exception of read which will be valid until a new process is started)
+---     If the process is not asynchronous, we will instead return the output of @see Shell:dump_self_as_table
 function Shell:run(timeout)
     assert(not self._running, "Shell is already running!")
     timeout = timeout or (10 * 1000)
     self:_prepare()
     self._running = true
-    self._handle, self._pid = uv.spawn(
+    self._process_handle, self._pid = uv.spawn(
         self._command,
         self._cmd_opts,
         function(exit_code, signal)
@@ -292,6 +358,7 @@ function Shell:run(timeout)
         return self:dump_self_to_table()
     ---@diagnostic disable-next-line: missing-return
     end
+    return {pid=self._pid, handle=self.handle}
 end
 
 function Shell:add_exit_callback(callback)
@@ -315,6 +382,10 @@ function Shell:_on_exit(exit_code, signal)
         -- This means the user decided that the signal they caught wasn't worth stopping?
         return
     end
+    -- Ensures that data cannot be written to the closed pipe or anything else of that nature
+    self.handle.write = function() error("Unable to write to closed handle!") end
+    -- I mean, if you wanna close it after the fact, ok cool?
+    self.handle.close = function() end
     if self._timeout_timer and not self._timeout_timer:is_closing() then
         ---@diagnostic disable-next-line: undefined-field
         self._timeout_timer:stop()
@@ -326,7 +397,7 @@ function Shell:_on_exit(exit_code, signal)
         self._stdin_pipe:shutdown()
         self._stdin_pipe:close()
     end
-    if not self._handle:is_closing() then self._handle:close() end
+    if not self._process_handle:is_closing() then self._process_handle:close() end
     if not self._stdout_pipe:is_closing() then self._stdout_pipe:close() end
     if not self._stderr_pipe:is_closing() then self._stderr_pipe:close() end
     if self._stdout_filehandle then
@@ -400,18 +471,27 @@ function Shell:dump_self_to_table()
     }
 end
 
+--- Blocks current thread while waiting for the shells to complete
+--- @param shells table
+---     A 1 dimensional array of shell objects to wait on. Can also be a shell handle object
+--- @return nil
 function Shell.join(shells)
     local waiting_shells = {}
     for _, shell in ipairs(shells) do
-        table.insert(shell._pid)
-        shell:add_exit_callback(function()
+        local pid = shell._pid or shell.pid
+        assert(pid ~= nil, "Unable to find pid for shell join!")
+        assert(shell.__type == 'netman_shell' or shell.__type == 'netman_shell_handle', string.format("Invalid object type %s. Must be either a Netman Shell or Netman Shell Handle", shell.__type))
+        table.insert(waiting_shells, pid)
+        local callback_function = function()
             local index = -1
             for i, w_pid in ipairs(waiting_shells) do
                 index = i
-                if w_pid == shell._pid then break end
+                if w_pid == pid then break end
             end
             table.remove(waiting_shells, index)
-        end)
+        end
+        if shell.__type == 'netman_shell' then shell:add_exit_callback(callback_function)
+        else shell.add_exit_callback(callback_function) end
     end
     while #waiting_shells > 0 do
         -- Wait for the shells to open up?
