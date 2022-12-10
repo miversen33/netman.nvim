@@ -592,7 +592,6 @@ end
 ---             - message
 ---             - callback (optional)
 function M.move(uris, target_uri)
-    require("netman.tools.utils").dump_callstack()
     log.trace("MOVE!", {uris=uris, target_uri=target_uri})
     -- Wrapping a single URI in a table so all logic is consistent
     if type(uris) == 'string' then uris = { uris } end
