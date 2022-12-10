@@ -8,11 +8,6 @@
 
 local compat = require("netman.tools.compat")
 local uv = compat.uv
---- TODO: Add a clear command so a shell instance can be reused???
---- TODO: Migration shell options into here from the enum
---- TODO: If a stdout/stderr output file or callback is provided, we should
----       disable catching stdout. We could easily blow through memory if we aren't
----       careful
 
 local Shell = {}
 Shell.CONSTANTS = {
