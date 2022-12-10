@@ -881,7 +881,7 @@ function SSH:find(location, opts)
             table.insert(find_command, '-regex')
         else
             -- complain about invalid pattern type
-            error(string.format("Invalid Find Pattern Type: %s. See :h netman.providers.docker.find for details", opts.pattern_type))
+            error(string.format("Invalid Find Pattern Type: %s. See :h netman.providers.ssh.find for details", opts.pattern_type))
         end
         table.insert(find_command, opts.search_param)
     end
