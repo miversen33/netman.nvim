@@ -241,13 +241,7 @@ end
 ---     - no_shell
 ---         - If provided, the command will not be wrapped in a `/bin/sh -c` execution context. Note, this will be set if you provide a table for command
 --- @return table
----     Returns a table with the following key value pairs
----     - exit_code: integer
----         - _Usually_ this is the exit_code of the command ran, though it may be -1 to indicate an error outside the command occured
----     - stderr: string/table
----         - The output from the STDERR pipe from the command
----     - stdout: string/table
----         - The output from the STDOUT pipe from the command
+---     @see netman.tools.shell:run as this returns exactly what that does
 --- @example
 ---     local container = Container:new('ubuntu')
 ---     print(container:run_command({"cat", "/etc/*release*"}).stdout)
@@ -596,8 +590,8 @@ function Container:archive(locations, archive_dir, compatible_scheme_list, provi
     else
         command_options[command_flags.STDOUT_FILE] = string.format("%s/%s", archive_dir, archive_name)
     end
-    self:run_command(compress_command, command_options)
-    if not opts.async then return return_details end
+    local run_details = self:run_command(compress_command, command_options)
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Extracts the provided archive into the target location in the container
@@ -642,6 +636,7 @@ end
 function Container:extract(archive, target_dir, scheme, provider_cache, opts)
     opts = opts or {}
     local return_details = {}
+    local run_details = {}
     local extraction_function = nil
     local lower_scheme = scheme:lower()
     for _, comp_scheme in ipairs(self.archive_schemes) do
@@ -693,8 +688,9 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
         [command_flags.STDOUT_PIPE_LIMIT] = 0,
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
-    -- if opts.async then command_options[command_flags.ASYNC] = true end
     if not opts.remote_dump then
+        -- There is on way for us to do this asynchronously
+        opts.async = false
         -- This is going to cat the contents of the archive into docker in an
         -- "interactive" session, which will pipe into the provided command.
         local fh = io.open(archive, 'r+b')
@@ -734,7 +730,7 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
         end
         self:run_command(extract_command, command_options)
     end
-    if not opts.async then return return_details end
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Moves a location to another location in the container
@@ -1103,8 +1099,8 @@ function Container:put(file, location, opts)
         command_options[command_flags.ASYNC] = true
     end
     ---@diagnostic disable-next-line: missing-parameter
-    shell:new(copy_command, command_options):run()
-    if not opts.async then return return_details end
+    local run_details = shell:new(copy_command, command_options):run()
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Retrieves a file from the container and saves it in the output directory
@@ -1187,8 +1183,8 @@ function Container:get(location, output_dir, opts)
         command_options[command_flags.STDOUT_JOIN] = ''
     end
     ---@diagnostic disable-next-line: missing-parameter
-    shell:new(copy_command, command_options):run()
-    if not opts.async then return return_details end
+    local run_details = shell:new(copy_command, command_options):run()
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Takes a table of filesystem locations and returns the stat of them

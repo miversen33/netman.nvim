@@ -87,6 +87,7 @@ end
 
 function M.init()
     if not M._setup_commands then
+        log.info("--------------------Netman Core Initializating!--------------------")
         log.trace("Setting Commands")
         local commands = {
              'command -nargs=1 NmloadProvider   lua require("netman.api").load_provider(<f-args>)'
@@ -103,6 +104,7 @@ function M.init()
             vim.api.nvim_command(command)
         end
         M._setup_commands = true
+        log.info("--------------------Netman Core Initialization Complete!--------------------")
     end
 end
 
