@@ -893,7 +893,10 @@ function SSH:find(location, opts)
         table.insert(find_command, opts.search_param)
     end
     local command_options = {
-        [command_flags.STDERR_JOIN] = ''
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.ASYNC] = opts.async,
+        [command_flags.STDOUT_CALLBACK] = opts.stdout_callback,
+        [command_flags.EXIT_CALLBACK] = opts.exit_callback
     }
     if opts.exec then
         local _ = type(opts.exec)
@@ -906,10 +909,12 @@ function SSH:find(location, opts)
             command_options[command_flags.STDOUT_PIPE_LIMIT] = 0
         end
     end
-    local output =  self:run_command(table.concat(find_command, ' '), command_options)
+    local output = self:run_command(table.concat(find_command, ' '), command_options)
+    if opts.async then return output end
     if output.exit_code ~= 0 then
         return {
-            error = output.stderr
+            error = output.stderr,
+            output = output.stdout
         }
     end
     return output.stdout
