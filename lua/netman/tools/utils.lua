@@ -38,7 +38,12 @@ local escape_shell_command = function(command, escape_string)
     return command:gsub(shell_escape_pattern, escape_string .. '%1')
 end
 
-local format_func = function(arg) return vim.inspect(arg, {newline='\n'}) end
+local format_func = function(arg)
+    if type(arg) == 'table' then
+        return vim.inspect(arg, {newline='\n'})
+    else
+        return string.format("%s", arg) end
+end
 local generate_session_log = function(output_path, logs)
     logs = logs or {}
     if output_path ~= 'memory' then
