@@ -907,6 +907,10 @@ function SSH:find(location, opts)
     return output.stdout
 end
 
+function SSH:grep(uri, param, opts)
+    error("Grep is not implemented on ssh yet!")
+end
+
 --- Uploads a file to the host, placing it in the provided location
 --- @param file string
 ---     The string file location on the host
@@ -1149,8 +1153,7 @@ function SSH:stat(locations, target_flags)
         table.insert(stat_command, location)
     end
     locations = __
-    -- stat_command = {'/bin/sh', '-c', string.format("'%s'", table.concat(stat_command, ' '))}
-    local stat_details = self:run_command(stat_command, {[command_flags.STDERR_JOIN] = ''})
+    local stat_details = self:run_command(stat_command, { [command_flags.STDERR_JOIN] = '' })
     if stat_details.exit_code ~= 0 then
         -- Complain about stat failure??
         log.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
@@ -1491,8 +1494,6 @@ function M.internal.parse_user_sshconfig(config)
     config:save()
 end
 
---- Exposed endpoints
-
 function M.internal.validate(uri, cache)
     assert(cache, string.format("No cache provided for read of %s",  uri))
     ---@diagnostic disable-next-line: cast-local-type
@@ -1557,6 +1558,8 @@ function M.internal.read_file(uri, host)
     end
 end
 
+--- Exposed endpoints
+
 --- Reads contents from a host and returns them in the prescribed netman.api.read return format
 --- @param uri string
 ---     The string uri to read. Can be a directory or file
@@ -1587,6 +1590,13 @@ function M.read(uri, cache)
         -- Idk maybe we change that if we allow archive reading but 🤷
         return M.internal.read_file(uri, host)
     end
+end
+
+function M.internal.grep()
+
+end
+
+function M.search(uri, cache, param, opts)
 end
 
 function M.write(uri, cache, data, opts)

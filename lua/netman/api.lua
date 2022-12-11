@@ -691,6 +691,45 @@ function M.move(uris, target_uri)
     return {success = true}
 end
 
+--- Attempts to submit a search to the provider of the URI.
+--- NOTE: The provider may _not_ support searching, and thus
+--- this might just return nil.
+--- @param uri string
+--- @param param string
+--- @param opts table | Optional
+---     Default: {
+---         search = 'filename',
+---         case_sensitive = false
+---     }
+---     If provided, alters both what we search, and how we search. This is (mostly) passed
+---     directly to the provider.
+---     Valid Key value pairs
+---     - async: boolean
+---         If provided, indicates to the provider that the search should be performed asynchronously
+---     - search: string
+---         Valid values ('filename', 'contents')
+---     - is_regex: boolean
+---         If provided, indicates (to the provider) that the param is a regex
+---     - case_sensitive: boolean
+---         If provided, indicates (to the provider) that the param should (or should not) be case sensitive
+---     - max_depth: integer
+---         The maximium depth to perform the search
+function M.search(uri, param, opts)
+    local provider, cache = nil, nil
+    uri, provider, cache = M.internal.validate_uri(uri)
+    if not provider then
+        log.warn(string.format("Cannot find provider for %s", uri))
+        return nil
+    end
+    if not provider.search then
+        log.info(string.format("%s does not support searching at this time", provider.name))
+        return nil
+    end
+    opts = opts or { search = 'filename', case_sensitive = false}
+    -- Validate that if we are doing this async, the return handle has the right info
+    return provider.search(uri, cache, param, opts)
+end
+
 function M.delete(uri)
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
