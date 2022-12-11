@@ -26,7 +26,7 @@ local find_pattern_globs = {
 }
 
 local M = {}
-M.protocol_patterns = {'ssh', 'scp', 'sftp'}
+M.protocol_patterns = { 'ssh', 'scp', 'sftp' }
 M.name = 'ssh'
 M.version = 0.2
 M.internal = {}
@@ -85,6 +85,7 @@ M.internal.URI = URI
 ---     The netman api provided cache.
 ---     If that confuses you, please see netman.api.register_provider for details
 function SSH:new(auth_details, provider_cache)
+    -- TODO: Add password support????
     assert(auth_details, "No authorization details provided for new ssh object. h: netman.provider.ssh.new")
     assert(provider_cache, "No cache provided for SSH object. h: netman.providers.ssh.new")
     if type(auth_details) == 'string' then
@@ -98,7 +99,8 @@ function SSH:new(auth_details, provider_cache)
             auth_details = "ssh://" .. auth_details
         end
         local new_auth_details = URI:new(auth_details, provider_cache)
-        assert(new_auth_details, string.format("Unable to parse %s into a valid SSH URI. h: netman.providers.ssh.new", auth_details))
+        assert(new_auth_details,
+            string.format("Unable to parse %s into a valid SSH URI. h: netman.providers.ssh.new", auth_details))
         auth_details = new_auth_details
     end
     -- Yes I know that this means we will end up with weird keys like
@@ -117,11 +119,11 @@ function SSH:new(auth_details, provider_cache)
     _ssh.__type = 'netman_provider_ssh'
     _ssh.cache = CACHE:new(CACHE.FOREVER)
 
-    _ssh.console_command = {'ssh'}
+    _ssh.console_command = { 'ssh' }
     _ssh._put_command = { 'scp' }
     -- Intentionally leaving off the command to use for `get` as you could use either sftp or scp.
     -- The flags are the same regardless though
-    _ssh._get_command = { }
+    _ssh._get_command = {}
     if _ssh._auth_details.port:len() > 0 then
         table.insert(_ssh.console_command, '-p')
         table.insert(_ssh._put_command, '-P')
@@ -141,9 +143,11 @@ function SSH:new(auth_details, provider_cache)
     table.insert(_ssh._put_command, 'ControlMaster=auto')
 
     table.insert(_ssh.console_command, '-o')
-    table.insert(_ssh.console_command, string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+    table.insert(_ssh.console_command,
+        string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
     table.insert(_ssh._put_command, '-o')
-    table.insert(_ssh._put_command, string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+    table.insert(_ssh._put_command,
+        string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
 
     table.insert(_ssh.console_command, '-o')
     table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
@@ -295,7 +299,7 @@ function SSH:_create_uri(location)
         is_relative = true
     end
     if not is_relative then
-        if location:sub(1,1) ~= '/' then
+        if location:sub(1, 1) ~= '/' then
             location = string.format('///%s', location)
         else
             location = string.format('//%s', location)
@@ -322,7 +326,7 @@ function SSH:run_command(command, opts)
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = ''
     }
-    local pre_command = { }
+    local pre_command = {}
     if type(command) == 'string' then
         if not opts.no_shell then
             table.insert(pre_command, '/bin/sh')
@@ -340,7 +344,7 @@ function SSH:run_command(command, opts)
             { type = type(command), command = command })
         return { exit_code = -1, stderr = "Invalid command passed to netman ssh !", stdout = '' }
     end
-    local _command = { }
+    local _command = {}
     -- Copying the console command to a new table so we can add shit to it
     for _, __ in ipairs(self.console_command) do
         table.insert(_command, __)
@@ -372,7 +376,7 @@ end
 ---     Default: {}
 ---     A 2D table that can contain any of the following key, value pairs
 ---     - async: boolean
----         - If provided, we will perform the archive asychronously. It is recommended that 
+---         - If provided, we will perform the archive asychronously. It is recommended that
 ---         this is used with finish_callback
 ---     - remote_dump: boolean
 ---         - If provided, indicates that the archive_dir is remote (on the host)
@@ -444,7 +448,7 @@ function SSH:archive(locations, archive_dir, compatible_scheme_list, provider_ca
         if output.exit_code ~= 0 then
             local _error = "Received non-0 exit code when trying to archive locations"
             log.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
-            return_details =  { error = _error, success = false }
+            return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
@@ -562,7 +566,7 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
             if opts.finish_callback then opts.finish_callback(return_details) end
         end
         if cleanup then cleanup() end
-        return_details = {success = true}
+        return_details = { success = true }
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
     local command_options = {
@@ -647,8 +651,10 @@ end
 ---     host:mv('/tmp/testfile.txt', '/tmp/testfile2.txt')
 function SSH:mv(locations, target_location, opts)
     opts = opts or {}
-    if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
-    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:
+            to_string()
+    end
     local mv_command = { 'mv' }
     local __ = {}
     for _, location in ipairs(locations) do
@@ -694,7 +700,7 @@ end
 function SSH:touch(locations, opts)
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
-    local touch_command = {"touch"}
+    local touch_command = { "touch" }
     local __ = {}
     for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
@@ -779,7 +785,7 @@ end
 function SSH:rm(locations, opts)
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
-    local rm_command = {'rm', '-r'}
+    local rm_command = { 'rm', '-r' }
     if opts.force then table.insert(rm_command, '-f') end
     local __ = {}
     for _, location in ipairs(locations) do
@@ -789,9 +795,10 @@ function SSH:rm(locations, opts)
                 ---@diagnostic disable-next-line: cast-local-type
                 location = self:_create_uri(location)
             end
-            location= URI:new(location)
+            location = URI:new(location)
         end
-        assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman uri", location))
+        assert(location.__type and location.__type == 'netman_uri',
+            string.format("%s is not a valid netman uri", location))
         table.insert(rm_command, location:to_string())
         table.insert(__, location:to_string())
     end
@@ -861,7 +868,7 @@ function SSH:find(location, opts)
         if opts[key] == nil then opts[key] = value end
     end
     if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
-    local find_command = {'find', location}
+    local find_command = { 'find', location }
     if opts.filesystems then table.insert(find_command, '-xdev') end
     if opts.max_depth then table.insert(find_command, '-maxdepth') table.insert(find_command, opts.max_depth) end
     if opts.min_depth then table.insert(find_command, '-mindepth') table.insert(find_command, opts.min_depth) end
@@ -880,7 +887,8 @@ function SSH:find(location, opts)
             table.insert(find_command, '-regex')
         else
             -- complain about invalid pattern type
-            error(string.format("Invalid Find Pattern Type: %s. See :h netman.providers.ssh.find for details", opts.pattern_type))
+            error(string.format("Invalid Find Pattern Type: %s. See :h netman.providers.ssh.find for details",
+                opts.pattern_type))
         end
         table.insert(find_command, opts.search_param)
     end
@@ -953,8 +961,9 @@ function SSH:put(file, location, opts)
     assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman URI", location))
     local file_name = location:to_string()
     if location.type ~= api_flags.ATTRIBUTES.DIRECTORY then
-        local _error = string.format("Unable to verify that %s is a directory, you might see errors!", location:to_string())
-        local status, ___ = pcall(SSH.stat, self, location, {SSH.CONSTANTS.STAT_FLAGS.TYPE})
+        local _error = string.format("Unable to verify that %s is a directory, you might see errors!",
+            location:to_string())
+        local status, ___ = pcall(SSH.stat, self, location, { SSH.CONSTANTS.STAT_FLAGS.TYPE })
         -- Running this in protected mode because `location` may not exist. If it doesn't we will get an error,
         -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
         -- if we get an error. Thus, error == gud
@@ -985,11 +994,11 @@ function SSH:put(file, location, opts)
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to upload %s", file)
             log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
-            return_details = { error = _error, success = false}
+            return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
-        return_details = { success = true}
+        return_details = { success = true }
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
     local copy_command = { 'scp' }
@@ -1068,7 +1077,7 @@ function SSH:get(location, output_dir, opts)
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to download %s", location:to_string())
             log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
-            return_details = { error = _error, success = false}
+            return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
@@ -1086,7 +1095,7 @@ function SSH:get(location, output_dir, opts)
     if opts.force then
         -- Shenanigans activate!
         command_options[command_flags.STDOUT_FILE] = string.format('%s/%s', output_dir, file_name)
-        copy_command = { }
+        copy_command = {}
         for _, __ in ipairs(self.console_command) do
             table.insert(copy_command, __)
         end
@@ -1175,10 +1184,12 @@ function SSH:_stat_parse(stat_output, target_flags)
         for _, key in pairs(target_flags) do
             __[key:upper()] = SSH.CONSTANTS.STAT_FLAGS[key]
         end
-        if not __[SSH.CONSTANTS.STAT_FLAGS['NAME']] then __[SSH.CONSTANTS.STAT_FLAGS['NAME']] = SSH.CONSTANTS.STAT_FLAGS.NAME end
+        if not __[SSH.CONSTANTS.STAT_FLAGS['NAME']] then __[SSH.CONSTANTS.STAT_FLAGS['NAME']] = SSH.CONSTANTS.STAT_FLAGS
+                .NAME
+        end
         target_flags = __
     end
-    if type(stat_output) == 'string' then stat_output = {stat_output} end
+    if type(stat_output) == 'string' then stat_output = { stat_output } end
     local stat = {}
     for _, line in ipairs(stat_output) do
         line = line:gsub('(\\0)', '')
@@ -1321,7 +1332,7 @@ function URI:new(uri, cache)
     uri = uri:gsub(string.format('%s://', _uri.protocol), '')
     -- Host _might_ include a username, so we need to split those apart if they exist
     _uri.user = uri:match('^([^@]+)@') or ''
-    if _uri.user:len() > 0  then
+    if _uri.user:len() > 0 then
         uri = uri:gsub(string.format("%s@", _uri.user), '')
     end
     _uri.host = uri:match('^([^:^/]+)')
@@ -1355,7 +1366,8 @@ function URI:new(uri, cache)
         if _uri.port:len() > 0 then table.insert(auth_uri, string.format("-P %s", _uri.port)) end
     end
     _uri.auth_uri = table.concat(auth_uri, ' ')
-    assert(uri:match('^///') or uri:match('^/'), string.format("Invalid URI: %s Path start with either /// or /", _uri.uri))
+    assert(uri:match('^///') or uri:match('^/'),
+        string.format("Invalid URI: %s Path start with either /// or /", _uri.uri))
     _uri.is_relative = true
     if uri:match('^///') then
         --- URI Path is absolute
@@ -1495,11 +1507,12 @@ function M.internal.parse_user_sshconfig(config)
 end
 
 function M.internal.validate(uri, cache)
-    assert(cache, string.format("No cache provided for read of %s",  uri))
+    assert(cache, string.format("No cache provided for read of %s", uri))
     ---@diagnostic disable-next-line: cast-local-type
     uri = M.internal.URI:new(uri, cache)
     local host = M.internal.SSH:new(uri, cache)
-    return {uri = uri, host = host}
+    return { uri = uri, host = host }
+end
 end
 
 function M.internal.read_directory(uri, host)
@@ -1543,7 +1556,7 @@ function M.internal.read_directory(uri, host)
 end
 
 function M.internal.read_file(uri, host)
-    local status = host:get(uri, local_files, {new_file_name = uri.unique_name})
+    local status = host:get(uri, local_files, { new_file_name = uri.unique_name })
     if status.success then
         return {
             success = true,
@@ -1573,7 +1586,7 @@ function M.read(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    local _, stat = next(host:stat(uri, {M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE}))
+    local _, stat = next(host:stat(uri, { M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE }))
     if not stat then
         return {
             success = false,
@@ -1616,7 +1629,7 @@ function M.write(uri, cache, data, opts)
         local _ = host:stat(uri)
         if not _ then
             return {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string())}
+                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string()) }
             }
         end
         local _, _stat = next(_)
@@ -1627,7 +1640,7 @@ function M.write(uri, cache, data, opts)
     -- Lets make sure the file exists?
     local _ = host:touch(uri)
     if not _.success then
-        return { success = false, error = { message = _.error or string.format("Unable to create %s", uri)}}
+        return { success = false, error = { message = _.error or string.format("Unable to create %s", uri) } }
     end
     data = data or {}
     data = table.concat(data, '')
@@ -1653,7 +1666,7 @@ function M.write(uri, cache, data, opts)
         local _, stat = next(___)
         if not _ then
             return_details = {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string())}
+                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string()) }
             }
         else
             return_details = {
@@ -1682,7 +1695,7 @@ function M.delete(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    return host:rm(uri, {force = true})
+    return host:rm(uri, { force = true })
 end
 
 function M.get_metadata(uri, cache)
@@ -1710,7 +1723,7 @@ function M.move(uris, target_uri, cache)
     if validation.error then return validation end
     host = validation.host
     target_uri = validation.uri
-    if type(uris) ~= 'table' then uris = {uris} end
+    if type(uris) ~= 'table' then uris = { uris } end
     local validated_uris = {}
     for _, uri in ipairs(uris) do
         local __ = M.internal.validate(uri, cache)
@@ -1719,7 +1732,7 @@ function M.move(uris, target_uri, cache)
             return {
                 success = false,
                 error = string.format("%s and %s are not on the same host!", uri, target_uri)
-        }
+            }
         end
         table.insert(validated_uris, __.uri)
     end
@@ -1727,16 +1740,17 @@ function M.move(uris, target_uri, cache)
 end
 
 function M.archive.get(uris, cache, archive_dump_dir, available_compression_schemes)
-    if type(uris) ~= 'table' or #uris == 0 then uris = {uris} end
-    local host= nil
+    if type(uris) ~= 'table' or #uris == 0 then uris = { uris } end
+    local host = nil
     local __ = {}
     for _, uri in ipairs(uris) do
         local validation = M.internal.validate(uri, cache)
         if validation.error then return validation end
-        assert(host== nil or validation.host== host, string.format("Host mismatch for archive! %s != %s", host, validation.host))
+        assert(host == nil or validation.host == host,
+            string.format("Host mismatch for archive! %s != %s", host, validation.host))
         table.insert(__, validation.uri)
 
-        host= validation.host
+        host = validation.host
     end
     uris = __
     return host:archive(uris, archive_dump_dir, available_compression_schemes, cache)
@@ -1744,21 +1758,21 @@ end
 
 function M.archive.put(uri, cache, archive, compression_scheme)
     assert(archive, string.format("Invalid Archive provided for upload to %s", uri))
-    local host= nil
+    local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
-    host= validation.host
+    host = validation.host
     return host:extract(archive, uri, compression_scheme, cache)
 end
 
 function M.archive.schemes(uri, cache)
     assert(cache, string.format("No cache provided for archive scheme fetch of %s", uri))
-    local host= nil
+    local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
-    host= validation.host
+    host = validation.host
     return host.archive_schemes
 end
 
