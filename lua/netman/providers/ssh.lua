@@ -1637,6 +1637,18 @@ function M.internal.find(uri, host, opts)
 end
 
 function M.search(uri, cache, param, opts)
+    opts = opts or {}
+    local host = nil
+    local validation = M.internal.validate(uri, cache)
+    if validation.error then return validation end
+    uri = validation.uri
+    host = validation.host
+
+    local results = {}
+    if opts.search == 'filename' then
+        opts.param = param
+        return M.internal.find(uri, host, opts)
+    end
 end
 
 function M.write(uri, cache, data, opts)
