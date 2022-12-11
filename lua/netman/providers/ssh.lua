@@ -1513,7 +1513,6 @@ function M.internal.validate(uri, cache)
     local host = M.internal.SSH:new(uri, cache)
     return { uri = uri, host = host }
 end
-end
 
 function M.internal.read_directory(uri, host)
     local raw_children = host:find(uri,
