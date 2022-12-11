@@ -313,16 +313,11 @@ end
 ---     - no_shell
 ---         - If provided, the command will not be wrapped in a `/bin/sh -c` execution context. Note, this will be set if you provide a table for command
 --- @return table
----     Returns a table with the following key value pairs
----     - exit_code: integer
----         - _Usually_ this is the exit_code of the command ran, though it may be -1 to indicate an error outside the command occured
----     - stderr: string/table
----         - The output from the STDERR pipe from the command
----     - stdout: string/table
----         - The output from the STDOUT pipe from the command
+---     @see netman.tools.shell:run
+---     Returns exactly what shell returns
 function SSH:run_command(command, opts)
-    -- It might be easier if we put some hooks into docker to
-    -- listen for changes to the container...?
+    -- It might be easier if we put some hooks into host to
+    -- listen for changes to the host...?
     opts = opts or {
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = ''
@@ -388,6 +383,7 @@ end
 ---         - If provided, we will write to this file. By default, we will generate the file name and return
 ---         it in the exit_callback
 --- @return table
+---     TODO: Add details about async return
 ---     NOTE: This will only return to the `finish_callback` function in opts as this is an asychronous function
 ---     Returns a table with the following key, value pairs
 ---     - archive_name string
@@ -478,8 +474,8 @@ function SSH:archive(locations, archive_dir, compatible_scheme_list, provider_ca
     -- else
     command_options[command_flags.STDOUT_FILE] = string.format("%s/%s", archive_dir, archive_name)
     -- end
-    self:run_command(compress_command, command_options)
-    if not opts.async then return return_details end
+    local run_details = self:run_command(compress_command, command_options)
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Extracts the provided archive into the target location in the host
@@ -524,6 +520,7 @@ end
 function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
     opts = opts or {}
     local return_details = {}
+    local run_details = {}
     local extraction_function = nil
     local lower_scheme = scheme:lower()
     for _, comp_scheme in ipairs(self.archive_schemes) do
@@ -577,6 +574,8 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
     }
     -- if opts.async then command_options[command_flags.ASYNC] = true end
     if not opts.remote_dump then
+        -- There is no way for us to do this command "asynchronously" as we have to perform the commands in sync
+        opts.async = false
         -- This is going to cat the contents of the archive into docker in an
         -- "interactive" session, which will pipe into the provided command.
         local fh = io.open(archive, 'r+b')
@@ -620,9 +619,9 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
                 self:rm(archive, provider_cache)
             end
         end
-        self:run_command(extract_command, command_options)
+        run_details = self:run_command(extract_command, command_options)
     end
-    if not opts.async then return return_details end
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Moves a location to another location in the ssh
@@ -889,14 +888,14 @@ function SSH:find(location, opts)
         [command_flags.STDERR_JOIN] = ''
     }
     if opts.exec then
+        local _ = type(opts.exec)
+        assert(_ == 'string' or _== 'function', "Invalid Exec provided for SSH:find. Exec should be a shell command (string) or function!")
         if type(opts.exec) == 'string' then
             table.insert(find_command, "-exec")
             table.insert(find_command, opts.exec .. " {} \\;")
-        elseif type(opts.exec) == 'function' then
+        else
             command_options[command_flags.STDOUT_CALLBACK] = opts.exec
             command_options[command_flags.STDOUT_PIPE_LIMIT] = 0
-        else
-            -- complain about invalid exec type?
         end
     end
     local output =  self:run_command(table.concat(find_command, ' '), command_options)
@@ -1006,8 +1005,8 @@ function SSH:put(file, location, opts)
         command_options[command_flags.ASYNC] = true
     end
     ---@diagnostic disable-next-line: missing-parameter
-    shell:new(copy_command, command_options):run()
-    if not opts.async then return return_details end
+    local run_details = shell:new(copy_command, command_options):run()
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Retrieves a file from the host and saves it in the output directory
@@ -1100,8 +1099,8 @@ function SSH:get(location, output_dir, opts)
         command_options[command_flags.STDOUT_JOIN] = ''
     end
     ---@diagnostic disable-next-line: missing-parameter
-    shell:new(copy_command, command_options):run()
-    if not opts.async then return return_details end
+    local run_details = shell:new(copy_command, command_options):run()
+    if not opts.async then return return_details else return run_details end
 end
 
 --- Takes a table of filesystem locations and returns the stat of them
@@ -1659,6 +1658,7 @@ function M.write(uri, cache, data, opts)
         finish_callback = finish_callback,
         async = opts.async or false
     }
+    -- WARN: This should fail on async as we immediately check to see if the put was successful or not....
     local _ = host:put(local_file, uri, write_opts)
     if not _.success then
         return_details = { uri = return_details.uri or nil, success = false, error = { message = _.error } }
