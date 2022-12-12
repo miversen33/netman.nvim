@@ -23,11 +23,22 @@ config.renderers =
         { 'state' },
         { 'name' }
     },
+    netman_bookmark = {
+        { 'indent' },
+        { 'icon' },
+        { 'name' }
+    },
+    netman_hidden = {},
+    netman_spacer = {
+        { 'name' }
+    }
 }
 
--- config.window.mappings = {
---     ['f'] = "toggle_favorite",
---     ['H'] = "toggle_hidden"
--- }
+config.window.mappings = {
+    -- ['f'] = "toggle_favorite",
+    -- ['H'] = "toggle_hidden"
+    -- ['m'] = "cut_to_clipboard_visual"
+    ['/'] = 'search'
+}
 
 return config

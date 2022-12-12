@@ -1,6 +1,8 @@
 --This file should have all functions that are in the public api and either set
 --or read the state of this source.
 
+-- TODO: Ensure that we cant interact with search node unless its actively displayed....
+
 local renderer = require("neo-tree.ui.renderer")
 local events = require("neo-tree.events")
 local neo_tree_utils = require("neo-tree.utils")
@@ -24,13 +26,15 @@ local M = {
             copy   = "copy",
             cut    = "cut",
             open   = "open"
-        }
+        },
     },
     internal = {
         sorter = {},
         -- Where we will keep track of nodes that have been
         -- marked for cut/copy/delete/open/etc
-        marked_nodes = {}
+        marked_nodes = {},
+        -- Used for temporarily removing nodes from view
+        node_cache = {}
     }
 }
 -- TODO: Figure out a way to make a constant variable????
@@ -40,6 +44,55 @@ M.internal.sorter.ascending = function(a, b) return a.name < b.name end
 
 -- Sorts nodes in descending order
 M.internal.sorter.descending = function(a, b) return a.name > b.name end
+
+M.internal.generate_root_children = function()
+    -- Root Tree
+    return {
+        {
+            id = 'netman_recents',
+            name = 'Recents',
+            type = "netman_bookmark",
+            extra = {
+                icon = "",
+                highlight = "",
+                provider = "",
+            }
+        },
+        {
+            id = "netman_favorites",
+            name = "Favorites",
+            type = "netman_bookmark",
+            extra = {
+                icon = "",
+                highlight = "",
+                provider = "",
+            }
+        },
+        {
+            id = "netman_providers",
+            name = "Providers",
+            type = "netman_bookmark",
+            extra = {
+                -- TODO: Idk, pick a better icon?
+                icon = "",
+                highlight = "",
+                provider = "",
+            }
+        },
+        {
+            -- There is an attribute called `skip_node`, I wonder if we should use that instead?
+            id = "netman_search",
+            name = "Search",
+            type = "netman_bookmark",
+            skip_node = true,
+            extra = {
+                icon = "",
+                highlight = "",
+                provider = "",
+            }
+        }
+    }
+end
 
 M.internal.get_providers = function()
     local providers = {}
@@ -62,7 +115,7 @@ M.internal.get_providers = function()
             extra = {
                 icon = provider.ui.icon or "",
                 highlight = provider.ui.highlight or "",
-                provider = provider_path
+                provider = provider_path,
             }
         })
         ::continue::
@@ -88,7 +141,8 @@ M.internal.get_provider_children = function(provider)
                 last_access = host_details.LAST_ACCESSED,
                 provider = provider,
                 host = host,
-                uri = host_details.URI
+                uri = host_details.URI,
+                searchable = true
             }
         })
         ::continue::
@@ -162,11 +216,13 @@ M.internal.get_uri_children = function(state, uri, opts)
             name = item.NAME,
             extra = {
                 uri = item.URI,
-                markable = true
+                markable = true,
+                searchable = false
             }
         }
         if item.FIELD_TYPE == 'LINK' then
             child.type = 'directory'
+            child.extra.searchable = true
         else
             child.type = 'file'
         end
@@ -185,6 +241,9 @@ M.internal.generate_node_children = function(state, node, opts)
     local children = {}
     if not node then
         -- No node was provided, assume we want the root providers
+        children = M.internal.generate_root_children()
+        -- children = M.internal.get_providers()
+    elseif node.id == 'netman_providers' then
         children = M.internal.get_providers()
     elseif node.type == "netman_provider" then
         if not node.extra.provider then
@@ -196,8 +255,8 @@ M.internal.generate_node_children = function(state, node, opts)
     else
         if not node.extra.uri then
             -- SCREAM!
-           log.error(string.format("Node %s says its a netman node, but has no URI. How tf????", node.name), {node=node})
-           return children
+            log.error(string.format("Node %s says its a netman node, but has no URI. How tf????", node.name), {node=node})
+            return children
         end
         children = M.internal.get_uri_children(state, node.extra.uri, opts)
     end
@@ -224,7 +283,7 @@ M.refresh = function(state, opts)
     local message = ''
     if opts.do_all then
         -- Iterate over the "root nodes" (providers) and add them to the refresh stack
-        for _, child in ipairs(tree:get_nodes()) do
+        for _, child in ipairs(tree:get_nodes('netman_providers')) do
             table.insert(refresh_stack, child)
         end
         message = "Running full refresh of all providers"
@@ -318,9 +377,18 @@ M.navigate = function(state, opts)
             log.warn("Node doesn't exist or is missing the extra attribute", {node=node, opts=opts})
             return
         end
+        if node.id ~= 'netman_search' then
+            -- Hide netman search
+            state.tree:get_node('netman_search').skip_node = true
+        end
         if node:is_expanded() then
             node:collapse()
             renderer.redraw(state)
+            return
+        end
+        if node.id == 'netman_search' then
+            -- Nothing for us to do here, you tried to expand a node that you shouldn't
+            -- be able to expand.
             return
         end
         nodes = M.internal.generate_node_children(state, node)
@@ -592,7 +660,6 @@ M.move_node = function(state)
 end
 
 M.move_nodes = function(state, nodes, target_node)
-    log.debug({nodes=nodes, target_node=target_node})
     local uris = {}
     local parents = {}
     local bailout = true
@@ -632,6 +699,111 @@ M.delete_nodes = function(state, nodes)
     for _, node_id in ipairs(nodes) do
         M.delete_node(state, node_id)
     end
+end
+
+M.internal.hide_root_nodes = function(state)
+    for _, node in ipairs(state.tree:get_nodes()) do
+        node.extra.previous_state = node:is_expanded()
+        node:collapse()
+    end
+end
+
+M.internal.show_root_nodes = function(state)
+    for _, node in ipairs(state.tree:get_nodes()) do
+        if node.extra.previous_state then node:expand() end
+    end
+end
+
+M.search = function(state)
+    local node = state.tree:get_node()
+    if node.type == 'netman_provider' then
+        notify.warn("Cannot perform search on a provider!")
+        return
+    end
+    -- I don't know that this is right. The idea is that
+    -- if the node is a directory, we should be able to search it,
+    -- however we should also allow for grepping the file....?
+    if not node.extra.searchable then
+        node = state.tree:get_node(node:get_parent_id())
+    end
+    local message = "Search Param"
+    local default = ""
+    local uri = node.extra.uri
+    -- Must be positive integer, there should be no file depth that is 100000 deep. Yaaaa jank
+    local depth = 100000
+    local callback = function(response)
+        -- Hide nodes?
+        M.internal.hide_root_nodes(state)
+        state.tree:get_node('netman_search').skip_node = false
+        renderer.redraw(state)
+        -- NEED TO STAT THE OUTPUT SO WE KNOW HOW TO DISPLAY IT
+        local stdout = {}
+        local stdout_callback = function(item)
+            if not item or not item.ABSOLUTE_PATH then return end
+            log.debug(item)
+            -- This hardcode makes it so we expect data to come back in unix compliant paths...
+            local parent = stdout
+            for item_node in item.ABSOLUTE_PATH:gmatch('[^/]+') do
+                local child_node = {
+                    id = "find://" .. item_node.URI,
+                    name = item_node.NAME,
+                    type = 'file',
+                    extra = {
+                        uri = item.URI,
+                    }
+                }
+                if item_node ~= item.NAME then
+                    child_node.type = 'directory'
+                end
+                local new_parent = nil
+                for _, child in ipairs(parent) do
+                    if child.name == item_node then
+                        new_parent = child
+                    end
+                end
+                if not new_parent then new_parent = parent end
+                if not new_parent.children then new_parent.children = {} end
+                table.insert(new_parent.children, child_node)
+                -- This may cause some issues but it _shouldn't_
+                parent = new_parent
+            end
+            -- local first_line = nil
+            -- local last_line = nil
+            -- for line in output:gmatch('[^\r\n]+') do
+                -- log.debug("Line: " .. line)
+                -- if not first_line then first_line = line end
+                -- last_line = line
+                -- log.debug(string.format("Processing %s", line))
+            -- local parent = stdout
+            -- for part in output:gmatch('[^/]+') do
+            --     if part:sub(-1, -1) ~= '/' then
+            --         table.insert(parent, part)
+            --     else
+            --         parent[part] = {}
+            --     end
+            --     parent = parent[part]
+            -- end
+            -- log.debug({first_line = first_line, last_line = last_line})
+        end
+        local exit_callback = function()
+            log.debug("Complete Search Tree", stdout)
+        end
+        log.debug(
+            api.search(
+                uri,
+                response,
+                {
+                    max_depth       = depth,
+                    search          = 'filename',
+                    case_sensitive  = false,
+                    async           = true,
+                    stdout_callback = stdout_callback,
+                    exit_callback   = exit_callback
+                }
+            )
+        )
+    end
+    input.input(message, default, callback)
 end
 
 M.setup = function(neo_tree_config)

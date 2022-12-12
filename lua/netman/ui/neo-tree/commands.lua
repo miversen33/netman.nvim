@@ -48,7 +48,70 @@ M.move = function(state, callback)
     do_callback(callback)
 end
 
+M.search = function(state, callback)
+    ui.search(state)
+    do_callback(callback)
+end
+
 -- -- TODO:
+-- M.open_split = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.open_vsplit = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.open_tabnew = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.open_drop = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.open_tab_drop = function(state, callback)
+--
+-- end
+
+-- -- TODO:
+-- M.open_with_window_picker = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.split_with_window_picker = function(state, callback)
+--     
+-- end
+--
+-- -- TODO:
+-- M.vsplit_with_window_picker = function(state, callback)
+--
+-- end
+
+-- -- TODO:
+-- M.copy = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.copy_to_clipboard = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.copy_to_clipboard_visual = function(state, callback)
+--
+-- end
+--
+-- -- TODO:
+-- M.move = function(state, callback)
+--
+-- end
 --
 -- TODO:
 M.cut_to_clipboard = function(state, callback)
@@ -95,6 +158,28 @@ M.paste_from_clipboard = function(state, callback)
     end
     input.input(message, default, confirm_callback)
 end
+
+-- M.toggle_favorite = function(state, callback)
+--     local tree = state.tree
+--     if not tree then return end
+--     local internal_node = require("netman.ui.neo-tree").internal.get_internal_node(tree:get_node():get_id())
+--     if not internal_node.host then return end
+--     require("netman.ui.neo-tree").favorite_toggle(internal_node.provider, internal_node.host)
+--     if callback and type(callback) == 'function' then callback() end
+-- end
+--  
+-- -- TODO:
+-- M.toggle_hidden = function(state, callback)
+--     local tree = state.tree
+--     if not tree then return end
+--     local internal_node = require("netman.ui.neo-tree").internal.get_internal_node(tree:get_node():get_id())
+--     if not internal_node.host then return end
+--     require("netman.ui.neo-tree").hide_toggle(internal_node.provider, internal_node.host)
+--     if callback and type(callback) == 'function' then callback() end
+-- end
+
+
+-- TODO:
 M.delete_visual = function(state, selected_nodes, callback)
     for _, node in pairs(selected_nodes) do
         M.delete(state, node)

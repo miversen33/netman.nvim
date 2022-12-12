@@ -706,6 +706,9 @@ end
 ---     Valid Key value pairs
 ---     - async: boolean
 ---         If provided, indicates to the provider that the search should be performed asynchronously
+---     - output_callback: function
+---         If provided, we will call this function with each item that is returned from the provider.
+---         NOTE: If the provider does not support streaming of output, we will emulate it after the fact
 ---     - search: string
 ---         Valid values ('filename', 'contents')
 ---     - is_regex: boolean
@@ -727,7 +730,10 @@ function M.search(uri, param, opts)
     end
     opts = opts or { search = 'filename', case_sensitive = false}
     -- Validate that if we are doing this async, the return handle has the right info
-    return provider.search(uri, cache, param, opts)
+    if opts.output_callback then
+    end
+    local data = provider.search(uri, cache, param, opts)
+    return data
 end
 
 function M.delete(uri)
