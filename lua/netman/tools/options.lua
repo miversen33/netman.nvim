@@ -29,7 +29,8 @@ return {
             -- This should match what is available from libuv's fs_statpath https://github.com/luvit/luv/blob/master/docs.md#uvfs_statpath-callback
             -- Consider trying to interface with `stat` in your provider (if possible) as most of these are pretty easy
             -- to get from that
-            ATIME_SEC = "ATIME_SEC"
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH'
+            ,ATIME_SEC = "ATIME_SEC"
             ,ATIME_NSEC = "ATIME_NSEC"
             ,BAVAIL = "BAVAIL"
             ,BFREE = "BFREE"
