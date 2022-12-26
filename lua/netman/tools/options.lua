@@ -70,11 +70,11 @@ return {
             ,URI = "URI"
         }
         ,FIELDS = {
-            FIELD_TYPE = "FIELD_TYPE"
-            ,NAME = "NAME"
-            ,ABSOLUTE_PATH = 'ABSOLUTE_PATH'
-            ,URI = "URI"
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH'
+            ,FIELD_TYPE = "FIELD_TYPE"
             ,METADATA = 'METADATA'
+            ,NAME = "NAME"
+            ,URI = "URI"
         }
         ,STANDARD_METADATA_FLAGS = {
             ABSOLUTE_PATH = 'ABSOLUTE_PATH',
