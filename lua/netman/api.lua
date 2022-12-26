@@ -164,9 +164,9 @@ end
 function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
     for _, data in pairs(read_data) do
-        for key, value in ipairs(data) do
+        for key, value in pairs(data) do
             if netman_options.explorer.FIELDS[key] == nil then
-                log.warn("Removing " .. key .. " from directory data as it " ..
+                log.info("Removing " .. key .. " from directory data as it " ..
                     "does not conform with netman.options.explorer.FIELDS...")
                 data[key] = nil
             elseif key == netman_options.explorer.FIELDS.METADATA then
