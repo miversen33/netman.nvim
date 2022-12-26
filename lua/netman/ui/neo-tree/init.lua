@@ -299,140 +299,6 @@ M.internal.sorter.descending = function(a, b) return a.name > b.name end
 --     return children
 -- end
 
--- M.refresh = function(state, opts)
---     local refresh_stack, return_stack, tree, head, children
---     opts = opts or {}
---     -- If provided, will force a global refresh of everything, including the providers
---     -- Available options are
---     -- do_all: boolean
---     -- refresh_only_id: string
---     -- Create an empty process stack
---     refresh_stack= {}
---     -- Create an empty return stack
---     return_stack  = {}
---     if not state.tree then
---         -- How did you call refresh without a tree already rendered?
---         -- Should probably call navigate with no tree instead
---         return M.navigate(state)
---     end
---     tree = state.tree
---     local message = ''
---     if opts.do_all then
---         -- Iterate over the "root nodes" (providers) and add them to the refresh stack
---         for _, child in ipairs(tree:get_nodes('netman_providers')) do
---             table.insert(refresh_stack, child)
---         end
---         message = "Running full refresh of all providers"
---     elseif opts.refresh_only_id then
---         -- We are going to start our refresh at this node, regardless of what node
---         -- we are currently looking at
---         -- NOTE: Not really sure why but lua shits the bed if you move the
---         -- function call into the table.insert statement so 🤷
---         local _ = state.tree:get_node(opts.refresh_only_id)
---         table.insert(refresh_stack, _)
---         message = string.format("Running Targetted Refresh of %s", opts.refresh_only_id)
---     else
---         -- Add the current node found at state.tree:get_node() to the process stack
---         -- NOTE: Not really sure why but lua shits the bed if you move the
---         -- function call into the table.insert statement so 🤷
---         local _ = state.tree:get_node()
---         -- If the refresh is being ran on a file, refresh the parent directory instead
---         if _.type ~= 'directory' then _ = state.tree:get_node(_:get_parent_id()) end
---         table.insert(refresh_stack, _)
---         message = string.format("Running full refresh on %s", _.name)
---     end
---     -- Auto will be passed by anything inside this file. External calls to refresh will
---     -- notify the user that a refresh was triggered
---     if not opts.auto then
---         notify.info(message)
---     end
---     local generate_node_children_opts = {
---         ignore_unhandled_errors = opts.auto or false
---     }
---     while(#refresh_stack> 0) do
---         -- - While there are things in the process stack
---         head = table.remove(refresh_stack, 1)
---         local head_id = head:get_id()
---         -- - Check if any of current node's children are expanded. If so, add those children to the tail of the process stack
---         -- NOTE: Might be able to call tree:get_nodes(head:get_id()) instead...?
---         for _, child_id in ipairs(head:get_child_ids()) do
---             local child_node = tree:get_node(child_id)
---             -- Quick escape of logic if somehow the node doesn't exist
---             if not child_node then goto continue end
---
---             if child_node:is_expanded() then
---                 -- The node is expanded, add it to the refresh stack
---                 table.insert(refresh_stack, child_node)
---             end
---             ::continue::
---         end
---         -- - Generate the nodes new children (assume all nodes will always have the same ID)
---         children = M.internal.generate_node_children(state, head, generate_node_children_opts)
---         if children and type(children) == 'table' then
---             table.insert(return_stack, {children=children, parent_id=head_id})
---         else
---             log.warn("Received invalid children from generation of head", {head=head, children=children})
---         end
---         -- Checking if children were returned, and there is more than 0
---         -- Lua empty tables still pass truthy checks
---         -- - Add the children (and applicable parent id) to the return stack
---     end
---     -- While there are things in the return stack
---     while(#return_stack > 0) do
---         -- - Add each item to the renderer via (renderer.show_nodes), ensuring that if a parent id was provided, we add the items under that id
---         head = table.remove(return_stack, 1)
---         children = head.children
---         local parent = tree:get_node(head.parent_id)
---         -- Check if the parent node still exists. If it doesn't we wont try to render our cached info on its children
---         if parent then
---             renderer.show_nodes(children, state, head.parent_id)
---             if head.parent_id then
---                 -- Get the node that was just rendered and expand it  (it wouldn't be in this list if it wasn't)
---                 tree:get_node(head.parent_id):expand()
---             end
---         end
---     end
--- end
-
-M.navigate = function(state, opts)
-    -- local tree, node, nodes, parent_id
-    -- opts = opts or {}
-    -- -- Check to see if there is even a tree built
-    -- tree = state.tree
-    -- if not tree or not renderer.window_exists(state) then
-    --     -- Somehow there was no providers rendered.
-    --     nodes = M.internal.generate_node_children(state)
-    --     parent_id = nil
-    -- else
-    --     if opts.target_id then
-    --         node = tree:get_node(opts.target_id)
-    --     else
-    --         node = tree:get_node()
-    --     end
-    --     if not node or not node.extra then
-    --         log.warn("Node doesn't exist or is missing the extra attribute", {node=node, opts=opts})
-    --         return
-    --     end
-    --     if node.id ~= 'netman_search' then
-    --         -- Hide netman search
-    --         state.tree:get_node('netman_search').skip_node = true
-    --     end
-    --     if node:is_expanded() then
-    --         node:collapse()
-    --         renderer.redraw(state)
-    --         return
-    --     end
-    --     if node.id == 'netman_search' then
-    --         -- Nothing for us to do here, you tried to expand a node that you shouldn't
-    --         -- be able to expand.
-    --         return
-    --     end
-    --     nodes = M.internal.generate_node_children(state, node)
-    --     parent_id = node:get_id()
-    -- end
-    -- renderer.show_nodes(nodes, state, parent_id)
-end
-
 -- M.internal.add_item_to_node = function(state, node, item)
 --     log.debug(string.format("Trying to add item to node"), {node=node, item=item})
 --     if node.type == 'file' then
@@ -504,54 +370,6 @@ end
 --     -- Refresh the parent only
 --     -- Navigate to the item
 --     input.input(message, "", callback)
--- end
-
--- M.internal.delete_item = function(uri)
---     local status, _error = pcall(api.delete, uri)
---     if not status then
---         log.warn(string.format("Received error while trying to delete uri %s", uri), {error=_error})
---         return false
---     end
---     return true
--- end
-
--- --- Deletes the selected or target node
--- --- @param state NeotreeState
--- --- @param target_node_id string
--- ---     The node to target for deletion. If not provided, will use the
--- ---     currently selected node in state
--- M.delete_node = function(state, target_node_id)
---     -- TODO: Do we also delete the buffer if its open????
---     local tree, node, node_name, parent_id
---     tree = state.tree
---     node = tree:get_node(target_node_id)
---     node_name = node.name
---     parent_id = node:get_parent_id()
---     log.debug(string.format("Deleting Node %s with parent id %s", node_name, parent_id))
---     if node.type == 'netman_provider' then
---         print("Deleting providers isn't supported. Please uninstall the provider instead")
---         return
---     end
---     if node.type == 'netman_host' then
---         print("Removing hosts isn't supported. Yet... 👀")
---         return
---     end
---     -- Get confirmation...
---     local message = string.format("Are you sure you want to delete %s [y/N]", node_name)
---     local default = "N"
---     local callback = function(response)
---         if not response:match('^[yY]') then
---             log.info(string.format("Did not receive confirmation of delete. Bailing out of deletion of %s", node_name))
---             return
---         end
---         local success = M.internal.delete_item(node.extra.uri)
---         if not success then
---             notify.warn(string.format("Unable to delete %s. Received error, check netman logs for details!", node_name))
---             return
---         end
---         M.refresh(state, {refresh_only_id=parent_id, auto=true})
---     end
---     input.input(message, default, callback)
 -- end
 
 -- M.internal.rename = function(old_uri, new_uri)
@@ -841,6 +659,316 @@ end
 --     end
 --     input.input(message, default, callback)
 -- end
+
+M.internal.delete_item = function(uri)
+    local status, _error = pcall(api.delete, uri)
+    if not status then
+        log.warn(string.format("Received error while trying to delete uri %s", uri), {error=_error})
+        return false
+    end
+    return true
+end
+
+
+--- query_type can either be "host" or "provider"
+M.internal.query_node_tree = function(tree, node, query_type)
+    query_type = query_type or'netman_provider'
+    if query_type == 'host' then
+        query_type = 'netman_host'
+    end
+    assert(tree, "No tree provided for query")
+    assert(node, "No node provided for query")
+    local _ = node
+    while node.type ~= query_type do
+        local parent_id = node:get_parent_id()
+        if not parent_id then
+            -- Something horrific happened and we somehow escaped
+            -- the node path!
+            log.warn("I don't know how you did it chief, but you provided a node outside a recognized node path", {provided_node = _})
+            return nil
+        end
+        node = tree:get_node(parent_id)
+    end
+    return node
+end
+
+M.internal.show_node = function(state, node)
+    local host = M.internal.query_node_tree(state.tree, node, 'host')
+    if not host then
+        log.warn("Unable to locate host for node!", node)
+        return
+    end
+    host.extra.hidden_children[node.id] = nil
+    node.skip_node = node.extra and node.extra.skip_node
+    renderer.redraw(state)
+    return true
+end
+
+M.internal.hide_node = function(state, node)
+    local host = M.internal.query_node_tree(state.tree, node, 'host')
+    if not host then
+        log.warn("Unable to locate host for node!", node)
+        return
+    end
+    if not host.extra then host.extra = {} end
+    if not host.extra.hidden_children then host.extra.hidden_children = {} end
+    node.extra.skip_node = node.skip_node or false
+    node.skip_node = true
+    host.extra.hidden_children[node.id] = node
+    renderer.redraw(state)
+    return true
+end
+
+M.internal.unfocus_path = function(state, node)
+    assert(state, "No stated provided!")
+    assert(node, "No node provided")
+    local host = M.internal.query_node_tree(state.tree, node, 'host')
+    if not host then
+        log.warn("Unable to locate host for node!", node)
+        return
+    end
+    -- Host has no children hidden
+    if not host.extra or not host.extra.hidden_children then
+        return true
+    end
+    for _, child in pairs(host.extra.hidden_children) do
+        child.skip_node = child.extra and child.extra.skip_node
+    end
+    renderer.redraw(state)
+    renderer.focus_node(state, node.id)
+end
+
+M.internal.focus_path = function(state, start_node, end_node)
+    assert(state, "No state provided!")
+    assert(start_node, "No starting node provided!")
+    local tree = state.tree
+    assert(tree, "No neotree associated with provided state!")
+    -- If no end node is provided, we will simply use the host as the end
+    local inspect_node = start_node
+    local previous_node = nil
+    local hidden_children = {}
+    local keep_running = true
+    while keep_running do
+        -- Specifically embedding the while condition check inside the loop so this becomes
+        -- effectively a do until vs a do while.
+        keep_running = not ((end_node and inspect_node == end_node) or (inspect_node.type == 'netman_host'))
+        if inspect_node:has_children() then
+            -- We shouldn't have to check this as it should be able to be assumed that we have children
+            -- since we are searching from inside it. But still, better safe than sorry
+            for _, child_id in ipairs(inspect_node:get_child_ids()) do
+                if not previous_node or child_id ~= previous_node.id then
+                    local child_node = tree:get_node(child_id)
+                    if child_node then
+                        child_node.extra.cache_skip_node = child_node.skip_node
+                        child_node.skip_node = true
+                        table.insert(hidden_children, child_node)
+                    end
+                end
+            end
+        end
+        previous_node = inspect_node
+        inspect_node = tree:get_node(inspect_node:get_parent_id())
+    end
+    local host = previous_node
+    if host.type ~= 'netman_host' then
+        -- Get the provider so we can store the hidden nodes with it
+        host = M.internal.query_node_tree(tree, start_node, 'host')
+    end
+    if not host then
+        -- complain
+        log.error("Unable to find host for node focusing, reverting focus changes", {last_checked_node=previous_node, initial_node=start_node})
+        for _, child in ipairs(hidden_children) do
+            child.skip_node = child.extra.cache_skip_node
+            child.extra.cache_skip_node = nil
+        end
+        return
+    end
+    if not host.extra.hidden_children then host.extra.hidden_children = {} end
+    for _, child in ipairs(hidden_children) do
+        host.extra.hidden_children[child.id] = child
+    end
+    start_node:expand()
+    renderer.redraw(state)
+    renderer.focus_node(state, start_node.id)
+    return true
+end
+
+M.internal.enable_search_mode = function(state, search_param, locking_host)
+    -- TODO: Figure out a way to make it visually clear how to "leave" search mode
+    M.internal.search_locking_host = locking_host.id
+    M.internal.search_started_on = state.tree:get_node().id
+    M.internal.search_mode_enabled = true
+    local search_node = state.tree:get_node(M.constants.ROOT_IDS.NETMAN_SEARCH)
+    search_node.skip_node = false
+    search_node.name = string.format("Searching For: %s", search_param)
+    renderer.redraw(state)
+end
+
+M.internal.disable_search_mode = function(state)
+    local search_node = state.tree:get_node(M.constants.ROOT_IDS.NETMAN_SEARCH)
+    search_node.skip_node = true
+    search_node.name = ""
+    M.internal.unfocus_path(state, state.tree:get_node(M.internal.search_locking_host))
+    if M.internal.search_cache then
+        for _, node_id in ipairs(M.internal.search_cache) do
+            local node = state.tree:get_node(state.tree:get_node(node_id):get_parent_id())
+            -- Expire the parent of the search node
+            if node and node.extra then node.extra.expiration = 1 end
+        end
+    end
+    if M.internal.search_started_on then
+        renderer.focus_node(state, M.internal.search_started_on)
+    end
+    M.internal.search_cache = nil
+    M.internal.search_started_on = nil
+    M.internal.search_locking_host = nil
+    M.internal.search_mode_enabled = false
+end
+
+M.internal.search_netman = function(state, uri, param)
+    assert(state, "No state provided!")
+    assert(uri, "No base uri provided!")
+    assert(param, "No search param provided!")
+    local tree = state.tree
+    assert(tree, "No neotree associated with provided state!")
+    local host = M.internal.query_node_tree(tree, tree:get_node(uri), 'host')
+    if not host then
+        -- Complain about not getting a host?
+        notify.warn(string.format("Unable to locate netman host for %s", uri))
+        return
+    end
+    M.internal.enable_search_mode(state, param, host)
+    M.internal.focus_path(state, tree:get_node(uri))
+    local search_results = api.search(uri, param, {search = 'filename', case_sensitive = false})
+    if not search_results or not search_results.success or not search_results.data then
+        -- IDK, complain?
+
+        return
+    end
+    local cache_path = {}
+    local cache_results = {}
+    -- Fetching the "root" node of the host
+    -- Instead of iterating over the results, maybe bury the
+    -- below logic into a local anon function that we call on ASYNC callback.
+
+    for result_uri, result in pairs(search_results.data) do
+        local parent = host
+        -- TODO: Search mode should prevent expiration
+        for _, parent_details in ipairs(result.ABSOLUTE_PATH) do
+            local new_node = cache_path[parent_details.uri] or tree:get_node(parent_details.uri)
+            if not new_node then
+                local new_node_details =
+                {
+                    URI = parent_details.uri,
+                    NAME = parent_details.name,
+                    FIELD_TYPE = 'LINK'
+                }
+                if parent_details.uri == result_uri then
+                    new_node_details = result.METADATA
+                end
+                new_node = M.internal.create_ui_node(new_node_details)
+                log.debug("Creating Parent", {node = new_node, result_uri = result_uri, parent_details = parent_details})
+                M.internal.add_nodes(state, new_node, parent.id, true)
+                cache_path[new_node_details.URI] = new_node
+            end
+            parent = new_node
+        end
+        table.insert(cache_results, parent.id)
+    end
+    M.internal.search_cache = cache_results
+    renderer.redraw(state)
+end
+
+M.search = function(state)
+    if M.internal.search_mode_enabled then
+        -- We are already in a search, somehow allow for searching the present results????
+        return
+    end
+    local node = state.tree:get_node()
+    if node.type == 'netman_provider' then
+        notify.warn("Cannot perform search on a provider!")
+        return
+    end
+    -- TODO:
+    -- I don't know that this is right. The idea is that
+    -- if the node is a directory, we should be able to search it,
+    -- however we should also allow for grepping the file....?
+    if not node.extra.searchable then
+        node = state.tree:get_node(node:get_parent_id())
+    end
+    local message = "Search Param. Press enter to begin searching"
+    local default = ""
+    local uri = node.extra.uri
+    local callback = function(response)
+        M.internal.search_netman(state, uri, response)
+    end
+    input.input(message, default, callback)
+end
+    assert(state, "No state provided")
+    assert(uri, "No uri to refresh")
+    local tree = state.tree
+    local node = tree:get_node(uri)
+    -- TODO: Change the type of the URI to netman_refresh?
+    assert(node, string.format("%s is not currently displayed anywhere, can't refresh!", uri))
+    node = M.internal.create_ui_node(node)
+    assert(node, string.format("Unable to serialize Neotree node for %s", uri))
+
+    notify.info(string.format("Refreshing %s", uri))
+    local walk_stack = { node }
+    local process_stack = {}
+    local flat_tree = {}
+    while #walk_stack > 0 do
+        local head = table.remove(walk_stack, 1)
+        local head_node = tree:get_node(head.id)
+        if head_node and head_node:is_expanded() then
+            if head_node:has_children() then
+                for _, child_id in ipairs(head_node:get_child_ids()) do
+                    local new_child = M.internal.create_ui_node(tree:get_node(child_id))
+                    table.insert(walk_stack, new_child)
+                end
+            end
+            table.insert(process_stack, head)
+        end
+        flat_tree[head.id] = head
+        local children = api.read(head.id)
+        if not children then
+            -- Something horrendous happened and we got nil back.
+            log.error(string.format("Nothing returned by api.read for %s!", uri))
+            notify.error("Unexpected Netman error. Please check logs for details. :h Nmlogs")
+            return
+        end
+        if not children.success then
+            local message = string.format("Unknown error while reading from api for %s", uri)
+            if children.error then
+                if type(children.error) == 'string' then
+                    message = children.error
+                else
+                    message = children.error.message
+                end
+            end
+            notify.warn(message)
+            return
+        end
+        if children.data then
+            local unsorted_children = {}
+            local children_map = {}
+            for _, child_data in ipairs(children.data) do
+                local child = flat_tree[child_data.URI]
+                if not child then
+                    child = M.internal.create_ui_node(child_data)
+                    flat_tree[child.id] = child
+                end
+                children_map[child.name] = child
+                table.insert(unsorted_children, child.name)
+            end
+            local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
+            for _, child_name in ipairs(sorted_children) do
+                table.insert(head.children, children_map[child_name])
+            end
+        end
+    end
+    renderer.show_nodes(flat_tree[uri].children, state, uri)
+end
 
 M.setup = function(neo_tree_config)
 
