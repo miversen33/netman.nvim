@@ -1268,72 +1268,162 @@ M.navigate = function(state, opts)
     end
 end
 
+M.internal.refresh_provider = function(state, provider, opts)
+    assert(state, "No state provided")
+    assert(provider, "No provider provided for refresh")
+    opts = opts or {}
+    local tree = state.tree
+    local current_hosts = {}
+    local provider_node = tree:get_node(provider)
+    assert(provider_node, string.format("No node associated with provider: %s", provider))
+    if not opts.quiet then
+        notify.info(string.format("Refreshing %s", provider))
+    end
+    if provider_node:has_children() then
+        for _, child_id in ipairs(provider_node:get_child_ids()) do
+            local child = tree:get_node(child_id)
+            if child and child:is_expanded() then
+                local __ = M.internal.serialize_nodes(tree, child)[1]
+                if __ then
+                    current_hosts[child_id] = __.children or {}
+                end
+            end
+        end
+    end
+    local new_hosts = M.internal.generate_provider_children(provider)
+    for _, host in ipairs(new_hosts) do
+        local children = current_hosts[host.id]
+        if children then
+            host._is_expanded = true
+            host.children = children
+        end
+    end
+    renderer.show_nodes(new_hosts, state, provider)
+end
+
+M.internal.refresh_uri = function(state, uri, opts)
     assert(state, "No state provided")
     assert(uri, "No uri to refresh")
+    opts = opts or {}
     local tree = state.tree
     local node = tree:get_node(uri)
-    -- TODO: Change the type of the URI to netman_refresh?
     assert(node, string.format("%s is not currently displayed anywhere, can't refresh!", uri))
     node = M.internal.create_ui_node(node)
     assert(node, string.format("Unable to serialize Neotree node for %s", uri))
 
-    notify.info(string.format("Refreshing %s", uri))
+    if not opts.quiet then
+        notify.info(string.format("Refreshing %s", uri))
+    end
     local walk_stack = { node }
-    local process_stack = {}
     local flat_tree = {}
+    local head = nil
     while #walk_stack > 0 do
-        local head = table.remove(walk_stack, 1)
+        head = table.remove(walk_stack, 1)
         local head_node = tree:get_node(head.id)
+        flat_tree[head.id] = head
         if head_node and head_node:is_expanded() then
             if head_node:has_children() then
                 for _, child_id in ipairs(head_node:get_child_ids()) do
-                    local new_child = M.internal.create_ui_node(tree:get_node(child_id))
+                    local new_child = flat_tree[child_id]
+                    if not new_child then
+                        M.internal.create_ui_node(tree:get_node(child_id))
+                        flat_tree[child_id] = new_child
+                    end
                     table.insert(walk_stack, new_child)
                 end
             end
-            table.insert(process_stack, head)
-        end
-        flat_tree[head.id] = head
-        local children = api.read(head.id)
-        if not children then
-            -- Something horrendous happened and we got nil back.
-            log.error(string.format("Nothing returned by api.read for %s!", uri))
-            notify.error("Unexpected Netman error. Please check logs for details. :h Nmlogs")
-            return
-        end
-        if not children.success then
-            local message = string.format("Unknown error while reading from api for %s", uri)
-            if children.error then
-                if type(children.error) == 'string' then
-                    message = children.error
-                else
-                    message = children.error.message
-                end
+            local children = api.read(head.id)
+            if not children then
+                -- Something horrendous happened and we got nil back.
+                log.error(string.format("Nothing returned by api.read for %s!", uri))
+                notify.error("Unexpected Netman error. Please check logs for details. :h Nmlogs")
+                return
             end
-            notify.warn(message)
-            return
-        end
-        if children.data then
-            local unsorted_children = {}
-            local children_map = {}
-            for _, child_data in ipairs(children.data) do
-                local child = flat_tree[child_data.URI]
-                if not child then
-                    child = M.internal.create_ui_node(child_data)
-                    flat_tree[child.id] = child
+            if not children.success then
+                local message = string.format("Unknown error while reading from api for %s", uri)
+                if children.error then
+                    if type(children.error) == 'string' then
+                        message = children.error
+                    else
+                        message = children.error.message
+                    end
                 end
-                children_map[child.name] = child
-                table.insert(unsorted_children, child.name)
+                notify.warn(message)
+                return
             end
-            local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
-            for _, child_name in ipairs(sorted_children) do
-                table.insert(head.children, children_map[child_name])
+            if children.data then
+                local unsorted_children = {}
+                local children_map = {}
+                if not head.children then head.children = {} end
+                for _, child_data in ipairs(children.data) do
+                    local child = flat_tree[child_data.URI]
+                    if not child then
+                        child = M.internal.create_ui_node(child_data)
+                        flat_tree[child.id] = child
+                    end
+                    children_map[child.name] = child
+                    table.insert(unsorted_children, child.name)
+                end
+                local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
+                for _, child_name in ipairs(sorted_children) do
+                    -- Got weird nil error while inserting _something_
+                    table.insert(head.children, children_map[child_name])
+                end
             end
         end
     end
+    for _, child_id in ipairs(tree:get_node(uri):get_child_ids()) do
+        -- Remove all current children of this uri
+        tree:remove_node(child_id)
+    end
+
     renderer.show_nodes(flat_tree[uri].children, state, uri)
 end
 
+M.refresh = function(state, opts)
+    local node
+    opts = opts or {}
+    -- Per NUI doc, if we pass nil into `get_node`,
+    -- we get the current node we are looking at. Thus
+    -- we can abuse the fact that tables return nil for
+    -- missing keys
+    node = state.tree:get_node(opts.refresh_only_id)
+    local cache_type = node.type
+    if not node then
+        -- Complain that there is no node selected for refresh
+        log.warn("No node selected for refresh")
+        return
+    end
+    if node.extra.uri then
+        -- This is a node in one of the providers.
+        if not node.extra.expandable then
+            -- The selected node is not a "directory" type and thus shouldn't be
+            -- refreshed. Get its parent
+            node = state.tree:get_node(node:get_parent_id())
+            -- Redoing this since the node type will be incorrect unless
+            -- we refetch it
+            cache_type = node.type
+        end
+        if not opts.quiet then
+            node.type = 'netman_refresh'
+            renderer.redraw(state)
+        end
+        M.internal.refresh_uri(state, node.extra.uri, opts)
+    elseif node.type == M.constants.TYPES.NETMAN_PROVIDER then
+        -- The user requested a full provider refresh.
+        if not opts.quiet then
+            node.type = 'netman_refresh'
+            renderer.redraw(state)
+        end
+        M.internal.refresh_provider(state, node.extra.provider, opts)
+    else
+        -- The user selected one of the bookmark nodes, those cannot be refreshed. Just ignore the
+        -- action
+    end
+    node.type = cache_type
+    renderer.redraw(state)
+    renderer.focus_node(state, node.id)
+end
 
 M.internal.add_item_to_node = function(state, node, item)
     if node.type == 'file' then
