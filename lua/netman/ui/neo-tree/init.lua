@@ -299,50 +299,6 @@ M.internal.sorter.descending = function(a, b) return a.name > b.name end
 --     return children
 -- end
 
--- M.internal.add_item_to_node = function(state, node, item)
---     log.debug(string.format("Trying to add item to node"), {node=node, item=item})
---     if node.type == 'file' then
---         node = state.tree:get_node(node:get_parent_id())
---     end
---     local uri = string.format("%s", node.extra.uri)
---     local head_child = nil
---     local children = {}
---     local tail_child = nil
---     local parent_id = node:get_id()
---     for child in item:gmatch('([^/]+)') do
---         table.insert(children, child)
---     end
---     if item:sub(-1, -1) ~= '/' then
---     -- the last child is a file, we need to create it seperately from the above children
---         tail_child = table.remove(children, #children)
---     end
---     -- We iterate over the children creating each one on its own because not all
---     -- providers might be able to create all the directories at once 😥
---     while(#children > 0) do
---         head_child = table.remove(children, 1)
---         uri = string.format("%s%s/", uri, head_child)
---         local write_status = api.write(nil, uri)
---         if not write_status.success then
---             notify.error(write_status.error.message)
---             return
---         end
---         M.refresh(state, {refresh_only_id=parent_id, auto=true})
---         parent_id = uri
---     end
---     if tail_child then
---         uri = string.format("%s%s", uri, tail_child)
---         local write_status = api.write(nil, uri)
---         if not write_status.success then
---             -- IDK, complain?
---             notify.error(write_status.error.message)
---             return
---         end
---         uri = write_status.uri
---         M.refresh(state, {refresh_only_id=parent_id, auto=true})
---         M.navigate(state, {target_id=uri})
---     end
--- end
-
 -- M.add_node = function(state, opts)
 --     local tree, node
 --     opts = opts or {}
@@ -861,7 +817,6 @@ M.internal.search_netman = function(state, uri, param)
                     new_node_details = result.METADATA
                 end
                 new_node = M.internal.create_ui_node(new_node_details)
-                log.debug("Creating Parent", {node = new_node, result_uri = result_uri, parent_details = parent_details})
                 M.internal.add_nodes(state, new_node, parent.id, true)
                 cache_path[new_node_details.URI] = new_node
             end
@@ -943,6 +898,97 @@ M.delete_nodes = function(state, nodes)
         M.delete_node(state, node_id)
     end
 end
+--- Returns an array that can be used with renderer.show_nodes to recreate everything at this node (and under)
+M.internal.serialize_nodes = function(tree, nodes)
+    assert(tree, "No tree provided to serialize nodes!")
+    -- Quick short circuit if there is nothing to serialize
+    if not nodes or #nodes == 0 and not next(nodes) then return {} end
+    -- Wrapping nodes in a 1D array to ensure I can iterate over it
+    if #nodes == 0 then nodes = { nodes } end
+    local flat_tree = {}
+    local queue = {}
+    for _, node in ipairs(nodes) do table.insert(queue, node) end
+    local head = nil
+    local head_node = nil
+    while #queue > 0 do
+        head = table.remove(queue, 1)
+        head_node = tree:get_node(head.id)
+        flat_tree[head.id] = head
+        if head_node then
+            if head_node:has_children() then
+                for _, child_id in ipairs(head_node:get_child_ids()) do
+                    -- This may not be in the correct order...
+                    local new_child = flat_tree[child_id] or M.internal.create_ui_node(tree:get_node(child_id))
+                    flat_tree[child_id] = new_child
+                    new_child.parent = head.id
+                    table.insert(queue, new_child)
+                end
+            end
+        end
+        if head.parent and flat_tree[head.parent] then
+            if not flat_tree[head.parent].children then flat_tree[head.parent].children = {} end
+            table.insert(flat_tree[head.parent].children, head)
+        end
+    end
+    local return_tree = {}
+    for _, node in ipairs(nodes) do
+        table.insert(return_tree, flat_tree[node.id])
+    end
+    return return_tree
+end
+
+--- Pass this whatever was returned by netman.api.read OR a valid neotree node and we will convert the results
+--- into a valid Neotree node constructor (think like python's repr)
+--- NOTE: This will **NOT** transfer children. For something more indepth, use M.internal.serialize_nodes
+M.internal.create_ui_node = function(data)
+    local node = {}
+    if data.id then
+        -- The data is a neotree node, treat it as such
+        node.name = data.name
+        node.id = data:get_id()
+        node.type = data.type
+        node.skip_node = data.skip_node
+        node._is_expanded = data:is_expanded()
+        if node._is_expanded then
+            node.children = {}
+        end
+        node.extra = {}
+        if data.extra then
+            for key, value in pairs(data.extra) do
+                node.extra[key] = value
+            end
+        end
+    elseif data.URI then
+        -- The data is a netman api.read return
+        -- -- TODO: Set provider mapping for things like expiration, icons, etc
+        -- local icon_map = M.internal.provider_configs[node.extra.provider]
+        -- if icon_map then icon_map = icon_map.icon end
+        node.name = data.NAME
+        node.id = data.URI
+        node.type = 'file'
+        node._is_expanded = data._is_expanded
+        node.extra = {
+            -- TODO: We should allow providers to dictate how long the expiration is for an item
+            expiration = vim.loop.hrtime() + M.constants.DEFAULT_EXPIRATION_LIMIT,
+            uri = data.URI,
+            markable = true,
+            searchable = false,
+            expandable = false,
+            expire_amount = M.constants.DEFAULT_EXPIRATION_LIMIT
+        }
+        if data.FIELD_TYPE == 'LINK' then
+            -- TODO: Allow the API to return what the actual type is for render?
+            node.type = 'directory'
+            node.children = {}
+            node.extra.expandable = true
+            node.extra.searchable = true
+        end
+    else
+        log.error("Unable to determine type of node!", data)
+    end
+    return node
+end
+
     assert(state, "No state provided")
     assert(uri, "No uri to refresh")
     local tree = state.tree
