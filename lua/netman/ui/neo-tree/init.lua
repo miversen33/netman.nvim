@@ -549,12 +549,6 @@ M.internal.sorter.descending = function(a, b) return a.name > b.name end
 --
 -- end
 
--- M.delete_nodes = function(state, nodes)
---     for _, node_id in ipairs(nodes) do
---         M.delete_node(state, node_id)
---     end
--- end
-
 -- M.internal.hide_root_nodes = function(state)
 --     for _, node in ipairs(state.tree:get_nodes()) do
 --         node.extra.previous_state = node:is_expanded()
@@ -903,6 +897,51 @@ M.search = function(state)
         M.internal.search_netman(state, uri, response)
     end
     input.input(message, default, callback)
+end
+
+--- Deletes the selected or target node
+--- @param state NeotreeState
+--- @param target_node_id string
+---     The node to target for deletion. If not provided, will use the
+---     currently selected node in state
+M.delete_node = function(state, target_node_id)
+    -- TODO: Do we also delete the buffer if its open????
+    local tree, node, node_name, parent_id
+    tree = state.tree
+    node = tree:get_node(target_node_id)
+    node_name = node.name
+    parent_id = node:get_parent_id()
+    if node.type == 'netman_provider' then
+        print("Deleting providers isn't supported. Please uninstall the provider instead")
+        return
+    end
+    if node.type == 'netman_host' then
+        print("Removing hosts isn't supported. Yet... 👀")
+        return
+    end
+    -- Get confirmation...
+    local message = string.format("Are you sure you want to delete %s [y/N]", node_name)
+    local default = "N"
+    local callback = function(response)
+        if not response:match('^[yY]') then
+            log.info(string.format("Did not receive confirmation of delete. Bailing out of deletion of %s", node_name))
+            return
+        end
+        local success = M.internal.delete_item(node.extra.uri)
+        if not success then
+            notify.warn(string.format("Unable to delete %s. Received error, check netman logs for details!", node_name))
+            return
+        end
+        -- Idk how we plan on doing refresh yet
+        M.refresh(state, {refresh_only_id=parent_id, quiet=true})
+    end
+    input.input(message, default, callback)
+end
+
+M.delete_nodes = function(state, nodes)
+    for _, node_id in ipairs(nodes) do
+        M.delete_node(state, node_id)
+    end
 end
     assert(state, "No state provided")
     assert(uri, "No uri to refresh")
