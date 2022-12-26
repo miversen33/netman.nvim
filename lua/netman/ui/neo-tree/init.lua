@@ -28,29 +28,53 @@ local M = {
             open   = "open"
         },
         ROOT_IDS = {
-            NETMAN_RECENTS = "netman_recents",
+            NETMAN_RECENTS   = "netman_recents",
             NETMAN_FAVORITES = "netman_favorites",
-            NETMAN_PROVIDERS = "netman_providers"
+            NETMAN_PROVIDERS = "netman_providers",
+            NETMAN_SEARCH    = "netman_search"
         },
+        TYPES = {
+            NETMAN_PROVIDER = "netman_provider",
+            NETMAN_BOOKMARK = "netman_bookmark",
+            NETMAN_HOST     = "netman_host"
+        },
+        DEFAULT_EXPIRATION_LIMIT = CACHE_FACTORY.MINUTE -- 1 Minute. We will adjust this accordingly
     },
     internal = {
+        -- Table of configurations specific to each provider...?
+        provider_configs = {},
         sorter = {},
         -- Where we will keep track of nodes that have been
         -- marked for cut/copy/delete/open/etc
         marked_nodes = {},
         -- Used for temporarily removing nodes from view
-        node_cache = {}
+        node_cache = {},
+        -- Internal representation of the tree to display
+        tree = {}
     }
 }
 -- Breaking this out into its own assignment because it has references to M
 M.constants.ROOT_CHILDREN =
 {
     {
+        id = M.constants.ROOT_IDS.NETMAN_SEARCH,
+        name = "",
+        type = M.constants.TYPES.NETMAN_BOOKMARK,
+        children = {},
+        skip_node = true,
+        extra = {
+            -- TODO: Idk, pick a better icon?
+            icon = "",
+            provider = ""
+        }
+    },
+    {
         id = M.constants.ROOT_IDS.NETMAN_RECENTS,
         name = 'Recents',
-        type = "netman_bookmark",
+        type = M.constants.TYPES.NETMAN_BOOKMARK,
         children = {},
         extra = {
+            expandable = true,
             icon = "",
             highlight = "",
             provider = "",
@@ -59,9 +83,10 @@ M.constants.ROOT_CHILDREN =
     {
         id = M.constants.ROOT_IDS.NETMAN_FAVORITES,
         name = "Favorites",
-        type = "netman_bookmark",
+        type = M.constants.TYPES.NETMAN_BOOKMARK,
         children = {},
         extra = {
+            expandable = true,
             icon = "",
             highlight = "",
             provider = "",
@@ -70,9 +95,10 @@ M.constants.ROOT_CHILDREN =
     {
         id = M.constants.ROOT_IDS.NETMAN_PROVIDERS,
         name = "Providers",
-        type = "netman_bookmark",
+        type = M.constants.TYPES.NETMAN_BOOKMARK,
         children = {},
         extra = {
+            expandable = true,
             -- TODO: Idk, pick a better icon?
             icon = "",
             highlight = "",
@@ -1046,6 +1072,200 @@ M.internal.create_ui_node = function(data)
         log.error("Unable to determine type of node!", data)
     end
     return node
+end
+
+M.internal.generate_providers = function()
+    local providers = {}
+    for _, provider_path in ipairs(api.providers.get_providers()) do
+        local status, provider = pcall(require, provider_path)
+        if not status or not provider.ui then
+            -- Failed to import the provider for some reason
+            -- or the provider is not UI ready
+            if not provider.ui then
+                log.info(string.format("%s is not ui ready, it is missing the ui attribute", provider_path))
+            end
+            goto continue
+        end
+        table.insert(providers, {
+            -- Provider's (in this context) are unique as they are 
+            -- import paths from netman.api
+            id = provider_path,
+            name = provider.name,
+            type = M.constants.TYPES.NETMAN_PROVIDER,
+            children = {},
+            extra = {
+                expandable = true,
+                icon = provider.ui.icon or "",
+                highlight = provider.ui.highlight or "",
+                provider = provider_path,
+            }
+        })
+        ::continue::
+    end
+    table.sort(providers, M.internal.sorter.ascending)
+    return providers
+end
+
+M.internal.generate_provider_children = function(provider)
+    local hosts = {}
+    for _, host in ipairs(api.providers.get_hosts(provider)) do
+        local host_details = api.providers.get_host_details(provider, host)
+        if not host_details then
+            log.warn(string.format("%s did not return any details for %s", provider, host))
+            goto continue
+        end
+        table.insert(hosts, {
+            id = host_details.URI,
+            name = host_details.NAME,
+            type = "netman_host",
+            children = {},
+            extra = {
+                expandable = true,
+                state = host_details.STATE,
+                last_access = host_details.LAST_ACCESSED,
+                provider = provider,
+                host = host,
+                uri = host_details.URI,
+                searchable = true,
+                hidden_children = {}
+            }
+        })
+        ::continue::
+    end
+    table.sort(hosts, M.internal.sorter.ascending)
+    return hosts
+end
+
+M.internal.generate_node_children = function(state, node, opts)
+    assert(state, "No state provided!")
+    assert(node, "No node provided!")
+    assert(node.extra, "No extra attributes on node!")
+    assert(node.extra.uri, "No uri found on node!")
+    local uri = node.extra.uri
+    opts = opts or {}
+    local children = {}
+    -- Get the output from netman.api.read
+    -- Do stuff with that output?
+    local output = api.read(uri)
+    if not output then
+        log.info(string.format("%s did not return anything on read", uri))
+        return nil
+    end
+    if output.error then
+        local _error = output.error
+        local message = _error.message
+        -- Handle the error?
+        -- The error wants us to do a thing
+        if _error.callback then
+            local default = _error.default or ""
+            local parent_id = state.tree:get_node():get_parent_id()
+            local callback = function(_)
+                local response = _error.callback(_)
+                if response.retry then
+                    -- Do a retry of ourselves???
+                    M.refresh(state, {refresh_only_id=parent_id, auto=true})
+                end
+            end
+            input.input(message, default, callback)
+            return nil
+        else
+            if not opts.ignore_unhandled_errors then
+                -- No callback was provided, display the error and move on with our lives
+                print(string.format("Unable to read %s, received error %s", uri, message))
+                log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
+            end
+            return nil
+        end
+    end
+    if output.type == 'FILE' or output.type == 'STREAM' then
+        -- Make neo-tree create a buffer for us
+        local command = ""
+        local open_command = 'read ++edit'
+        local event_handler_id = "netman_dummy_file_event"
+        if output.type == 'STREAM' then
+            command = '0append! ' .. table.concat(output.data) .. command
+        else
+            command = string.format("%s %s %s", open_command, output.data.local_path, command)
+        end
+        local dummy_file_open_handler = {
+            event = "file_opened",
+            id = event_handler_id
+        }
+        dummy_file_open_handler.handler = function()
+            events.unsubscribe(dummy_file_open_handler)
+        end
+        events.subscribe(dummy_file_open_handler)
+        neo_tree_utils.open_file(state, uri)
+        return nil
+    end
+    local unsorted_children = {}
+    local children_map = {}
+    for _, item in ipairs(output.data) do
+        local child = M.internal.create_ui_node(item)
+        table.insert(unsorted_children, child.name)
+        children_map[child.name] = child
+    end
+    local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
+    for _, child in ipairs(sorted_children) do
+        table.insert(children, children_map[child])
+    end
+    return children
+end
+
+M.navigate = function(state, opts)
+    local tree, node, nodes, parent_id, sort_nodes
+    opts = opts or {}
+    nodes = {}
+    -- Check to see if there is even a tree built
+    tree = state.tree
+    sort_nodes = true
+    if not tree or not renderer.window_exists(state) then
+        nodes = M.constants.ROOT_CHILDREN
+        sort_nodes = false
+        goto render
+    end
+    node = tree:get_node()
+    -- Check if the node is the search node
+    if node.id == M.constants.ROOT_IDS.NETMAN_SEARCH then
+        M.internal.disable_search_mode(state)
+        return
+    end
+
+    -- collapse the node
+    if node:is_expanded() then
+        node:collapse()
+        renderer.redraw(state)
+        return
+    end
+    -- Check to see if the node has children and its expired
+    if node:has_children() then
+        if M.internal.search_mode_enabled or not node.extra.expiration or node.extra.expiration > vim.loop.hrtime() then
+            node:expand()
+            renderer.redraw(state)
+            return
+        else
+            -- The parent has expired, clear out its children so it can be refreshed
+            for _, child_id in ipairs(node:get_child_ids()) do
+                tree:remove_node(child_id)
+            end
+            node.extra.expiration = vim.loop.hrtime() + node.extra.expire_amount
+        end
+    end
+    parent_id = node.id
+    if node.id == M.constants.ROOT_IDS.NETMAN_PROVIDERS then
+        nodes = M.internal.generate_providers()
+    elseif node.type == M.constants.TYPES.NETMAN_PROVIDER then
+        -- They selected a provider node, we need to populate it
+        nodes = M.internal.generate_provider_children(node.extra.provider)
+    else
+        -- They selected a node provided by a provider, get its data
+        nodes = M.internal.generate_node_children(state, node)
+    end
+    ::render::
+    if nodes then
+        M.internal.add_nodes(state, nodes, parent_id, sort_nodes)
+        renderer.focus_node(state, parent_id)
+    end
 end
 
     assert(state, "No state provided")
