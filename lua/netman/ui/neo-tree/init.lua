@@ -898,6 +898,65 @@ M.delete_nodes = function(state, nodes)
         M.delete_node(state, node_id)
     end
 end
+
+--- @param state NeotreeState
+---     Whatever the state is that Neotree provides
+--- @param nodes table
+---     A 1D table of Nodes to create. See https://github.com/nvim-neo-tree/neo-tree.nvim/blob/7c6903b05b13c5d4c3882c896a59e6101cb51ea7/lua/neo-tree/ui/renderer.lua#L1071
+---     for details on what these nodes should be
+---     NOTE: You can pass a single node to add (outside a 1d table) and we will fix it for you because
+---     we're a nice API like that ;)
+--- @param parent_id string | Optional
+---     Default: nil
+---     The id of the parent to add the node to
+---     If not provided, we will add to root
+--- @param sort_nodes boolean | Optional
+---     Default: false
+---     If provided, we will sort the nodes after adding the new one(s)
+--- @return table
+---     Returns the serialized node tree. Useful if you wish to render later
+M.internal.add_nodes = function(state, nodes, parent_id, sort_nodes)
+    assert(state, "No Neotree state provided")
+    assert(nodes, "No node provided to add")
+    if #nodes == 0 and next(nodes) then nodes = { nodes } end
+    local parent_children = {}
+    local serialized_children = nil
+    if state.tree then
+        -- parent_children = state.tree:get_nodes(parent_id)
+        local parent_node = state.tree:get_node(parent_id)
+        if parent_node:has_children() then
+            for _, child_id in ipairs(parent_node:get_child_ids()) do
+                local _child = state.tree:get_node(child_id)
+                table.insert(parent_children, _child)
+            end
+        end
+        serialized_children = M.internal.serialize_nodes(state.tree, parent_children)
+    end
+    -- If we didn't get anything back, we are probably safe to assume we are the only node to display
+    if not serialized_children or #serialized_children == 0 then
+        serialized_children = nodes
+    else
+        for _, node in ipairs(nodes) do
+            table.insert(serialized_children, node)
+        end
+    end
+    if sort_nodes then
+        local unsorted_children = {}
+        local children_map = {}
+        for _, item in ipairs(serialized_children) do
+            table.insert(unsorted_children, item.name)
+            children_map[item.name] = item
+        end
+        local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
+        serialized_children = {}
+        for _, child in ipairs(sorted_children) do
+            table.insert(serialized_children, children_map[child])
+        end
+    end
+    renderer.show_nodes(serialized_children, state, parent_id)
+    return serialized_children
+end
+
 --- Returns an array that can be used with renderer.show_nodes to recreate everything at this node (and under)
 M.internal.serialize_nodes = function(tree, nodes)
     assert(tree, "No tree provided to serialize nodes!")
@@ -1053,6 +1112,81 @@ end
         end
     end
     renderer.show_nodes(flat_tree[uri].children, state, uri)
+end
+
+
+M.internal.add_item_to_node = function(state, node, item)
+    if node.type == 'file' then
+        node = state.tree:get_node(node:get_parent_id())
+    end
+    local uri = string.format("%s", node.extra.uri)
+    local head_child = nil
+    local children = {}
+    local tail_child = nil
+    local parent_id = node:get_id()
+    for child in item:gmatch('([^/]+)') do
+        table.insert(children, child)
+    end
+    if item:sub(-1, -1) ~= '/' then
+    -- the last child is a file, we need to create it seperately from the above children
+        tail_child = table.remove(children, #children)
+    end
+    -- We iterate over the children creating each one on its own because not all
+    -- providers might be able to create all the directories at once 😥
+    -- TODO: Doing individual refreshes after each new node is created seems like a bad idea. We should
+    -- see if we can consolidate them into one refresh at the end?
+    while(#children > 0) do
+        head_child = table.remove(children, 1)
+        uri = string.format("%s%s/", uri, head_child)
+        local write_status = api.write(nil, uri)
+        if not write_status.success then
+            notify.error(write_status.error.message)
+            return
+        end
+        M.refresh(state, {refresh_only_id=parent_id, quiet=true})
+        parent_id = uri
+    end
+    if tail_child then
+        uri = string.format("%s%s", uri, tail_child)
+        local write_status = api.write(nil, uri)
+        if not write_status.success then
+            -- IDK, complain?
+            notify.error(write_status.error.message)
+            return
+        end
+        uri = write_status.uri
+        M.refresh(state, {refresh_only_id=parent_id, quiet=true})
+    end
+    renderer.focus_node(state, uri)
+end
+
+M.create_node = function(state, opts)
+    local tree, node
+    opts = opts or {}
+    tree = state.tree
+    node = tree:get_node()
+    if node.type == 'netman_provider' then
+        print("Adding new hosts to a provider isn't supported. Yet... 👀")
+        return
+    end
+    local message = "Enter name of new file/directory. End the name in / to make it a directory"
+    if opts.force_dir then
+        message = "Enter name of new directory"
+    end
+    local callback = function(response)
+        if opts.force_dir and response:sub(-1, -1) ~= '/' then
+            response = string.format("%s/", response)
+        end
+        -- Check to see if node is a directory. If not, get its parent
+        if node.type ~= 'directory' then tree:get_node(node:get_parent_id()) end
+        M.internal.add_item_to_node(state, node, response)
+    end
+    -- Check if the node is active before trying to add to it
+    -- Prompt for new item name
+    -- Create new item in netman.api with the provider ui and parent path
+    -- Refresh the parent only
+    -- Navigate to the item
+    input.input(message, "", callback)
 end
 
 M.setup = function(neo_tree_config)
