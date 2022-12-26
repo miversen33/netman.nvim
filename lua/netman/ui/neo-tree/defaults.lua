@@ -31,7 +31,12 @@ config.renderers =
     netman_hidden = {},
     netman_spacer = {
         { 'name' }
-    }
+    },
+    netman_refresh = {
+        { 'indent' },
+        { 'icon' },
+        { 'name' }
+    },
 }
 
 config.window.mappings = {

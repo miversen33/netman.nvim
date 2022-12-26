@@ -17,7 +17,9 @@ local netman_host_states = require("netman.tools.options").ui.STATES
 local log = require("netman.tools.utils").log
 
 local M = {
-    internal = {}
+    internal = {
+        refresh_icon = " "
+    }
 }
 
 M.internal.state_map = {
@@ -35,6 +37,8 @@ M.icon = function(config, node, state)
     end
     if node.type == 'netman_host' then
         _icon.text = ' '
+    elseif node.type == 'netman_refresh' then
+        _icon.text = M.internal.refresh_icon
     end
     if entry.icon then
         _icon.text = string.format("%s ", entry.icon)
