@@ -340,6 +340,12 @@ function Shell:run(timeout)
             self:_on_exit(exit_code, signal)
         end
     )
+    if not self._process_handle then
+        -- Something horrific happened. Exit immediately
+        self:_stderr_callback(nil, "MISSING JOB HANDLE")
+        self:close()
+        goto do_return
+    end
     self._stdout_pipe:read_start(function(...) self:_stdout_callback(...) end)
     self._stderr_pipe:read_start(function(...) self:_stderr_callback(...) end)
     if timeout > 0 then
@@ -349,6 +355,7 @@ function Shell:run(timeout)
             self:close()
         end)
     end
+    ::do_return::
     if not self._is_async then
         while self._running do
             uv.run('once')
