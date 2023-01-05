@@ -3,6 +3,8 @@ local notify = require("netman.tools.utils").notify
 local log = require("netman.tools.utils").log
 local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
+local generate_string = require("netman.tools.utils").generate_string
+local generate_session_log = require("netman.tools.utils").generate_session_log
 
 local M = {}
 
@@ -48,6 +50,8 @@ M._providers = {
 }
 
 M._explorers = {}
+
+M.version = 1.01
 
 local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
 local protocol_from_path_glob = '^([%w%-.]+)://'
@@ -901,6 +905,72 @@ end
 function M.reload_provider(provider_path)
     M.unload_provider(provider_path)
     M.load_provider(provider_path)
+end
+
+--- Loads up the netman log into a buffer.
+--- @param output_path string | Optional
+---     Default: $HOME/random_string.log
+---     If provided, this will be the file to write to. Note, this will write over whatever the file that is provided.
+---     Note, you can provide "memory" to generate this as an in memory log dump only
+function M.generate_log(output_path)
+    if output_path ~= 'memory' then
+        output_path = output_path or string.format("$HOME/%s.log", generate_string(10))
+    end
+    local neovim_details = vim.version()
+    local host_details = vim.loop.os_uname()
+    local headers = {
+        '----------------------------------------------------',
+        string.format("Neovim Version: %s.%s", neovim_details.major, neovim_details.minor),
+        string.format("System: %s %s %s %s", host_details.sysname, host_details.release, host_details.version, host_details.machine),
+        string.format("Netman Version: %s", M.version),
+        "",
+        ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",
+        "",
+        "Running Provider Details"
+    }
+    for path, _ in pairs(M._providers.path_to_provider) do
+        local provider = _.provider
+        table.insert(headers, string.format("    %s --patterns %s --protocol %s --version %s", path, table.concat(provider.protocol_patterns, ','), provider.name, provider.version))
+    end
+    table.insert(headers, "")
+    table.insert(headers, "Not Running Provider Details")
+    for path, details in pairs(M._providers.uninitialized) do
+        table.insert(headers, string.format("    %s --protocol %s --version %s --reason %s", path, details.protocol, details.version, details.reason))
+    end
+    table.insert(headers, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    table.insert(headers, '----------------------------------------------------')
+    table.insert(headers, "Logs")
+    table.insert(headers, "")
+    local log_buffer = nil
+    for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_get_option(buffer, 'filetype') ~= 'NetmanLogs' then
+            goto continue
+        else
+            log_buffer = buffer
+            break
+        end
+        ::continue::
+    end
+    if not log_buffer then
+        log_buffer = vim.api.nvim_create_buf(true, true)
+        vim.api.nvim_buf_set_option(log_buffer, 'filetype', 'NetmanLogs')
+    end
+
+    vim.api.nvim_buf_set_option(log_buffer, 'modifiable', true)
+    vim.api.nvim_set_current_buf(log_buffer)
+    local pre_prepared_logs = generate_session_log(output_path, headers)
+    local logs = {}
+    for _, logline in ipairs(pre_prepared_logs) do
+        for line in logline:gmatch('[^\r\n]+') do
+            table.insert(logs, line)
+        end
+    end
+    vim.api.nvim_buf_set_lines(log_buffer, 0, -1, false, logs)
+    vim.api.nvim_command('%s%\\n%\r%g')
+    vim.api.nvim_command('%s%\\t%\t%g')
+    vim.api.nvim_buf_set_option(log_buffer, 'modifiable', false)
+    vim.api.nvim_buf_set_option(log_buffer, 'modified', false)
+    vim.api.nvim_command('0')
 end
 
 function M.init()

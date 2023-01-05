@@ -20,6 +20,7 @@ local package_name_escape  = "([\\(%s@!\"\'\\)-.])"
 local log_file             = nil
 local log                  = {}
 local notify               = {}
+local session_logs         = {}
 local pid                  = vim.fn.getpid()
 local netman_config_path   = vim.fn.stdpath('data') .. '/netman/providers.json'
 local log_level_map        = {
@@ -49,35 +50,20 @@ local generate_session_log = function(output_path, logs)
     if output_path ~= 'memory' then
         output_path = vim.fn.resolve(vim.fn.expand(output_path))
     end
-    local log_path = data_dir .. "logs.txt"
-    local line = ''
-    local pulled_sid = ''
-    local keep_running = true
-    -- Seems wrong
-    local _log_file = io.input(log_path)
-    vim.api.nvim_notify("Gathering Logs...", log_level_map.INFO, {})
-    while keep_running do
-        line = io.read('*line')
-        if not line then
-            keep_running = false
-        else
-           pulled_sid = line:match(validate_log_pattern)
-            if pulled_sid == session_id then
-                table.insert(logs, line)
-            end
-        end
+    if not session_logs[session_id] then session_logs[session_id] = {} end
+    for _, line in ipairs(session_logs[session_id]) do
+        table.insert(logs, line)
     end
-    io.close(_log_file)
     local message = ''
     if output_path ~= 'memory' then message = "Saving Logs" else message = "Generating Logs" end
     vim.api.nvim_notify(message, log_level_map.INFO, {})
-    table.insert(logs, line)
     if output_path ~= 'memory' then
         vim.fn.jobwait({vim.fn.jobstart('touch ' .. output_path)})
         -- Consider _not_ doing this?
-        local outfile = io.output(output_path)
-        outfile:write(table.concat(logs, '\n'))
-        outfile:close()
+        local outfile = io.open(output_path, "w")
+        assert(outfile, string.format("Unable to open %s to write logs to", output_path))
+        assert(outfile:write(table.concat(logs, '\n')), string.format("Unable to write logs to %s", output_path))
+        assert(outfile:close(), string.format("Unable to close %s", output_path))
         vim.api.nvim_notify("Saved logs to " .. output_path, 2, {})
     end
     return logs
@@ -93,8 +79,8 @@ local generate_string = function(string_length)
     return return_string
 end
 
-local is_process_alive = function(pid)
-    local command = {'kill', '-0', pid}
+local is_process_alive = function(_pid)
+    local command = {'kill', '-0', _pid}
 
     local command_options = {}
     command_options[command_flags.STDOUT_JOIN] = ''
@@ -145,6 +131,8 @@ local _log = function(level, do_notify, ...)
     if level == 'ERROR' then
         table.insert(parts, debug.traceback("", 3))
     end
+    if not session_logs[session_id] then session_logs[session_id] = {} end
+    table.insert(session_logs[session_id], table.concat(parts, '\t'))
     log_file:write(table.concat(parts, '\t'), "\n")
     log_file:flush()
     if do_notify then
