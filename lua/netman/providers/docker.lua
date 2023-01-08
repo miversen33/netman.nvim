@@ -1278,13 +1278,13 @@ function Container:_stat_parse(stat_output, target_flags)
                 _type = value
             end
         end
-        if target_flags[Container.CONSTANTS.STAT_FLAGS.URI] then
-            item[Container.CONSTANTS.STAT_FLAGS.URI] = string.format(
-                "docker://%s%s", self.name, item.NAME
-            )
-            if _type:upper() == 'DIRECTORY' and item.NAME:sub(-1, -1) ~= '/' then
-                item[Container.CONSTANTS.STAT_FLAGS.URI] = item[Container.CONSTANTS.STAT_FLAGS.URI] .. '/'
-            end
+        -- WARN: This may create invalid URIs if a stat is performed
+        -- on a _non_ absolute path. Figure out how to addres this
+        item[Container.CONSTANTS.STAT_FLAGS.URI] = string.format(
+            "docker://%s%s", self.name, item.NAME
+        )
+        if _type:upper() == 'DIRECTORY' and item.NAME:sub(-1, -1) ~= '/' then
+            item[Container.CONSTANTS.STAT_FLAGS.URI] = item[Container.CONSTANTS.STAT_FLAGS.URI] .. '/'
         end
         if target_flags[Container.CONSTANTS.STAT_FLAGS.TYPE] then
             if _type:upper() == 'DIRECTORY' then
@@ -1293,11 +1293,22 @@ function Container:_stat_parse(stat_output, target_flags)
                 item['FIELD_TYPE'] = metadata_options.DESTINATION
             end
         end
-        item['ABSOLUTE_PATH'] = item.NAME
         local name = ''
-        for _ in item.NAME:gmatch('[^/]+') do name = _ end
+        local cur_path = ''
+        local path = {}
+        for _ in item.NAME:gmatch('[^/]+') do
+            name = _
+            cur_path = cur_path .. "/" .. _
+            table.insert(path, {
+                uri = string.format("docker://%s%s/", self.name, cur_path),
+                name = _
+            })
+        end
+        path[#path] = {uri = item[Container.CONSTANTS.STAT_FLAGS.URI], name = name}
+        local absolute_path = item.NAME
+        item[Container.CONSTANTS.STAT_FLAGS.ABSOLUTE_PATH] = path
         item.NAME = name
-        stat[item['ABSOLUTE_PATH']] = item
+        stat[absolute_path] = item
     end
     return stat
 end

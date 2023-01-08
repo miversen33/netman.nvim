@@ -1223,9 +1223,21 @@ function SSH:_stat_parse(stat_output, target_flags)
         end
         item['ABSOLUTE_PATH'] = item.NAME
         local name = ''
-        for _ in item.NAME:gmatch('[^/]+') do name = _ end
+        local cur_path = ''
+        local path = {}
+        for _ in item.NAME:gmatch('[^/]+') do
+            name = _
+            cur_path = cur_path .. "/" .. _
+            table.insert(path, {
+                uri = self:_create_uri(cur_path .. '/'),
+                name = _
+            })
+        end
+        path[#path] = {uri = item[SSH.CONSTANTS.STAT_FLAGS.URI], name = name}
+        local absolute_path = item.NAME
+        item[SSH.CONSTANTS.STAT_FLAGS.ABSOLUTE_PATH] = path
         item.NAME = name
-        stat[item['ABSOLUTE_PATH']] = item
+        stat[absolute_path] = item
     end
     return stat
 end
