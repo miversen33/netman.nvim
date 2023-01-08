@@ -359,6 +359,13 @@ function Container:start(opts)
     local start_command = { 'docker', 'container', 'start', self.name }
     local finish_callback = function(command_output)
         log.trace(command_output)
+        if command_output.stderr and command_output.stderr:lower():match('no such container') then
+            -- Do we throw an actual error or just log it and return nil?
+            return_details = { error = string.format("Container %s does not exist!", self.name), success = false }
+            log.error(string.format("Container %s does not exist!", self.name))
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Received non-0 exit code while trying to start container %s", self.name)
             log.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
