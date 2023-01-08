@@ -41,6 +41,7 @@ local SSH = {
         -- Maximum number of bytes we are willing to read in at once from a file
         IO_BYTE_LIMIT = 2 ^ 13,
         STAT_FLAGS = {
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH',
             MODE = 'MODE',
             BLOCKS = 'BLOCKS',
             BLKSIZE = 'BLKSIZE',
@@ -52,7 +53,6 @@ local SSH = {
             SIZE = 'SIZE',
             TYPE = 'TYPE',
             NAME = 'NAME',
-            RAW = 'RAW',
             URI = 'URI'
         },
         SSH_CONNECTION_TIMEOUT = 10,
@@ -196,20 +196,20 @@ function SSH:new(auth_details, provider_cache)
 end
 
 function SSH:_get_os()
-    log.trace(string.format("Checking OS For Host %s", self.name))
+    log.trace(string.format("Checking OS For Host %s", self.host))
     local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
     local output = self:run_command(_get_os_command, {
         [command_flags.STDOUT_JOIN] = ''
     })
     if output.exit_code ~= 0 then
-        log.warn(string.format("Unable to identify operating system for %s", self.name))
+        log.warn(string.format("Unable to identify operating system for %s", self.host))
         return nil
     end
     return output.stdout:gsub('["\']', '')
 end
 
 function SSH:_get_archive_availability_details()
-    log.trace(string.format("Checking Available Archive Formats for %s", self.name))
+    log.trace(string.format("Checking Available Archive Formats for %s", self.host))
     local output = self:run_command('tar --version', { [command_flags.STDERR_JOIN] = '' })
     if output.exit_code ~= 0 then
         -- complain about being unable to find archive details...
@@ -821,7 +821,6 @@ end
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
----         max_depth = 1,
 ---         min_depth = 1,
 ---         filesystems = true
 ---     }
@@ -858,7 +857,6 @@ end
 function SSH:find(location, opts)
     local default_opts = {
         follow_symlinks = true,
-        max_depth = 1,
         min_depth = 1,
         filesystems = true
     }
@@ -890,7 +888,7 @@ function SSH:find(location, opts)
             error(string.format("Invalid Find Pattern Type: %s. See :h netman.providers.ssh.find for details",
                 opts.pattern_type))
         end
-        table.insert(find_command, opts.search_param)
+        table.insert(find_command, string.format('"%s"', opts.search_param))
     end
     local command_options = {
         [command_flags.STDERR_JOIN] = '',
@@ -1144,7 +1142,6 @@ end
 ---         - type
 ---         - name
 ---         - uri
----         - raw
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     print(vim.inspect(host:stat('/tmp')))
@@ -1199,9 +1196,6 @@ function SSH:_stat_parse(stat_output, target_flags)
     for _, line in ipairs(stat_output) do
         line = line:gsub('(\\0)', '')
         local item = {}
-        if target_flags[SSH.CONSTANTS.STAT_FLAGS.RAW] then
-            item[SSH.CONSTANTS.STAT_FLAGS.RAW] = line
-        end
         local _type = nil
         for _, pattern in ipairs(find_pattern_globs) do
             local key, value = line:match(pattern)

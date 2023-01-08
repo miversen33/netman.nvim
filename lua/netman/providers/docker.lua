@@ -53,6 +53,7 @@ local Container = {
         -- Maximimum number of bytes we are willing to read in at once from a file
         IO_BYTE_LIMIT = 2 ^ 13,
         STAT_FLAGS = {
+            ABSOLUTE_PATH = "ABSOLUTE_PATH",
             MODE = 'MODE',
             BLOCKS = 'BLOCKS',
             BLKSIZE = 'BLKSIZE',
@@ -64,7 +65,6 @@ local Container = {
             SIZE = 'SIZE',
             TYPE = 'TYPE',
             NAME = 'NAME',
-            RAW = 'RAW',
             URI = 'URI'
         },
         MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
@@ -206,6 +206,7 @@ function Container:_get_archive_availability_details()
                     string.format("%s is not a compatible netman uri", location))
                 local parent = location:parent():to_string()
                 local chain = ''
+                -- TODO: We should use `tar -a` instead of this absolute garbage
                 if not first_pass then
                     header_offset = 'head -c -1024 &&'
                     chain = '|'
@@ -557,7 +558,6 @@ function Container:archive(locations, archive_dir, compatible_scheme_list, provi
     local compress_command = compression_function(locations)
     local archive_path = string.format("%s/%s", archive_dir, archive_name)
     local finish_callback = function(output)
-        log.trace(output)
         if output.exit_code ~= 0 then
             local _error = "Received non-0 exit code when trying to archive locations"
             log.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
@@ -921,7 +921,6 @@ end
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
----         max_depth = 1,
 ---         min_depth = 1,
 ---         filesystems = true
 ---     }
@@ -956,7 +955,6 @@ end
 function Container:find(location, opts)
     local default_opts = {
         follow_symlinks = true,
-        max_depth = 1,
         min_depth = 1,
         filesystems = true
     }
@@ -1210,7 +1208,6 @@ end
 ---         - type
 ---         - name
 ---         - uri
----         - raw
 --- @example
 ---     local container = Container:new('ubuntu')
 ---     print(vim.inspect(container:stat('/tmp')))
@@ -1262,9 +1259,6 @@ function Container:_stat_parse(stat_output, target_flags)
     local stat = {}
     for _, line in ipairs(stat_output) do
         local item = {}
-        if target_flags[Container.CONSTANTS.STAT_FLAGS.RAW] then
-            item[Container.CONSTANTS.STAT_FLAGS.RAW] = line
-        end
         local _type = nil
         for _, pattern in ipairs(find_pattern_globs) do
             local key, value = line:match(pattern)
