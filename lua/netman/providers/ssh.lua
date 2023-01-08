@@ -199,11 +199,12 @@ function SSH:_get_os()
     log.trace(string.format("Checking OS For Host %s", self.host))
     local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
     local output = self:run_command(_get_os_command, {
-        [command_flags.STDOUT_JOIN] = ''
+        [command_flags.STDOUT_JOIN] = '',
+        [command_flags.STDERR_JOIN] = ''
     })
     if output.exit_code ~= 0 then
         log.warn(string.format("Unable to identify operating system for %s", self.host))
-        return nil
+        return "Unknown"
     end
     return output.stdout:gsub('["\']', '')
 end
