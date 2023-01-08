@@ -689,7 +689,7 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
     if not opts.remote_dump then
-        -- There is on way for us to do this asynchronously
+        -- There is no way for us to do this asynchronously
         opts.async = false
         -- This is going to cat the contents of the archive into docker in an
         -- "interactive" session, which will pipe into the provided command.

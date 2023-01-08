@@ -145,6 +145,7 @@ function Shell:reset(command, options)
     self._uid = options[Shell.CONSTANTS.FLAGS.UID]
     self._gid = options[Shell.CONSTANTS.FLAGS.GID]
     self._stdin_pipe = nil
+    self._stdin_write_count = 0
     self._attempted_kill = false
     self._running = false
     self._stdout_pipe = nil
@@ -176,6 +177,7 @@ function Shell:_prepare()
     self._stdin_pipe = uv.new_pipe(false)
     self._stdout_pipe = uv.new_pipe(false)
     self._stderr_pipe = uv.new_pipe(false)
+    self._stdin_write_count = 0
     self._cmd_opts = {
         args = self._args,
         stdio = {
@@ -276,16 +278,49 @@ end
 --- @throws "Please call Shell:run before trying to write to stdin!" if trying to write to stdin before calling Shell:run
 function Shell:write(data)
     assert(self._running, "Please call Shell:run before trying to write to stdin!")
-    if data then self._stdin_pipe:write(data) end
+    if data then
+        self._stdin_write_count = self._stdin_write_count + 1
+        local callback = function(err)
+            self._stdin_write_count = self._stdin_write_count - 1
+            assert(not err, err)
+        end
+        self._stdin_pipe:write(data, callback)
+    end
+end
+
+-- Closes the STDIN pipe. If you want to stop the shell process,
+-- use @see Shell:stop instead
+function Shell:close()
+    self._stdin_pipe:shutdown()
+    self._stdin_pipe:close()
 end
 
 --- Stops the current running process and cleanly closes everything out
 --- This is safe to run even if the process isn't currently running
-function Shell:close(force)
+function Shell:stop(force)
     self._running = false
     local signal = 15
     if force or self._attempted_kill then signal = 9 end
-    self._stdin_pipe:shutdown()
+    if self._stdin_write_count > 0 then
+        local loop_count = 0
+        local loop_limit = 11
+        local last_write_count = self._stdin_write_count
+        while self._stdin_write_count > 0 do
+            uv.sleep(1)
+            uv.run('once')
+            -- If writes are still occuring, check again
+            if self._stdin_write_count == last_write_count then
+                loop_count = loop_count + 1
+            else
+                loop_count = 0
+            end
+            if loop_count >= loop_limit then
+                -- We have waited 10 milliseconds for the writes to complete. Kill this?
+                self:_stderr_callback(nil, "FROZEN WRITE LOCKS")
+                self._stdin_write_count = 0
+            end
+        end
+    end
     if self._is_async then
         uv.kill(self._pid, signal)
     end
