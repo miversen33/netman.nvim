@@ -538,7 +538,11 @@ M.copy_nodes = function(state)
             notify.error("Unable to copy nodes. Check netman logs for details. :h Nmlogs")
             return
         end
-        M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
+        if not target_node:is_expanded() then
+            M.navigate(state, {target_id = target_node.id})
+        else
+            M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
+        end
         notify.info(string.format("Successfully Copied %s nodes into %s", #uris, target_node.name))
     end
     M.internal.confirm_target_node(target_node.name, callback, 'copy to')
@@ -589,7 +593,11 @@ M.move_nodes = function(state)
         for parent_id, _ in pairs(uri_parents) do
             M.refresh(state, {refresh_only_id = parent_id, auto = true, quiet = true})
         end
-        M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
+        if not target_node:is_expanded() then
+            M.navigate(state, {target_id = target_node.id})
+        else
+            M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
+        end
         notify.info(string.format("Successfully Moved %s nodes into %s", #uris, target_node.name))
     end
     M.internal.confirm_target_node(target_node.name, callback, 'move to')
