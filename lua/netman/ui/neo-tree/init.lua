@@ -54,6 +54,16 @@ local M = {
     }
 }
 -- Breaking this out into its own assignment because it has references to M
+-- Extra item doc
+-- - icon
+--     - The icon to be displayed by Neotree
+-- - highlight
+--     - The color to use for vim highlighting
+-- - static
+--     - Indicates that this child will not change within neotree. Useful for knowing if the node 
+--     being viewed (later) is dynamically created or not
+-- - expandable
+--     - Indicates that this item can be expanded by the user
 M.constants.ROOT_CHILDREN =
 {
     {
@@ -65,7 +75,7 @@ M.constants.ROOT_CHILDREN =
         extra = {
             -- TODO: Idk, pick a better icon?
             icon = "",
-            provider = ""
+            static = true
         }
     },
     {
@@ -77,7 +87,7 @@ M.constants.ROOT_CHILDREN =
             expandable = true,
             icon = "",
             highlight = "",
-            provider = "",
+            static = true
         }
     },
     {
@@ -89,7 +99,7 @@ M.constants.ROOT_CHILDREN =
             expandable = true,
             icon = "",
             highlight = "",
-            provider = "",
+            static = true,
         }
     },
     {
@@ -102,7 +112,7 @@ M.constants.ROOT_CHILDREN =
             -- TODO: Idk, pick a better icon?
             icon = "",
             highlight = "",
-            provider = "",
+            static = true,
         }
     }
 }
@@ -404,124 +414,207 @@ M.internal.sorter.descending = function(a, b) return a.name > b.name end
 --     input.input(message, default, callback)
 -- end
 
--- --- Marks a node for later use.
--- --- @param node NuiTreeNode
--- --- @param mark string
--- ---     Valid marks
--- ---     - cut
--- ---     - delete
--- ---     - copy
--- ---     - open
--- --- @return table
--- ---     Returns a table with the following key,value pairs
--- ---     - success : boolean
--- ---     - error   : string | Optional
--- ---         - If returned, the message/reason for failure
--- M.mark_node = function(node, mark)
---     assert(M.constants.MARK[mark], string.format("Invalid Mark %s", mark))
---     if not node.extra or not node.extra.markable then
---         return {
---             success = false,
---             error = string.format('%s is not a moveable node!', node.name)
---         }
---     end
---     local marked_nodes = M.internal.marked_nodes[mark] or {}
---     table.insert(marked_nodes, node:get_id())
---     M.internal.marked_nodes[mark] = marked_nodes
---     return { success = true }
--- end
+--- Marks a node for future operation. Currently supported "future" operations are
+--- - copy
+--- - cut
+--- - delete
+--- - refresh
+--- @param state NeotreeState (table)
+---     The state provided to the caller by Neotree
+M.mark_node = function(state)
+    assert(state, "No state provided")
+    assert(state.tree, "No tree associated with state")
+    local node = state.tree:get_node()
+    assert(node, "No node associated with tree")
 
--- --- Process marked nodes
--- --- @param state NeotreeState
--- --- @param target_marks table/nil
--- --- @return nil
--- M.process_marked_nodes = function(state, target_marks)
---     if not target_marks then
---         target_marks = {}
---         -- Adding all marks to process
---         for _, value in pairs(M.constants.MARK) do
---             table.insert(target_marks, value)
---         end
---     end
---     -- validating the target marks
---     for _, mark in ipairs(target_marks) do
---         -- Jump to end of loop if there is nothing for us to do with this mark
---         if not M.internal.marked_nodes[mark] then goto continue end
---         assert(M.constants.MARK[mark], string.format("Invalid Target Mark: %s", mark))
---         local nodes = {}
---         local tree = state.tree
---         local target_node = tree:get_node()
---         for _, node_id in ipairs(M.internal.marked_nodes[mark]) do
---             local node = tree:get_node(node_id)
---             table.insert(nodes, node)
---         end
---         if mark == M.constants.MARK.cut and #nodes > 0 then
---             M.move_nodes(state, nodes, target_node)
---         end
---         -- Clearing out the marked nodes for this mark
---         M.internal.marked_nodes[mark] = nil
---         ::continue::
---     end
--- end
+    if not node.extra or node.extra.markable == nil then
+        -- Node is not markable
+        log.debug(string.format("Cannot mark node %s, its not listed as markable", node.name))
+        return
+    end
+    if node.extra.marked then
+        M.internal.marked_nodes[node.id] = nil
+        node.extra.marked = false
+    else
+        M.internal.marked_nodes[node.id] = true
+        node.extra.marked = true
+    end
+    renderer.redraw(state)
+end
 
--- -- Breaking this out into its own assignment because it has references to M- Clears out the marked nodes
--- --- @param target_marks table
--- ---     If provided, only clears out marks for the provided targets
--- ---     Valid marks can be found in @see mark_node
--- M.clear_marked_nodes = function(target_marks)
---     if not target_marks then
---         target_marks = {}
---         -- Adding all marks to process
---         for _, value in pairs(M.constants.MARK) do
---             table.insert(target_marks, value)
---         end
---     end
---     -- validating the target marks
---     for _, mark in ipairs(target_marks) do
---         assert(M.constants.MARK[mark], string.format("Invalid Target Mark: %s", mark))
---         M.internal.marked_nodes[mark] = {}
---     end
--- end
+M.internal.confirm_target_node = function(node_name, success_callback, action_message)
+    action_message = action_message or 'target'
+    node_name = node_name or ''
+    local message = string.format("Are you sure you want to %s %s [Y/n]", action_message, node_name)
+    local confirm_callback = function(response)
+        if response:match('^[yY]') then
+            success_callback()
+        end
+    end
+    input.input(message, "Y", confirm_callback)
+end
 
+--- Performs the requested action on the marked nodes.
+--- @param state NeotreeState (table)
+---     The state that is provided to the caller of this function
+--- @param action string
+---     The action to perform. Valid actions are
+---     - copy
+---     - delete
+---     - move
+---     - refresh
+M.perform_mark_action = function(state, action)
+    -- TODO: Probably better to make a table and just call out of that instead?
+    if action == 'copy' then
+        M.copy_nodes(state)
+    elseif action == 'move' then
+        M.move_nodes(state)
+    elseif action == 'delete' then
+        M.delete_nodes(state)
+    elseif action == 'refresh' then
+        M.refresh_nodes(state)
+    end
+    -- As long as the mark action succeded, we should clear our marks
+    for id, _ in pairs(M.internal.marked_nodes) do
+        local node = state.tree:get_node(id)
+        if node then
+            node.extra.marked = false
+        end
+    end
+    M.internal.marked_nodes = {}
+    renderer.redraw(state)
+end
 
--- M.move_node = function(state)
---     M.clear_marked_nodes()
---     local node = state.tree:get_node()
---     local status = M.mark_node(node, M.constants.MARK.cut)
---     if status.success then
---         notify.info(string.format("Selected %s for cut", node.name))
---     else
---         notify.warn(status.error)
---     end
--- end
+-- This will only be called on confirmation of copy
+M.internal.copy_nodes = function(state, target_node)
 
--- M.move_nodes = function(state, nodes, target_node)
---     local uris = {}
---     local parents = {}
---     local bailout = true
---     for _, node in ipairs(nodes) do
---         table.insert(uris, node.extra.uri)
---         parents[node:get_parent_id()] = 1
---         bailout = false
---     end
---     if bailout then
---         return
---     end
---     if target_node.type == 'netman_provider' then
---         notify.info(string.format("Cant move target into a provider"))
---         return
---     end
---     if target_node.type ~= 'directory' and target_node.type ~= 'netman_host' then target_node = state.tree:get_node(target_node:get_parent_id()) end
---     local target_uri = target_node.extra.uri
---     local success = api.move(uris, target_uri)
---     if success then
---         for parent, _ in pairs(parents) do
---             M.refresh(state, {refresh_only_id=parent, auto=true})
---         end
---         M.refresh(state, {refresh_only_id=target_node:get_id(), auto=true})
---     end
---     -- TODO: Highlight target?
--- end
+end
+
+M.copy_nodes = function(state)
+    if not next(M.internal.marked_nodes) then
+        notify.warn("No nodes selected for copy! Please mark nodes to copy before pasting them")
+        return
+    end
+    assert(state, "No state provided")
+    assert(state.tree, "No tree associated with state")
+    local target_node = state.tree:get_node()
+    assert(target_node, "No node associated with tree")
+    -- If target_node is not expandable, we should not use it, get its parent instead
+    if
+        target_node.type == M.constants.TYPES.NETMAN_BOOKMARK or target_node.type == M.constants.TYPES.NETMAN_PROVIDER
+        or not target_node.extra
+    then
+        notify.warn(string.format("%s is not a valid copy target. Please select a different location", target_node.name))
+        return
+    end
+    while not target_node.extra.expandable do
+        -- The selected node cannot be "expanded" (IE, its not a parent type in the tree).
+        -- Get its parent and use that for the target
+        if target_node.extra.static then
+            -- We reached the top of the tree and still didn't find anything to paste into.
+            -- Not really sure the best way to handle this, complain for now
+            notify.error("Unable to find valid copy node target!")
+            return
+        end
+        target_node = state.tree:get_node(target_node:get_parent_id())
+    end
+   local uris = {}
+    for uri, _ in pairs(M.internal.marked_nodes) do
+        table.insert(uris, uri)
+    end
+    local callback = function()
+        local copy_status = api.copy(uris, target_node.id)
+        if not copy_status.success then
+            log.error("Received error while trying to copy nodes", {nodes = uris, target = target_node.id, error = copy_status.error.message})
+            notify.error("Unable to copy nodes. Check netman logs for details. :h Nmlogs")
+            return
+        end
+        M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
+        notify.info(string.format("Successfully Copied %s nodes into %s", #uris, target_node.name))
+    end
+    M.internal.confirm_target_node(target_node.name, callback, 'copy to')
+end
+
+M.move_nodes = function(state)
+    if not next(M.internal.marked_nodes) then
+        notify.warn("No nodes selected for move! Please mark nodes to move before pasting them")
+        return
+    end
+    assert(state, "No state provided")
+    assert(state.tree, "No tree associated with state")
+    local target_node = state.tree:get_node()
+    assert(target_node, "No node associated with tree")
+    -- If target_node is not expandable, we should not use it, get its parent instead
+    if
+        target_node.type == M.constants.TYPES.NETMAN_BOOKMARK or target_node.type == M.constants.TYPES.NETMAN_PROVIDER
+        or not target_node.extra
+    then
+        notify.warn(string.format("%s is not a valid move target. Please select a different location", target_node.name))
+        return
+    end
+    while not target_node.extra.expandable do
+        -- The selected node cannot be "expanded" (IE, its not a parent type in the tree).
+        -- Get its parent and use that for the target
+        if target_node.extra.static then
+            -- We reached the top of the tree and still didn't find anything to paste into.
+            -- Not really sure the best way to handle this, complain for now
+            notify.error("Unable to find valid move node target!")
+            return
+        end
+        target_node = state.tree:get_node(target_node:get_parent_id())
+    end
+    local uris = {}
+    local uri_parents = {}
+    for uri, _ in pairs(M.internal.marked_nodes) do
+        uri_parents[state.tree:get_node(uri):get_parent_id()] = true
+        table.insert(uris, uri)
+    end
+    local callback = function()
+        log.info("Moving Nodes")
+        local move_status = api.copy(uris, target_node.id, { cleanup = true })
+        if not move_status.success then
+            log.error("Received error while trying to copy nodes", {nodes = uris, target = target_node.id, error = move_status.error.message})
+            notify.error("Unable to copy nodes. Check netman logs for details. :h Nmlogs")
+            return
+        end
+        for parent_id, _ in pairs(uri_parents) do
+            M.refresh(state, {refresh_only_id = parent_id, auto = true, quiet = true})
+        end
+        M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
+        notify.info(string.format("Successfully Moved %s nodes into %s", #uris, target_node.name))
+    end
+    M.internal.confirm_target_node(target_node.name, callback, 'move to')
+end
+
+M.delete_nodes = function(state)
+    log.info("Deleting Nodes")
+    assert(state, "No state provided")
+    assert(state.tree, "No tree associated with state")
+    local uris = {}
+    local uri_parents = {}
+    for uri, _ in pairs(M.internal.marked_nodes) do
+        uri_parents[state.tree:get_node(uri):get_parent_id()] = true
+        table.insert(uris, uri)
+    end
+    if not next(uris) then
+        -- There were no marked nodes, thats ok, we can just use the current node and perform a single delete
+        uris = {state.tree:get_node().id}
+        uri_parents = {[state.tree:get_node():get_parent_id()] = true}
+    end
+    local callback = function()
+        for _, uri in ipairs(uris) do
+            local delete_status = api.delete(uri)
+            -- TODO: A status is not returned from api.delete, but it probably will be eventually and we should care
+            -- about the answer
+        end
+        for parent_id, _ in pairs(uri_parents) do
+            M.refresh(state, { refresh_only_id = parent_id, auto = true, quiet = true})
+        end
+        notify.info(string.format("Successfully deleted %s nodes", #uris))
+    end
+    local message = string.format("delete %s nodes", #uris)
+    M.internal.confirm_target_node('', callback, message)
+end
 
 -- M.copy_nodes = function(state, nodes, target_node)
 --     
@@ -826,7 +919,6 @@ M.internal.search_netman = function(state, uri, param)
     -- Fetching the "root" node of the host
     -- Instead of iterating over the results, maybe bury the
     -- below logic into a local anon function that we call on ASYNC callback.
-
     for result_uri, result in pairs(search_results.data) do
         local parent = host
         -- TODO: Search mode should prevent expiration
@@ -878,51 +970,6 @@ M.search = function(state)
         M.internal.search_netman(state, uri, response)
     end
     input.input(message, default, callback)
-end
-
---- Deletes the selected or target node
---- @param state NeotreeState
---- @param target_node_id string
----     The node to target for deletion. If not provided, will use the
----     currently selected node in state
-M.delete_node = function(state, target_node_id)
-    -- TODO: Do we also delete the buffer if its open????
-    local tree, node, node_name, parent_id
-    tree = state.tree
-    node = tree:get_node(target_node_id)
-    node_name = node.name
-    parent_id = node:get_parent_id()
-    if node.type == 'netman_provider' then
-        print("Deleting providers isn't supported. Please uninstall the provider instead")
-        return
-    end
-    if node.type == 'netman_host' then
-        print("Removing hosts isn't supported. Yet... 👀")
-        return
-    end
-    -- Get confirmation...
-    local message = string.format("Are you sure you want to delete %s [y/N]", node_name)
-    local default = "N"
-    local callback = function(response)
-        if not response:match('^[yY]') then
-            log.info(string.format("Did not receive confirmation of delete. Bailing out of deletion of %s", node_name))
-            return
-        end
-        local success = M.internal.delete_item(node.extra.uri)
-        if not success then
-            notify.warn(string.format("Unable to delete %s. Received error, check netman logs for details!", node_name))
-            return
-        end
-        -- Idk how we plan on doing refresh yet
-        M.refresh(state, {refresh_only_id=parent_id, quiet=true})
-    end
-    input.input(message, default, callback)
-end
-
-M.delete_nodes = function(state, nodes)
-    for _, node_id in ipairs(nodes) do
-        M.delete_node(state, node_id)
-    end
 end
 
 --- @param state NeotreeState
@@ -1057,6 +1104,7 @@ M.internal.create_ui_node = function(data)
             expiration = vim.loop.hrtime() + M.constants.DEFAULT_EXPIRATION_LIMIT,
             uri = data.URI,
             markable = true,
+            marked = false,
             searchable = false,
             expandable = false,
             expire_amount = M.constants.DEFAULT_EXPIRATION_LIMIT
@@ -1163,7 +1211,7 @@ M.internal.generate_node_children = function(state, node, opts)
                 local response = _error.callback(_)
                 if response.retry then
                     -- Do a retry of ourselves???
-                    M.refresh(state, {refresh_only_id=parent_id, auto=true})
+                    M.refresh(state, {refresh_only_id=parent_id, auto=true, quiet=true})
                 end
             end
             input.input(message, default, callback)
@@ -1421,8 +1469,11 @@ M.refresh = function(state, opts)
         -- action
     end
     node.type = cache_type
-    renderer.redraw(state)
-    renderer.focus_node(state, node.id)
+    if not opts.auto then
+        -- Quiet means that we wont redraw or focus the node in question.
+        renderer.redraw(state)
+        renderer.focus_node(state, node.id)
+    end
 end
 
 M.internal.add_item_to_node = function(state, node, item)

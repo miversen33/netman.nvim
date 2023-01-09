@@ -6,11 +6,13 @@ config.renderers =
 {
     file = {
         { 'indent' },
+        { 'marked' },
         { 'icon' },
         { 'name' }
     },
     directory = {
         { 'indent' },
+        { 'marked' },
         { 'icon' },
         { 'name' }
     },
@@ -28,10 +30,6 @@ config.renderers =
         { 'icon' },
         { 'name' }
     },
-    netman_hidden = {},
-    netman_spacer = {
-        { 'name' }
-    },
     netman_refresh = {
         { 'indent' },
         { 'icon' },
@@ -42,8 +40,10 @@ config.renderers =
 config.window.mappings = {
     -- ['f'] = "toggle_favorite",
     -- ['H'] = "toggle_hidden"
-    -- ['m'] = "cut_to_clipboard_visual"
-    ['/'] = 'search'
+    ['d'] = 'delete_node',
+    ['x'] = 'move_node',
+    ['p'] = 'copy_node',
+    ['m'] = 'mark_node',
 }
 
 return config

@@ -629,6 +629,59 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
     if not opts.async then return return_details else return run_details end
 end
 
+--- Copies location(s) to another location in the ssh
+--- @param locations table
+---     The a table of string locations to move. Can be a files or directories
+--- @param target_location string
+---     The location to move to. Can be a file or directory
+--- @param opts table | Optional
+---     Default: {}
+---     If provided, a table of options that can be used to modify how copy works
+---     Valid Options
+---     - ignore_errors: 
+---         If provided, we will not report any errors received while attempting copy
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully executed the copy
+---     - error: string | Optional
+---         Any errors that occured during copy. Note, if opts.ignore_errors was provided, even if we get an error
+---         it will not be returned. Ye be warned
+--- @example
+---     local host = SSH:new('someuser@somehost')
+---     -- Copies /tmp/testfile.txt into /opt
+---     host:cp('/tmp/testfile.txt', '/opt')
+---     -- Or to copy multiple locations
+---     host:cp({'/tmp/testfile.txt', '/tmp/new_dir/'}, '/opt')
+function SSH:cp(locations, target_location, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:
+            to_string()
+    end
+    local cp_command = { 'cp', '-a' }
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then
+            location = location:to_string()
+        end
+        table.insert(__, location)
+        table.insert(cp_command, location)
+    end
+    locations = __
+    table.insert(cp_command, target_location)
+    cp_command = table.concat(cp_command, ' ')
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
+    local output = self:run_command(cp_command, command_options)
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
+        return { success = false, error = message }
+    end
+    return { success = true }
+end
+
 --- Moves a location to another location in the ssh
 --- @param locations table
 ---     The a table of string locations to move. Can be a files or directories
@@ -643,9 +696,9 @@ end
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
----         A true/false on if we successfully created the directory
+---         A true/false on if we successfully executed the move
 ---     - error: string | Optional
----         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
+---         Any errors that occured during move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local host = SSH:new('someuser@somehost')
@@ -1761,6 +1814,28 @@ function M.update_metadata(uri, cache, updates)
     uri = validation.uri
     host = validation.host
 
+end
+
+function M.copy(uris, target_uri, cache)
+    local host = nil
+    local validation = M.internal.validate(target_uri, cache)
+    if validation.error then return validation end
+    host = validation.host
+    target_uri = validation.uri
+    if type(uris) ~= 'table' then uris = { uris } end
+    local validated_uris = {}
+    for _, uri in ipairs(uris) do
+        local __ = M.internal.validate(uri, cache)
+        if __.error then return __ end
+        if __.host ~= validation.host then
+            return {
+                success = false,
+                error = string.format("%s and %s are not on the same host!", uri, target_uri)
+            }
+        end
+        table.insert(validated_uris, __.uri)
+    end
+    return host:cp(validated_uris, target_uri)
 end
 
 function M.move(uris, target_uri, cache)

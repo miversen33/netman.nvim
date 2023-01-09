@@ -18,7 +18,8 @@ local log = require("netman.tools.utils").log
 
 local M = {
     internal = {
-        refresh_icon = " "
+        refresh_icon = " ",
+        marked_icon = '♦ ',
     }
 }
 
@@ -28,6 +29,15 @@ M.internal.state_map = {
     [netman_host_states.ERROR] = {text="❗", highlight="NeoTreeGitDeleted"},
 }
 
+M.marked = function(config, node, state)
+    local _icon = { text = '', highlight = '' }
+    local entry = node.extra
+    if not entry or not (entry.markable and entry.marked) then
+        return
+    end
+    _icon.text = M.internal.marked_icon
+    return _icon
+end
 
 M.icon = function(config, node, state)
     local _icon = common.icon(config, node, state)
