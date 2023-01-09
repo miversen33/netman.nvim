@@ -1587,13 +1587,37 @@ function M.internal.validate(uri, cache)
     return {uri = uri, container = container}
 end
 
+function M.internal.find(uri, container, opts)
+    opts = opts or {}
+    if not opts.exec then
+        opts.exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
+    end
+    local raw_children = container:find(uri, opts)
+    if raw_children.error and not opts.ignore_errors then
+        return {success = false, error = raw_children.error}
+    end
+
+    local children = container:_stat_parse(raw_children)
+    local __ = {}
+    for _, metadata in pairs(children) do
+        __[metadata.URI] = {
+            URI = metadata.URI,
+            FIELD_TYPE = metadata.FIELD_TYPE,
+            NAME = metadata.NAME,
+            -- Child will always be the absolute path, and its ever so slightly cheaper to do a straight memory reference as opposed
+            -- to a hash lookup and memory reference
+            ABSOLUTE_PATH = metadata.ABSOLUTE_PATH,
+            METADATA = metadata
+        }
+    end
+    return { success = true, data = __ }
+end
+
 function M.internal.read_directory(uri, container)
-    local raw_children = container:find(uri,
-        { exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n' }
-    )
-    if raw_children.error then
+    local children = M.internal.find(uri, container, {max_depth = 1})
+    if not children.success then
         -- Something happened during find.
-        if raw_children.error:match('[pP]ermission%s+[dD]enied') then
+        if children.error:match('[pP]ermission%s+[dD]enied') then
             return {
                 success = false,
                 error = {
@@ -1604,25 +1628,12 @@ function M.internal.read_directory(uri, container)
         -- Handle other errors as we find them
         return {
             success = false,
-            error = raw_children.error
-        }
-    end
-    local children = container:_stat_parse(raw_children)
-    local _ = {}
-    for child, metadata in pairs(children) do
-        _[metadata.URI] = {
-            URI = metadata.URI,
-            FIELD_TYPE = metadata.FIELD_TYPE,
-            NAME = metadata.NAME,
-            -- Child will always be the absolute path, and its ever so slightly cheaper to do a straight memory reference as opposed
-            -- to a hash lookup and memory reference
-            ABSOLUTE_PATH = child,
-            METADATA = metadata
+            error = children.error
         }
     end
     return {
         success = true,
-        data = _,
+        data = children.data,
         type = api_flags.READ_TYPE.EXPLORE
     }
 end
