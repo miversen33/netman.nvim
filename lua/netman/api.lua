@@ -164,9 +164,9 @@ end
 function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
     for _, data in pairs(read_data) do
-        for key, value in ipairs(data) do
+        for key, value in pairs(data) do
             if netman_options.explorer.FIELDS[key] == nil then
-                log.warn("Removing " .. key .. " from directory data as it " ..
+                log.info("Removing " .. key .. " from directory data as it " ..
                     "does not conform with netman.options.explorer.FIELDS...")
                 data[key] = nil
             elseif key == netman_options.explorer.FIELDS.METADATA then
@@ -581,49 +581,15 @@ function M.write(buffer_index, uri, options)
     return {success = true, uri = uri}
 end
 
---- @param uris table
----     A table (a single URI can be a string as well) of URIs that need to be moved
---- @param target_uri string
----     The target location for the URI(s) to be moved to.
---- @return table
----     Returns a table with the following keys,
----     - error (optional)
----         - Only present if there is an error. If so, the value will be the following table
----             - message
----             - callback (optional)
-function M.move(uris, target_uri)
-    -- Wrapping a single URI in a table so all logic is consistent
-    if type(uris) == 'string' then uris = { uris } end
+function M.internal.group_uris(uris)
     local grouped_uris = {}
-    local _, target_provider, target_cache = M.internal.validate_uri(target_uri)
-    if not target_provider then
-        -- Something is very much not right
-        local _error = string.format("Unable to find provider for %s", target_uri)
-        log.error(_error)
-        return {
-            error = {
-                message = _error
-            }
-        }
-    end
-    if not target_provider.archive or not target_provider.archive.put then
-        local _error = string.format("Target provider for %s did not implement archive.put", target_uri)
-        log.error(_error)
-        return {
-            error = {
-                message = _error
-            }
-        }
-    end
-
     for _, uri in ipairs(uris) do
         local _, provider, cache = M.internal.validate_uri(uri)
         if not provider then
+            -- TODO: Mike, I wonder if this should completely fail instead
+            -- in the event that we don't find a matching provider for one of the provided
+            -- uris?
             log.warn(string.format("Unable to find matching provider for %s", uri))
-            goto continue
-        end
-        if not provider.archive or not provider.archive.get then
-            log.warn(string.format("Provider for %s did not implement archive.get function", uri))
             goto continue
         end
         if not grouped_uris[provider] then
@@ -632,30 +598,82 @@ function M.move(uris, target_uri)
         table.insert(grouped_uris[provider].uris, uri)
         ::continue::
     end
+    return grouped_uris
+end
+
+--- @param uris table | string
+---     The uris to copy. This can be a table of strings or a single string
+--- @param target_uri string
+---     The uri to copy the uris to
+--- @param opts table | Optional
+---     Default: {}
+---     Any options for the copy function. Valid options 
+---         - cleanup
+---             - If provided, we will tell the originating provider to delete the origin uri after copy
+---             has been completed
+function M.copy(uris, target_uri, opts)
+    opts = opts or {}
+    if type(uris) == 'string' then uris = { uris } end
+    local grouped_uris = M.internal.group_uris(uris)
+    local _, target_provider, target_cache = M.internal.validate_uri(target_uri)
+    if not target_provider then
+        -- Something is very much not right
+        local _error = string.format("Unable to find provider for %s", target_uri)
+        log.error(_error)
+        return {
+            error = { message = _error },
+            success = false
+        }
+    end
+    for provider, _ in pairs(grouped_uris) do
+        if not provider.archive or not provider.archive.get then
+            local _error = string.format("Provider %s did not implement archive.get", provider.name)
+            log.error(_error)
+            return {
+                error = { message = _error },
+                success = false
+            }
+        end
+    end
+    if not target_provider.archive or not target_provider.archive.put then
+        local _error = string.format("Target provider for %s did not implement archive.put", target_uri)
+        log.error(_error)
+        return {
+            error = { message = _error },
+            success = false
+        }
+    end
+    -- Attempting to perform the move/copy internally in the provider instead of archiving and pushing
     if grouped_uris[target_provider] then
-        if not target_provider.move then
-            log.warn(string.format("%s does not support internal moving, attempting to force", target_provider.name))
+        local command = 'copy'
+        if opts.cleanup then
+            command = 'move'
+        end
+        if not target_provider[command] then
+            log.warn(string.format("%s does nto support internal %s, attempting to force", target_provider.name, command))
             goto continue
         end
         local group = grouped_uris[target_provider]
         local target_uris = group.uris
-
-        log.info(string.format("Attempting to move uris internally in provider %s", target_provider.name), {uris=target_uris})
-        local move_status = target_provider.move(target_uris, target_uri, target_cache)
-        if move_status.success then
+        log.info(string.format("Attempting to %s uris internally in provider %s", command, target_provider.name))
+        local command_status = target_provider[command](target_uris, target_uri, target_cache)
+        if command_status.success then
             -- The provider was able to interally move the URIs on it, removing them
             -- from the ones that need to be moved
             grouped_uris[target_provider] = nil
-            return { success = true }
         end
         ::continue::
+    end
+    if not next(grouped_uris) then
+        -- There is nothing left to do or there never was anything to do. Either way, we are done
+        return {success = true}
     end
     local available_compression_schemes = target_provider.archive.schemes(target_uri, target_cache)
     if available_compression_schemes.error then
         -- Complain that we got an error from the target and bail
         local message = string.format("Received failure while looking for archive schemes for %s", target_uri)
         log.warn(message, available_compression_schemes)
-        return { error = available_compression_schemes.error }
+        return { error = available_compression_schemes.error, success = false }
     end
     local temp_dir = require("netman.tools.utils").tmp_dir
     -- TODO: Mike
@@ -677,12 +695,14 @@ function M.move(uris, target_uri)
             notify.warn(message)
             log.warn(message, status)
         end
-        for _, uri in ipairs(data.uris) do
-            status = provider.delete(uri, data.cache)
-            if status.error then
-                local message = string.format("Received error during cleanup of %s", uri)
-                notify.warn(message)
-                log.warn(message, status)
+        if opts.cleanup then
+            for _, uri in ipairs(data.uris) do
+                status = provider.delete(uri, data.cache)
+                if status.error then
+                    local message = string.format("Received error during cleanup of %s", uri)
+                    notify.warn(message)
+                    log.warn(message, status)
+                end
             end
         end
         -- -- Remove the temporary file

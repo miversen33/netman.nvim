@@ -53,6 +53,7 @@ local Container = {
         -- Maximimum number of bytes we are willing to read in at once from a file
         IO_BYTE_LIMIT = 2 ^ 13,
         STAT_FLAGS = {
+            ABSOLUTE_PATH = "ABSOLUTE_PATH",
             MODE = 'MODE',
             BLOCKS = 'BLOCKS',
             BLKSIZE = 'BLKSIZE',
@@ -64,7 +65,6 @@ local Container = {
             SIZE = 'SIZE',
             TYPE = 'TYPE',
             NAME = 'NAME',
-            RAW = 'RAW',
             URI = 'URI'
         },
         MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
@@ -145,11 +145,12 @@ function Container:_get_os()
     log.trace(string.format("Checking OS For Container %s", self.name))
     local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
     local output = self:run_command(_get_os_command, {
-        [command_flags.STDOUT_JOIN] = ''
+        [command_flags.STDOUT_JOIN] = '',
+        [command_flags.STDERR_JOIN] = ''
     })
     if output.exit_code ~= 0 then
         log.warn(string.format("Unable to identify operating system for %s", self.name))
-        return nil
+        return "Unknown"
     end
     return output.stdout:gsub('["\']', '')
 end
@@ -206,6 +207,7 @@ function Container:_get_archive_availability_details()
                     string.format("%s is not a compatible netman uri", location))
                 local parent = location:parent():to_string()
                 local chain = ''
+                -- TODO: We should use `tar -a` instead of this absolute garbage
                 if not first_pass then
                     header_offset = 'head -c -1024 &&'
                     chain = '|'
@@ -357,6 +359,13 @@ function Container:start(opts)
     local start_command = { 'docker', 'container', 'start', self.name }
     local finish_callback = function(command_output)
         log.trace(command_output)
+        if command_output.stderr and command_output.stderr:lower():match('no such container') then
+            -- Do we throw an actual error or just log it and return nil?
+            return_details = { error = string.format("Container %s does not exist!", self.name), success = false }
+            log.error(string.format("Container %s does not exist!", self.name))
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Received non-0 exit code while trying to start container %s", self.name)
             log.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
@@ -557,7 +566,6 @@ function Container:archive(locations, archive_dir, compatible_scheme_list, provi
     local compress_command = compression_function(locations)
     local archive_path = string.format("%s/%s", archive_dir, archive_name)
     local finish_callback = function(output)
-        log.trace(output)
         if output.exit_code ~= 0 then
             local _error = "Received non-0 exit code when trying to archive locations"
             log.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
@@ -689,7 +697,7 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
     if not opts.remote_dump then
-        -- There is on way for us to do this asynchronously
+        -- There is no way for us to do this asynchronously
         opts.async = false
         -- This is going to cat the contents of the archive into docker in an
         -- "interactive" session, which will pipe into the provided command.
@@ -733,6 +741,58 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
     if not opts.async then return return_details else return run_details end
 end
 
+--- Copies the locations into the provided location
+--- @param locations table
+---     A table of string locations to move. Can be files or directories
+--- @param target_location string
+---     The location to copy to. Must be a directory
+--- @param opts table | Optional
+---     Default: {}
+---     If provided, a table of options that can be used to modify how cp works
+---     Valid Options:
+---     - ignore_errors : boolean
+---         If provided, we will not report any errors received while attempting to copy
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully executed the requested copy
+---     - error: string | Optional
+---         Any errors that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
+---         get an error, it will not be returned. Ye be warned.
+--- @example
+---     local container = Container:new('ubuntu')
+---     -- Copies /tmp/testfile.txt into /opt
+---     container:cp('/tmp/testfile.txt', '/opt')
+---     -- Or to copy multiple locations
+---     container:cp({'/tmp/testfile.txt', '/tmp/new_dir/'}, '/opt')
+function Container:cp(locations, target_location, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
+    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
+    local cp_command = { 'cp', '-a' }
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then
+            location = location:to_string()
+        end
+        table.insert(cp_command, location)
+        table.insert(__, location)
+    end
+    locations = __
+    table.insert(cp_command, '-t')
+    table.insert(cp_command, target_location)
+    cp_command = table.concat(cp_command, ' ')
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
+    local output = self:run_command(cp_command, command_options)
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
+        return { success = false, error = message }
+    end
+    return { success = true }
+end
+
 --- Moves a location to another location in the container
 --- @param locations table
 ---     The a table of string locations to move. Can be a files or directories
@@ -747,9 +807,9 @@ end
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
----         A true/false on if we successfully created the directory
+---         A true/false on if we successfully executed the requested move
 ---     - error: string | Optional
----         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
+---         Any errors that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -771,7 +831,6 @@ function Container:mv(locations, target_location, opts)
     table.insert(mv_command, '-t')
     table.insert(mv_command, target_location)
     mv_command = table.concat(mv_command, ' ')
-    -- local mv_command = string.format("mv %s %s", location, target_location)
     local command_options = {
         [command_flags.STDERR_JOIN] = ''
     }
@@ -921,7 +980,6 @@ end
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
----         max_depth = 1,
 ---         min_depth = 1,
 ---         filesystems = true
 ---     }
@@ -956,7 +1014,6 @@ end
 function Container:find(location, opts)
     local default_opts = {
         follow_symlinks = true,
-        max_depth = 1,
         min_depth = 1,
         filesystems = true
     }
@@ -1210,7 +1267,6 @@ end
 ---         - type
 ---         - name
 ---         - uri
----         - raw
 --- @example
 ---     local container = Container:new('ubuntu')
 ---     print(vim.inspect(container:stat('/tmp')))
@@ -1262,9 +1318,6 @@ function Container:_stat_parse(stat_output, target_flags)
     local stat = {}
     for _, line in ipairs(stat_output) do
         local item = {}
-        if target_flags[Container.CONSTANTS.STAT_FLAGS.RAW] then
-            item[Container.CONSTANTS.STAT_FLAGS.RAW] = line
-        end
         local _type = nil
         for _, pattern in ipairs(find_pattern_globs) do
             local key, value = line:match(pattern)
@@ -1276,13 +1329,13 @@ function Container:_stat_parse(stat_output, target_flags)
                 _type = value
             end
         end
-        if target_flags[Container.CONSTANTS.STAT_FLAGS.URI] then
-            item[Container.CONSTANTS.STAT_FLAGS.URI] = string.format(
-                "docker://%s%s", self.name, item.NAME
-            )
-            if _type:upper() == 'DIRECTORY' and item.NAME:sub(-1, -1) ~= '/' then
-                item[Container.CONSTANTS.STAT_FLAGS.URI] = item[Container.CONSTANTS.STAT_FLAGS.URI] .. '/'
-            end
+        -- WARN: This may create invalid URIs if a stat is performed
+        -- on a _non_ absolute path. Figure out how to addres this
+        item[Container.CONSTANTS.STAT_FLAGS.URI] = string.format(
+            "docker://%s%s", self.name, item.NAME
+        )
+        if _type:upper() == 'DIRECTORY' and item.NAME:sub(-1, -1) ~= '/' then
+            item[Container.CONSTANTS.STAT_FLAGS.URI] = item[Container.CONSTANTS.STAT_FLAGS.URI] .. '/'
         end
         if target_flags[Container.CONSTANTS.STAT_FLAGS.TYPE] then
             if _type:upper() == 'DIRECTORY' then
@@ -1291,11 +1344,22 @@ function Container:_stat_parse(stat_output, target_flags)
                 item['FIELD_TYPE'] = metadata_options.DESTINATION
             end
         end
-        item['ABSOLUTE_PATH'] = item.NAME
         local name = ''
-        for _ in item.NAME:gmatch('[^/]+') do name = _ end
+        local cur_path = ''
+        local path = {}
+        for _ in item.NAME:gmatch('[^/]+') do
+            name = _
+            cur_path = cur_path .. "/" .. _
+            table.insert(path, {
+                uri = string.format("docker://%s%s/", self.name, cur_path),
+                name = _
+            })
+        end
+        path[#path] = {uri = item[Container.CONSTANTS.STAT_FLAGS.URI], name = name}
+        local absolute_path = item.NAME
+        item[Container.CONSTANTS.STAT_FLAGS.ABSOLUTE_PATH] = path
         item.NAME = name
-        stat[item['ABSOLUTE_PATH']] = item
+        stat[absolute_path] = item
     end
     return stat
 end
@@ -1523,13 +1587,37 @@ function M.internal.validate(uri, cache)
     return {uri = uri, container = container}
 end
 
+function M.internal.find(uri, container, opts)
+    opts = opts or {}
+    if not opts.exec then
+        opts.exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
+    end
+    local raw_children = container:find(uri, opts)
+    if raw_children.error and not opts.ignore_errors then
+        return {success = false, error = raw_children.error}
+    end
+
+    local children = container:_stat_parse(raw_children)
+    local __ = {}
+    for _, metadata in pairs(children) do
+        __[metadata.URI] = {
+            URI = metadata.URI,
+            FIELD_TYPE = metadata.FIELD_TYPE,
+            NAME = metadata.NAME,
+            -- Child will always be the absolute path, and its ever so slightly cheaper to do a straight memory reference as opposed
+            -- to a hash lookup and memory reference
+            ABSOLUTE_PATH = metadata.ABSOLUTE_PATH,
+            METADATA = metadata
+        }
+    end
+    return { success = true, data = __ }
+end
+
 function M.internal.read_directory(uri, container)
-    local raw_children = container:find(uri,
-        { exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n' }
-    )
-    if raw_children.error then
+    local children = M.internal.find(uri, container, {max_depth = 1})
+    if not children.success then
         -- Something happened during find.
-        if raw_children.error:match('[pP]ermission%s+[dD]enied') then
+        if children.error:match('[pP]ermission%s+[dD]enied') then
             return {
                 success = false,
                 error = {
@@ -1540,25 +1628,12 @@ function M.internal.read_directory(uri, container)
         -- Handle other errors as we find them
         return {
             success = false,
-            error = raw_children.error
-        }
-    end
-    local children = container:_stat_parse(raw_children)
-    local _ = {}
-    for child, metadata in pairs(children) do
-        _[metadata.URI] = {
-            URI = metadata.URI,
-            FIELD_TYPE = metadata.FIELD_TYPE,
-            NAME = metadata.NAME,
-            -- Child will always be the absolute path, and its ever so slightly cheaper to do a straight memory reference as opposed
-            -- to a hash lookup and memory reference
-            ABSOLUTE_PATH = child,
-            METADATA = metadata
+            error = children.error
         }
     end
     return {
         success = true,
-        data = _,
+        data = children.data,
         type = api_flags.READ_TYPE.EXPLORE
     }
 end
@@ -1655,6 +1730,30 @@ function M.write(uri, cache, data)
         return { uri = uri, success = false, error = { message = _.error } }
     end
     return { success = true, uri = uri }
+end
+
+function M.copy(uris, target_uri, cache)
+    local container = nil
+    local validation = M.internal.validate(target_uri, cache)
+    if validation.error then return validation end
+    container = validation.container
+    target_uri = validation.uri
+    if type(uris) ~= 'table' then uris = {uris} end
+    local validated_uris = {}
+    for _, uri in ipairs(uris) do
+        local __ = M.internal.validate(uri, cache)
+        if __.error then return __ end
+        if __.container ~= validation.container then
+            return {
+                success = false,
+                error = {
+                    message = string.format("%s and %s are not on the same container!", uri, target_uri)
+                }
+        }
+        end
+        table.insert(validated_uris, __.uri)
+    end
+    return container:cp(validated_uris, target_uri)
 end
 
 function M.move(uris, target_uri, cache)

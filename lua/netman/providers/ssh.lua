@@ -41,6 +41,7 @@ local SSH = {
         -- Maximum number of bytes we are willing to read in at once from a file
         IO_BYTE_LIMIT = 2 ^ 13,
         STAT_FLAGS = {
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH',
             MODE = 'MODE',
             BLOCKS = 'BLOCKS',
             BLKSIZE = 'BLKSIZE',
@@ -52,7 +53,6 @@ local SSH = {
             SIZE = 'SIZE',
             TYPE = 'TYPE',
             NAME = 'NAME',
-            RAW = 'RAW',
             URI = 'URI'
         },
         SSH_CONNECTION_TIMEOUT = 10,
@@ -196,20 +196,21 @@ function SSH:new(auth_details, provider_cache)
 end
 
 function SSH:_get_os()
-    log.trace(string.format("Checking OS For Host %s", self.name))
+    log.trace(string.format("Checking OS For Host %s", self.host))
     local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
     local output = self:run_command(_get_os_command, {
-        [command_flags.STDOUT_JOIN] = ''
+        [command_flags.STDOUT_JOIN] = '',
+        [command_flags.STDERR_JOIN] = ''
     })
     if output.exit_code ~= 0 then
-        log.warn(string.format("Unable to identify operating system for %s", self.name))
-        return nil
+        log.warn(string.format("Unable to identify operating system for %s", self.host))
+        return "Unknown"
     end
     return output.stdout:gsub('["\']', '')
 end
 
 function SSH:_get_archive_availability_details()
-    log.trace(string.format("Checking Available Archive Formats for %s", self.name))
+    log.trace(string.format("Checking Available Archive Formats for %s", self.host))
     local output = self:run_command('tar --version', { [command_flags.STDERR_JOIN] = '' })
     if output.exit_code ~= 0 then
         -- complain about being unable to find archive details...
@@ -628,6 +629,59 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
     if not opts.async then return return_details else return run_details end
 end
 
+--- Copies location(s) to another location in the ssh
+--- @param locations table
+---     The a table of string locations to move. Can be a files or directories
+--- @param target_location string
+---     The location to move to. Can be a file or directory
+--- @param opts table | Optional
+---     Default: {}
+---     If provided, a table of options that can be used to modify how copy works
+---     Valid Options
+---     - ignore_errors: 
+---         If provided, we will not report any errors received while attempting copy
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully executed the copy
+---     - error: string | Optional
+---         Any errors that occured during copy. Note, if opts.ignore_errors was provided, even if we get an error
+---         it will not be returned. Ye be warned
+--- @example
+---     local host = SSH:new('someuser@somehost')
+---     -- Copies /tmp/testfile.txt into /opt
+---     host:cp('/tmp/testfile.txt', '/opt')
+---     -- Or to copy multiple locations
+---     host:cp({'/tmp/testfile.txt', '/tmp/new_dir/'}, '/opt')
+function SSH:cp(locations, target_location, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:
+            to_string()
+    end
+    local cp_command = { 'cp', '-a' }
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then
+            location = location:to_string()
+        end
+        table.insert(__, location)
+        table.insert(cp_command, location)
+    end
+    locations = __
+    table.insert(cp_command, target_location)
+    cp_command = table.concat(cp_command, ' ')
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
+    local output = self:run_command(cp_command, command_options)
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
+        return { success = false, error = message }
+    end
+    return { success = true }
+end
+
 --- Moves a location to another location in the ssh
 --- @param locations table
 ---     The a table of string locations to move. Can be a files or directories
@@ -642,9 +696,9 @@ end
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
----         A true/false on if we successfully created the directory
+---         A true/false on if we successfully executed the move
 ---     - error: string | Optional
----         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
+---         Any errors that occured during move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local host = SSH:new('someuser@somehost')
@@ -821,7 +875,6 @@ end
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
----         max_depth = 1,
 ---         min_depth = 1,
 ---         filesystems = true
 ---     }
@@ -858,7 +911,6 @@ end
 function SSH:find(location, opts)
     local default_opts = {
         follow_symlinks = true,
-        max_depth = 1,
         min_depth = 1,
         filesystems = true
     }
@@ -890,7 +942,7 @@ function SSH:find(location, opts)
             error(string.format("Invalid Find Pattern Type: %s. See :h netman.providers.ssh.find for details",
                 opts.pattern_type))
         end
-        table.insert(find_command, opts.search_param)
+        table.insert(find_command, string.format('"%s"', opts.search_param))
     end
     local command_options = {
         [command_flags.STDERR_JOIN] = '',
@@ -1144,7 +1196,6 @@ end
 ---         - type
 ---         - name
 ---         - uri
----         - raw
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     print(vim.inspect(host:stat('/tmp')))
@@ -1199,9 +1250,6 @@ function SSH:_stat_parse(stat_output, target_flags)
     for _, line in ipairs(stat_output) do
         line = line:gsub('(\\0)', '')
         local item = {}
-        if target_flags[SSH.CONSTANTS.STAT_FLAGS.RAW] then
-            item[SSH.CONSTANTS.STAT_FLAGS.RAW] = line
-        end
         local _type = nil
         for _, pattern in ipairs(find_pattern_globs) do
             local key, value = line:match(pattern)
@@ -1228,9 +1276,21 @@ function SSH:_stat_parse(stat_output, target_flags)
         end
         item['ABSOLUTE_PATH'] = item.NAME
         local name = ''
-        for _ in item.NAME:gmatch('[^/]+') do name = _ end
+        local cur_path = ''
+        local path = {}
+        for _ in item.NAME:gmatch('[^/]+') do
+            name = _
+            cur_path = cur_path .. "/" .. _
+            table.insert(path, {
+                uri = self:_create_uri(cur_path .. '/'),
+                name = _
+            })
+        end
+        path[#path] = {uri = item[SSH.CONSTANTS.STAT_FLAGS.URI], name = name}
+        local absolute_path = item.NAME
+        item[SSH.CONSTANTS.STAT_FLAGS.ABSOLUTE_PATH] = path
         item.NAME = name
-        stat[item['ABSOLUTE_PATH']] = item
+        stat[absolute_path] = item
     end
     return stat
 end
@@ -1754,6 +1814,28 @@ function M.update_metadata(uri, cache, updates)
     uri = validation.uri
     host = validation.host
 
+end
+
+function M.copy(uris, target_uri, cache)
+    local host = nil
+    local validation = M.internal.validate(target_uri, cache)
+    if validation.error then return validation end
+    host = validation.host
+    target_uri = validation.uri
+    if type(uris) ~= 'table' then uris = { uris } end
+    local validated_uris = {}
+    for _, uri in ipairs(uris) do
+        local __ = M.internal.validate(uri, cache)
+        if __.error then return __ end
+        if __.host ~= validation.host then
+            return {
+                success = false,
+                error = string.format("%s and %s are not on the same host!", uri, target_uri)
+            }
+        end
+        table.insert(validated_uris, __.uri)
+    end
+    return host:cp(validated_uris, target_uri)
 end
 
 function M.move(uris, target_uri, cache)
