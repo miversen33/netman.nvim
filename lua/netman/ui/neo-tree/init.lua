@@ -1281,7 +1281,9 @@ M.navigate = function(state, opts)
         sort_nodes = false
         goto render
     end
-    node = tree:get_node()
+    -- If target_id is provided, we will navigate to that instead of whatever the
+    -- tree is currently looking at
+    node = tree:get_node(opts.target_id)
     -- Check if the node is the search node
     if node.id == M.constants.ROOT_IDS.NETMAN_SEARCH then
         M.internal.disable_search_mode(state)
@@ -1478,9 +1480,11 @@ M.refresh = function(state, opts)
         -- action
     end
     node.type = cache_type
+    if not opts.quiet then
+        renderer.redraw(state)
+    end
     if not opts.auto then
         -- Quiet means that we wont redraw or focus the node in question.
-        renderer.redraw(state)
         renderer.focus_node(state, node.id)
     end
 end

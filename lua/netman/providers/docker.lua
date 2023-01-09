@@ -1729,9 +1729,9 @@ function M.write(uri, cache, data)
     assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
     local _ = container:put(local_file, uri)
     if not _.success then
-        return { uri = uri, success = false, error = { message = _.error } }
+        return { uri = uri.uri, success = false, error = { message = _.error } }
     end
-    return { success = true, uri = uri }
+    return { success = true, uri = uri.uri }
 end
 
 function M.copy(uris, target_uri, cache)
