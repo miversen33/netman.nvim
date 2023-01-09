@@ -44,8 +44,6 @@ local M = {
         -- Table of configurations specific to each provider...?
         provider_configs = {},
         sorter = {},
-        -- Where we will keep track of nodes that have been
-        -- marked for cut/copy/delete/open/etc
         marked_nodes = {},
         -- Used for temporarily removing nodes from view
         node_cache = {},
@@ -368,51 +366,52 @@ M.internal.sorter.descending = function(a, b) return a.name > b.name end
 --     return api.move(old_uri, new_uri)
 -- end
 
--- --- Renames the selected or target node
--- --- @param state NeotreeState
--- --- @param target_node_id string
--- ---     The node to target for deletion. If not provided, will use the
--- ---     currently selected node in state
--- M.rename_node = function(state, target_node_id)
---     local tree, node, current_uri, parent_uri, parent_id
---     tree = state.tree
---     node = tree:get_node(target_node_id)
---     if not node.extra then
---         log.warn(string.format("%s says its a netman node but its lyin", node.name))
---         return
---     end
---     if node.type == 'netman_provider' then
---         notify.info(string.format("Providers cannot be renamed at this time"))
---         return
---     end
---     if node.type == 'netman_host' then
---         notify.info(string.format("Hosts cannot be renamed at this time"))
---         return
---     end
---     current_uri = node.extra.uri
---     parent_id = node:get_parent_id()
---     parent_uri = tree:get_node(parent_id).extra.uri
---
---     local message = string.format("Rename %s", node.name)
---     local default = ""
---     local callback = function(response)
---         if not response then return end
---         local new_uri = string.format("%s%s", parent_uri, response)
---         local success = M.internal.rename(current_uri, new_uri)
---         if not success then
---             notify.warn(string.format("Unable to move %s to %s. Please check netman logs for more details", current_uri, new_uri))
---             return
---         end
---         M.refresh(state, {refresh_only_id=parent_id, auto=true})
---         -- Rename any buffers that currently have the old uri as their name
---         for _, buffer_number in ipairs(vim.api.nvim_list_bufs()) do
---             if vim.api.nvim_buf_get_name(buffer_number) == current_uri then
---                 vim.api.nvim_buf_set_name(buffer_number, new_uri)
---             end
---         end
---     end
---     input.input(message, default, callback)
--- end
+--- Renames the selected or target node
+--- @param state NeotreeState
+--- @param target_node_id string
+---     The node to target for deletion. If not provided, will use the
+---     currently selected node in state
+M.rename_node = function(state, target_node_id)
+    local tree, node, current_uri, parent_uri, parent_id
+    tree = state.tree
+    node = tree:get_node(target_node_id)
+    if not node.extra then
+        log.warn(string.format("%s says its a netman node but its lyin", node.name))
+        return
+    end
+    if node.type == 'netman_provider' then
+        notify.info(string.format("Providers cannot be renamed at this time"))
+        return
+    end
+    if node.type == 'netman_host' then
+        notify.info(string.format("Hosts cannot be renamed at this time"))
+        return
+    end
+    current_uri = node.extra.uri
+    parent_id = node:get_parent_id()
+    parent_uri = tree:get_node(parent_id).extra.uri
+
+    local message = string.format("Rename %s", node.name)
+    local default = ""
+    local callback = function(response)
+        if not response then return end
+        local new_uri = string.format("%s%s", parent_uri, response)
+        local success = api.rename(current_uri, new_uri)
+        if not success then
+            notify.warn(string.format("Unable to move %s to %s. Please check netman logs for more details", current_uri, new_uri))
+            return
+        end
+        M.refresh(state, {refresh_only_id=parent_id, quiet=true})
+        -- Rename any buffers that currently have the old uri as their name
+        for _, buffer_number in ipairs(vim.api.nvim_list_bufs()) do
+            if vim.api.nvim_buf_get_name(buffer_number) == current_uri then
+                vim.api.nvim_buf_set_name(buffer_number, new_uri)
+            end
+        end
+        renderer.focus_node(state, new_uri)
+    end
+    input.input(message, default, callback)
+end
 
 --- Marks a node for future operation. Currently supported "future" operations are
 --- - copy

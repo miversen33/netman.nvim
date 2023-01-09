@@ -32,7 +32,7 @@ M.refresh = function(state, callback)
     do_callback(callback)
 end
 
-M.rename = function(state, callback)
+M.rename_node = function(state, callback)
     ui.rename_node(state)
     do_callback(callback)
 end

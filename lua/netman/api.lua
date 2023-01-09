@@ -581,6 +581,42 @@ function M.write(buffer_index, uri, options)
     return {success = true, uri = uri}
 end
 
+--- Renames a URI to another URI, on the same provider
+--- @param old_uri string
+---     The current uri location to be renamed
+--- @param new_uri string
+---     The new uri name.
+---     Note: Both URIs **MUST** share the same provider
+--- @return table
+---     Returns a table with the following information
+---     {
+---         success: boolean,
+---         error: { message = "Error that occurred during rename "} -- (Optional)
+---     }
+function M.rename(old_uri, new_uri)
+    local old_provider, new_provider, new_cache
+    old_uri, old_provider = M.internal.validate_uri(old_uri)
+    new_uri, new_provider, new_cache = M.internal.validate_uri(new_uri)
+    if not old_provider or not new_provider then
+        log.warn("Unable to find matching providers to rename URIs!", {old_uri = old_uri, new_uri = new_uri})
+        return {
+            error = { message = "Unable to find matching providers for rename" },
+            success = false
+        }
+    end
+    if old_provider ~= new_provider then
+        -- The URIs are not using the same provider!
+        log.warn("Invalid Provider Match found for rename of uris", {old_uri = old_uri, new_uri = new_uri, old_provider = old_provider, new_provider = new_provider})
+        return {
+            error = {
+                message = string.format("Mismatched Providers for %s and %s", old_uri, new_uri)
+            },
+            success = false
+        }
+    end
+    return new_provider.move(old_uri, new_uri, new_cache)
+end
+
 function M.internal.group_uris(uris)
     local grouped_uris = {}
     for _, uri in ipairs(uris) do
@@ -611,6 +647,12 @@ end
 ---         - cleanup
 ---             - If provided, we will tell the originating provider to delete the origin uri after copy
 ---             has been completed
+--- @return table
+---     Returns a table with the following information
+---     {
+---         success: boolean,
+---         error: { message = "Error that occurred during rename "} -- (Optional)
+---     }
 function M.copy(uris, target_uri, opts)
     opts = opts or {}
     if type(uris) == 'string' then uris = { uris } end
