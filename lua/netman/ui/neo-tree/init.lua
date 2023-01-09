@@ -1494,44 +1494,34 @@ M.internal.add_item_to_node = function(state, node, item)
         node = state.tree:get_node(node:get_parent_id())
     end
     local uri = string.format("%s", node.extra.uri)
-    local head_child = nil
+    -- Stripping off the trailing `/` as we will be adding our own later
     local children = {}
-    local tail_child = nil
-    local parent_id = node:get_id()
-    for child in item:gmatch('([^/]+)') do
-        table.insert(children, child)
+    local child = nil
+    local parent = node:get_id()
+    for _ in item:gmatch('([^/]+)') do
+        table.insert(children, _)
     end
-    if item:sub(-1, -1) ~= '/' then
-    -- the last child is a file, we need to create it seperately from the above children
-        tail_child = table.remove(children, #children)
-    end
-    -- We iterate over the children creating each one on its own because not all
-    -- providers might be able to create all the directories at once 😥
-    -- TODO: Doing individual refreshes after each new node is created seems like a bad idea. We should
-    -- see if we can consolidate them into one refresh at the end?
-    while(#children > 0) do
-        head_child = table.remove(children, 1)
-        uri = string.format("%s%s/", uri, head_child)
-        local write_status = api.write(nil, uri)
+    local is_item_dir = item:sub(-1, -1) == '/'
+    child = nil
+    local walk_uris = {}
+    while #children > 0 do
+        child = table.remove(children, 1)
+        local new_uri = string.format('%s%s/', uri, child)
+        -- No children left, strip off the trailing / unless its supposed to be there
+        if #children == 0 and not is_item_dir then new_uri = new_uri:sub(1, -2) end
+        local write_status = api.write(nil, new_uri)
         if not write_status.success then
             notify.error(write_status.error.message)
-            return
-        end
-        M.refresh(state, {refresh_only_id=parent_id, quiet=true})
-        parent_id = uri
-    end
-    if tail_child then
-        uri = string.format("%s%s", uri, tail_child)
-        local write_status = api.write(nil, uri)
-        if not write_status.success then
-            -- IDK, complain?
-            notify.error(write_status.error.message)
-            return
+            return false
         end
         uri = write_status.uri
-        M.refresh(state, {refresh_only_id=parent_id, quiet=true})
+        table.insert(walk_uris, uri)
     end
-    renderer.focus_node(state, uri)
+    M.refresh(state, {refresh_only_id = parent, quiet = true, auto = true})
+    for _, _uri in ipairs(walk_uris) do
+        M.navigate(state, {target_id = _uri})
+    end
+    return true
 end
 
 M.create_node = function(state, opts)
@@ -1553,7 +1543,11 @@ M.create_node = function(state, opts)
         end
         -- Check to see if node is a directory. If not, get its parent
         if node.type ~= 'directory' then tree:get_node(node:get_parent_id()) end
-        M.internal.add_item_to_node(state, node, response)
+        notify.info(string.format("Attempting to create %s", response))
+        local success = M.internal.add_item_to_node(state, node, response)
+        if success then
+            notify.info(string.format("Successfully created %s", response))
+        end
     end
     -- Check if the node is active before trying to add to it
     -- Prompt for new item name
