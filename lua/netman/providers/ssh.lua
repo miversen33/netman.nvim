@@ -719,6 +719,9 @@ function SSH:mv(locations, target_location, opts)
         table.insert(mv_command, location)
     end
     locations = __
+    if #locations > 1 then
+        table.insert(mv_comand, '-t')
+    end
     table.insert(mv_command, target_location)
     mv_command = table.concat(mv_command, ' ')
     -- local mv_command = string.format("mv %s %s", location, target_location)

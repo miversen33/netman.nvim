@@ -828,7 +828,9 @@ function Container:mv(locations, target_location, opts)
         table.insert(__, location)
     end
     locations = __
-    table.insert(mv_command, '-t')
+    if #locations > 1 then
+        table.insert(mv_command, '-t')
+    end
     table.insert(mv_command, target_location)
     mv_command = table.concat(mv_command, ' ')
     local command_options = {
