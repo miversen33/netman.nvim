@@ -431,12 +431,32 @@ M.mark_node = function(state)
         log.debug(string.format("Cannot mark node %s, its not listed as markable", node.name))
         return
     end
+    local is_marked = nil
     if node.extra.marked then
         M.internal.marked_nodes[node.id] = nil
         node.extra.marked = false
     else
+        is_marked = true
         M.internal.marked_nodes[node.id] = true
         node.extra.marked = true
+    end
+    if node:is_expanded() then
+        -- Grab all the children nodes, and their children's children, and their children's children's children
+        -- etc and mark all that are currently visible
+        local walk_stack = { node.id }
+        local head = nil
+        while #walk_stack > 0 do
+            head = table.remove(walk_stack, 1)
+            local head_node = state.tree:get_node(head)
+            if head_node and head_node:is_expanded() then
+
+                for _, child_id in ipairs(head_node:get_child_ids()) do
+                    table.insert(walk_stack, child_id)
+                end
+            end
+            head_node.extra.marked = node.extra.marked
+            M.internal.marked_nodes[head] = is_marked
+        end
     end
     renderer.redraw(state)
 end
