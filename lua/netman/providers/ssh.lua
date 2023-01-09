@@ -1583,14 +1583,10 @@ function M.internal.validate(uri, cache)
 end
 
 function M.internal.read_directory(uri, host)
-    local children = {}
-    -- We could save this logic here instead, but since find already does it
-    -- on callback process, we will just let it do it for us
-    local callback = function(child) table.insert(children, child) end
-    local raw_children = M.internal.find(uri, host, {stdout_callback=callback})
-    if raw_children.error then
+    local children = M.internal.find(uri, host, {max_depth = 1})
+    if not children.success then
         -- Something happened during find.
-        if raw_children.error:match('[pP]ermission%s+[dD]enied') then
+        if children.error:match('[pP]ermission%s+[dD]enied') then
             return {
                 success = false,
                 error = {
@@ -1601,12 +1597,12 @@ function M.internal.read_directory(uri, host)
         -- Handle other errors as we find them
         return {
             success = false,
-            error = raw_children.error
+            error = children.error
         }
     end
     return {
         success = true,
-        data = children,
+        data = children.data,
         type = api_flags.READ_TYPE.EXPLORE
     }
 end
@@ -1667,36 +1663,28 @@ end
 
 function M.internal.find(uri, host, opts)
     opts = opts or {}
-    local find_opts = {
-        search_param = opts.param,
-        pattern_type = opts.pattern_type or 'iname',
-        max_depth = opts.max_depth or 1,
-        async = opts.async,
-        exit_callback = opts.exit_callback,
-        exec = opts.exec or 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
-    }
-    if opts.stdout_callback then
-        -- Whatever called me wants me to return each item as we get it.
-        -- Lets do our best to parse out each item and return a valid table like read_directory does
-        local callback = function(data)
-            for item in data:gmatch('[^\r\n]+') do
-                local children = host:_stat_parse(item)
-                for child, metadata in pairs(children) do
-                    opts.stdout_callback({
-                        URI = metadata.URI,
-                        FIELD_TYPE = metadata.FIELD_TYPE,
-                        NAME = metadata.NAME,
-                        -- Child will always be the absolute path, and its ever so slightly cheaper to do a straight memory reference as opposed
-                        -- to a hash lookup and memory reference
-                        ABSOLUTE_PATH = child,
-                        METADATA = metadata
-                    })
-                end
-            end
-        end
-        find_opts.stdout_callback = callback
+    if not opts.exec then
+        opts.exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
     end
-    return host:find(uri, find_opts)
+    local raw_children = host:find(uri, opts)
+    if raw_children.error and not opts.ignore_errors then
+        return {success = false, error = raw_children.error}
+    end
+
+    local children = host:_stat_parse(raw_children)
+    local __ = {}
+    for _, metadata in pairs(children) do
+        __[metadata.URI] = {
+            URI = metadata.URI,
+            FIELD_TYPE = metadata.FIELD_TYPE,
+            NAME = metadata.NAME,
+            -- Child will always be the absolute path, and its ever so slightly cheaper to do a straight memory reference as opposed
+            -- to a hash lookup and memory reference
+            ABSOLUTE_PATH = metadata.ABSOLUTE_PATH,
+            METADATA = metadata
+        }
+    end
+    return { success = true, data = __ }
 end
 
 function M.search(uri, cache, param, opts)
