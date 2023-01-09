@@ -741,6 +741,58 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
     if not opts.async then return return_details else return run_details end
 end
 
+--- Copies the locations into the provided location
+--- @param locations table
+---     A table of string locations to move. Can be files or directories
+--- @param target_location string
+---     The location to copy to. Must be a directory
+--- @param opts table | Optional
+---     Default: {}
+---     If provided, a table of options that can be used to modify how cp works
+---     Valid Options:
+---     - ignore_errors : boolean
+---         If provided, we will not report any errors received while attempting to copy
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully executed the requested copy
+---     - error: string | Optional
+---         Any errors that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
+---         get an error, it will not be returned. Ye be warned.
+--- @example
+---     local container = Container:new('ubuntu')
+---     -- Copies /tmp/testfile.txt into /opt
+---     container:cp('/tmp/testfile.txt', '/opt')
+---     -- Or to copy multiple locations
+---     container:cp({'/tmp/testfile.txt', '/tmp/new_dir/'}, '/opt')
+function Container:cp(locations, target_location, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
+    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
+    local cp_command = { 'cp', '-a' }
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then
+            location = location:to_string()
+        end
+        table.insert(cp_command, location)
+        table.insert(__, location)
+    end
+    locations = __
+    table.insert(cp_command, '-t')
+    table.insert(cp_command, target_location)
+    cp_command = table.concat(cp_command, ' ')
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
+    local output = self:run_command(cp_command, command_options)
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
+        return { success = false, error = message }
+    end
+    return { success = true }
+end
+
 --- Moves a location to another location in the container
 --- @param locations table
 ---     The a table of string locations to move. Can be a files or directories
@@ -755,9 +807,9 @@ end
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
----         A true/false on if we successfully created the directory
+---         A true/false on if we successfully executed the requested move
 ---     - error: string | Optional
----         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
+---         Any errors that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -779,7 +831,6 @@ function Container:mv(locations, target_location, opts)
     table.insert(mv_command, '-t')
     table.insert(mv_command, target_location)
     mv_command = table.concat(mv_command, ' ')
-    -- local mv_command = string.format("mv %s %s", location, target_location)
     local command_options = {
         [command_flags.STDERR_JOIN] = ''
     }
@@ -1668,6 +1719,30 @@ function M.write(uri, cache, data)
         return { uri = uri, success = false, error = { message = _.error } }
     end
     return { success = true, uri = uri }
+end
+
+function M.copy(uris, target_uri, cache)
+    local container = nil
+    local validation = M.internal.validate(target_uri, cache)
+    if validation.error then return validation end
+    container = validation.container
+    target_uri = validation.uri
+    if type(uris) ~= 'table' then uris = {uris} end
+    local validated_uris = {}
+    for _, uri in ipairs(uris) do
+        local __ = M.internal.validate(uri, cache)
+        if __.error then return __ end
+        if __.container ~= validation.container then
+            return {
+                success = false,
+                error = {
+                    message = string.format("%s and %s are not on the same container!", uri, target_uri)
+                }
+        }
+        end
+        table.insert(validated_uris, __.uri)
+    end
+    return container:cp(validated_uris, target_uri)
 end
 
 function M.move(uris, target_uri, cache)
