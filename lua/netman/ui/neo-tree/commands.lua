@@ -28,7 +28,7 @@ M.add = function(state, callback)
 end
 
 M.refresh = function(state, callback)
-    ui.refresh(state)
+    ui.perform_mark_action(state,'refresh')
     do_callback(callback)
 end
 

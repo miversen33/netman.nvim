@@ -485,9 +485,19 @@ M.perform_mark_action = function(state, action)
     renderer.redraw(state)
 end
 
--- This will only be called on confirmation of copy
-M.internal.copy_nodes = function(state, target_node)
-
+M.refresh_nodes = function(state)
+    assert(state, "No state provided")
+    assert(state.tree, "No tree associated with state")
+    if not next(M.internal.marked_nodes) then
+        -- There were no marked nodes, thats ok, we can just use the current node and perform a refresh on 
+        -- the single node
+        M.internal.marked_nodes = { [state.tree:get_node().id] = true }
+    end
+    -- TODO: Mike, it might be worth redoing refresh slightly to handle multi refresh
+    -- instead of calling it several times on its own
+    for uri, _ in pairs(M.internal.marked_nodes) do
+        M.refresh(state, { refresh_only_id = uri })
+    end
 end
 
 M.copy_nodes = function(state)
@@ -518,7 +528,7 @@ M.copy_nodes = function(state)
         end
         target_node = state.tree:get_node(target_node:get_parent_id())
     end
-   local uris = {}
+    local uris = {}
     for uri, _ in pairs(M.internal.marked_nodes) do
         table.insert(uris, uri)
     end
