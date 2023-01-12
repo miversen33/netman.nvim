@@ -1374,6 +1374,56 @@ function SSH:stat_mod(locations, targets, permission_mods, opts)
     return true
 end
 
+--- Changes the owner or group owner of a location
+--- @param locations table
+---     A table of filesystem locations
+--- @param ownership table
+---     A 2D table that can contain any of the following keys
+---     - user
+---     - group
+---     The value associated with each key should be the string for that key. EG { user = 'root', group = 'nogroup'}
+--- @param opts table | Optional
+---     - Default: {}
+---     If provided, a table that can alter how own_mod operates. Valid Key Value Paris are
+---     - ignore_errors: boolean
+---         - If provided, we will not report any errors that occur while trying to change the ownership
+---          of the locations provided
+--- @example
+---     local host = SSH:new('ubuntu')
+---     -- This will modify the owner and group of /tmp/ to be root
+---     host:own_mod('/tmp/', { user = 'root', group = 'root' })
+---     -- This will modify the group of /tmp/somedir and /tmp/somedir2 to be nogroup
+---     host:own_mod({'/tmp/somedir', '/tmp/somedir2'}, { group = 'nogroup' })
+function SSH:own_mod(locations, ownership, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    assert(ownership, "Invalid ownership provided")
+    local command = {'chown'}
+    if ownership.user then
+        if ownership.group then
+            table.insert(command, string.format("%s:%s", ownership.user, ownership.group))
+        else
+            table.insert(command, ownership.user)
+        end
+    elseif ownership.group then
+        command = { 'chgrp', ownership.group }
+    end
+    if #command <= 1 then
+        -- We didn't find any matches to apply to the command!
+        log.warn("Invalid ownership provided", {locations = locations, ownership = ownership})
+        return false
+    end
+    for _, location in ipairs(locations) do
+        table.insert(command, location)
+    end
+    local output = self:run_command(command)
+    if output.exit_code ~= 0 then
+        log.warn("Received Error trying to modify ownership")
+        return false
+    end
+    return true
+end
+
 --- URI Object functions
 --------------------------------------
 function URI:new(uri, cache)
