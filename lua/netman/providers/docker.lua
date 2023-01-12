@@ -222,7 +222,7 @@ function Container:_get_archive_availability_details()
         end
     end
     extract_commands['tar.gz'] = function(location, archive)
-        local pre_format_command = "tar -C %s -xzf %s"
+        local pre_format_command = "tar -oC %s -xzf %s"
         return string.format(pre_format_command, location:to_string(), archive)
     end
     archive_commands['tar'] = archive_commands['tar.gz']
