@@ -917,14 +917,8 @@ M.internal.disable_search_mode = function(state)
     search_node.skip_node = true
     search_node.name = ""
     M.internal.unfocus_path(state, state.tree:get_node(M.internal.search_locking_host))
-    if M.internal.search_cache then
-        for _, node_id in ipairs(M.internal.search_cache) do
-            local node = state.tree:get_node(state.tree:get_node(node_id):get_parent_id())
-            -- Expire the parent of the search node
-            if node and node.extra then node.extra.expiration = 1 end
-        end
-    end
     if M.internal.search_started_on then
+        M.refresh(state, {refresh_only_id = M.internal.search_started_on})
         renderer.focus_node(state, M.internal.search_started_on)
     end
     M.internal.search_cache = nil
@@ -982,6 +976,7 @@ M.internal.search_netman = function(state, uri, param)
         table.insert(cache_results, parent.id)
     end
     M.internal.search_cache = cache_results
+    -- TODO: Mike, this is very slow when redrawing a very large tree...?
     renderer.redraw(state)
 end
 

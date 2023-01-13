@@ -1717,9 +1717,13 @@ function M.internal.find(uri, host, opts)
         opts.exec = 'stat -L -c MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
     end
     local raw_children = host:find(uri, opts)
-    if raw_children.error and not opts.ignore_errors then
-        return {success = false, error = raw_children.error}
+    if raw_children.error then
+        log.info("Received potential error during find", {error = raw_children.error})
+        raw_children = raw_children.output
     end
+    -- if raw_children.error and not opts.ignore_errors then
+    --     return {success = false, error = raw_children.error}
+    -- end
 
     local children = host:_stat_parse(raw_children)
     local __ = {}
@@ -1739,17 +1743,13 @@ end
 
 function M.search(uri, cache, param, opts)
     opts = opts or {}
+    opts.search_param = param
     local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-
-    local results = {}
-    if opts.search == 'filename' then
-        opts.param = param
-        return M.internal.find(uri, host, opts)
-    end
+    return M.internal.find(uri, host, opts)
 end
 
 function M.write(uri, cache, data, opts)

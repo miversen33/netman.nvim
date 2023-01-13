@@ -1706,6 +1706,17 @@ function M.internal.read_file(uri, container)
     end
 end
 
+function M.search(uri, cache, param, opts)
+    local container = nil
+    local validation = M.internal.validate(uri, cache)
+    if validation.error then return validation end
+    opts = opts or {}
+    opts.search_param = param
+    uri = validation.uri
+    container = validation.container
+    return M.internal.find(uri, container, opts)
+end
+
 --- Reads contents from a container and returns them in the prescribed netman.api.read return format
 --- @param uri string
 ---     The string uri to read. Can be a directory or file
