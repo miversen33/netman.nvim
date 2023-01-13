@@ -1545,7 +1545,11 @@ M.internal.add_item_to_node = function(state, node, item)
         uri = write_status.uri
         table.insert(walk_uris, uri)
     end
-    M.refresh(state, {refresh_only_id = parent, quiet = true, auto = true})
+    if state.tree:get_node(parent):is_expanded() then
+        M.refresh(state, {refresh_only_id = parent, quiet = true, auto = true})
+    else
+        M.navigate(state, { target_id = parent})
+    end
     for _, _uri in ipairs(walk_uris) do
         M.navigate(state, {target_id = _uri})
     end
