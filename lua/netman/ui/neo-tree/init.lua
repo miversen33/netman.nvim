@@ -1413,7 +1413,7 @@ M.internal.refresh_uri = function(state, uri, opts)
                 for _, child_id in ipairs(head_node:get_child_ids()) do
                     local new_child = flat_tree[child_id]
                     if not new_child then
-                        M.internal.create_ui_node(tree:get_node(child_id))
+                        new_child = M.internal.create_ui_node(tree:get_node(child_id))
                         flat_tree[child_id] = new_child
                     end
                     table.insert(walk_stack, new_child)
