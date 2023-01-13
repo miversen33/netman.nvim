@@ -24,23 +24,29 @@ function M.read(...)
             log.warn(string.format("No data was returned from netman api for %s", file))
             goto continue
         end
-        if data.error then
-            if data.error.callback then
-                local default = data.error.default or ""
-                local callback = function(input)
-                    local response = data.error.callback(input)
-                    if response and response.retry then
-                        M.read(file)
+        if not data.success then
+            if data.error then
+                if data.error.callback then
+                    local default = data.error.default or ""
+                    local callback = function(input)
+                        local response = data.error.callback(input)
+                        if response and response.retry then
+                            M.read(file)
+                        end
                     end
+                    vim.ui.input({
+                        prompt = data.error.message,
+                        default = default,
+                        },
+                        callback
+                    )
+                    return
+                else
+                    notify.error(string.format("Netman Error: %s", data.error.message))
+                    notify.info("See netman logs for more details. :h Nmlogs")
                 end
-                vim.ui.input({
-                    prompt = data.error.message,
-                    default = default,
-                    },
-                    callback
-                )
-                return
             end
+            return
         end
         if data.type == 'EXPLORE' then
             -- Figure out what we want netman itself to do when directory is open?
