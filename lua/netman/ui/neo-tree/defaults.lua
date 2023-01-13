@@ -38,8 +38,7 @@ config.renderers =
 }
 
 config.window.mappings = {
-    -- ['f'] = "toggle_favorite",
-    -- ['H'] = "toggle_hidden"
+    -- ['g'] = "toggle_favorite",
     ['r'] = 'rename_node',
     ['d'] = 'delete_node',
     ['x'] = 'move_node',
