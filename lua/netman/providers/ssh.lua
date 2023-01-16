@@ -175,6 +175,9 @@ function SSH:new(auth_details, provider_cache)
         if _key == 'os' then
             return SSH._get_os(_table)
         end
+        if _key == 'home' then
+            return SSH._get_user_home(_table)
+        end
 
         if _key == 'archive_schemes' or _key == '_archive_commands' or _key == '_extract_commands' then
             local details = SSH._get_archive_availability_details(_table)
@@ -187,6 +190,7 @@ function SSH:new(auth_details, provider_cache)
     end
     -- These are all lazy loaded via the index function
     -- _ssh.os = ''
+    -- _ssh.home = ''
     -- _ssh._archive_commands = {}
     -- _ssh._extract_commands = {}
     -- _ssh.archive_schemes = {}
@@ -979,6 +983,45 @@ function SSH:grep(uri, param, opts)
     error("Grep is not implemented on ssh yet!")
 end
 
+--- Attempts to get the user's home directory
+--- @param user string | Optional
+---     Default: current logged in user
+---     The user to get the home directory for.
+--- @return uri string | nil
+---     The uri that can be resolved to the user's home directory. Note, can also be nil
+---     if the directory cannot be resolved/found
+function SSH:_get_user_home(user)
+    -- Since ssh is usually "over" the network, its probably worth having this do multiple commands
+    -- at once
+    --
+    -- Lets try the following commands
+    user = user or '$USER'
+    local command = string.format('echo "{\\\"FILE_READ\\\":\\\"$(cat /etc/passwd | grep -E "%s.*")\\\",\\\"COMMAND_OUTPUT\\\":\\\"${HOME}\\\"}"', user)
+    local output = self:run_command(command)
+    if not output.stdout then
+        -- We got literally nothing, so thats not great.
+        -- return nil I guess?
+        return nil
+    end
+    if output.exit_code ~= 0 then
+        -- Log the exit code, and still attempt to read the output, we might be able to establish what we need
+        log.warn("Received Non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
+    end
+    local success, details = pcall(vim.fn.json_decode, output.stdout)
+    if success ~= true then
+        log.warn("Unable to parse home directory of user!")
+        return nil
+    end
+    if details.COMMAND_OUTPUT then
+        return details.COMMAND_OUTPUT
+    end
+    log.warn("Unable to resolve home directory of user!")
+    return nil
+    -- TODO: Mike, we need to figure out how to parse this better
+    -- if details.FILE_READ then
+
+end
+
 --- Uploads a file to the host, placing it in the provided location
 --- @param file string
 ---     The string file location on the host
@@ -1563,7 +1606,7 @@ function URI:parent()
     )
 end
 
---- Returns the various containers that are currently available on the system
+--- Returns the various hosts that are currently available on the system
 --- @param config Configuration
 ---     The Netman provided (provider managed) configuration
 --- @return table
@@ -1582,15 +1625,35 @@ end
 --- @param host string
 --- @param provider_cache Cache
 --- @return table
----     Returns a 1 dimensional table with the followin gkey value pairs in it
+---     Returns a 1 dimensional table with the following key value pairs in it
 ---     - NAME
 ---     - URI
 ---     - STATE
+---     - ENTRYPOINT
+---         - Note, ENTRYPOINT may be a function as well, if getting the ENTRYPOINT is "painful" to get
 function M.ui.get_host_details(config, host, provider_cache)
-    SSH:new(host, provider_cache)
+    -- TODO, its probably worth caching this stuff in our config instead of reaching out to each server to get the details
+    local connection = SSH:new(host, provider_cache)
+    local get_path = function()
+        local home = connection.home
+        local paths = nil
+        if home then
+            paths = {}
+            local path = ''
+            for _ in home:gmatch('[^/]+') do
+                path = string.format('%s/%s', path, _)
+                local uri_as_string = string.format('ssh://%s//%s/', host, path)
+                if uri_as_string:sub(-1, -1) ~= '/' then uri_as_string = uri_as_string .. '/' end
+                table.insert(paths, {uri = URI:new(uri_as_string).uri, name = _})
+            end
+        end
+        log.debug("Paths", {host = host, paths = paths})
+        return paths
+    end
     return {
         NAME = host,
         URI = string.format("ssh://%s///", host),
+        ENTRYPOINT = get_path
     }
 end
 

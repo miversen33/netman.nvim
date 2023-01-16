@@ -124,250 +124,6 @@ M.internal.sorter.ascending = function(a, b) return a.name < b.name end
 -- Sorts nodes in descending order
 M.internal.sorter.descending = function(a, b) return a.name > b.name end
 
--- M.internal.generate_root_children = function()
---     -- Root Tree
---     return {
---         {
---             id = 'netman_recents',
---             name = 'Recents',
---             type = "netman_bookmark",
---             children = {},
---             extra = {
---                 icon = "",
---                 highlight = "",
---                 provider = "",
---             }
---         },
---         {
---             id = "netman_favorites",
---             name = "Favorites",
---             type = "netman_bookmark",
---             children = {},
---             extra = {
---                 icon = "",
---                 highlight = "",
---                 provider = "",
---             }
---         },
---         {
---             id = "netman_providers",
---             name = "Providers",
---             type = "netman_bookmark",
---             children = {},
---             extra = {
---                 -- TODO: Idk, pick a better icon?
---                 icon = "",
---                 highlight = "",
---                 provider = "",
---             }
---         }
---     }
--- end
-
--- M.internal.get_providers = function()
---     local providers = {}
---     for _, provider_path in ipairs(api.providers.get_providers()) do
---         local status, provider = pcall(require, provider_path)
---         if not status or not provider.ui then
---             -- Failed to import the provider for some reason
---             -- or the provider is not UI ready
---             if not provider.ui then
---                 log.info(string.format("%s is not ui ready, it is missing the ui attribute", provider_path))
---             end
---             goto continue
---         end
---         table.insert(providers, {
---             -- Provider's (in this context) are unique as they are 
---             -- import paths from netman.api
---             id = provider_path,
---             name = provider.name,
---             type = "netman_provider",
---             children = {},
---             extra = {
---                 icon = provider.ui.icon or "",
---                 highlight = provider.ui.highlight or "",
---                 provider = provider_path,
---             }
---         })
---         ::continue::
---     end
---     table.sort(providers, M.internal.sorter.ascending)
---     return providers
--- end
-
--- M.internal.get_provider_children = function(provider)
---     local hosts = {}
---     for _, host in ipairs(api.providers.get_hosts(provider)) do
---         local host_details = api.providers.get_host_details(provider, host)
---         if not host_details then
---             log.warn(string.format("%s did not return any details for %s", provider, host))
---             goto continue
---         end
---         table.insert(hosts, {
---             id = host_details.URI,
---             name = host_details.NAME,
---             type = "netman_host",
---             children = {},
---             extra = {
---                 state = host_details.STATE,
---                 last_access = host_details.LAST_ACCESSED,
---                 provider = provider,
---                 host = host,
---                 uri = host_details.URI,
---                 searchable = true
---             }
---         })
---         ::continue::
---     end
---     table.sort(hosts, M.internal.sorter.ascending)
---     return hosts
--- end
-
--- M.internal.get_uri_children = function(state, uri, opts)
---     opts = opts or {}
---     local children = {}
---     -- Get the output from netman.api.read
---     -- Do stuff with that output?
---     local output = api.read(uri)
---     if not output then
---         log.info(string.format("%s did not return anything on read", uri))
---         return nil
---     end
---     if output.error then
---         local _error = output.error
---         local message = _error.message
---         -- Handle the error?
---         -- The error wants us to do a thing
---         if _error.callback then
---             local default = _error.default or ""
---             local parent_id = state.tree:get_node():get_parent_id()
---             local callback = function(_)
---                 local response = _error.callback(_)
---                 if response.retry then
---                     -- Do a retry of ourselves???
---                     M.refresh(state, {refresh_only_id=parent_id, auto=true})
---                 end
---             end
---             input.input(message, default, callback)
---             return nil
---         else
---             if not opts.ignore_unhandled_errors then
---                 -- No callback was provided, display the error and move on with our lives
---                 print(string.format("Unable to read %s, received error %s", uri, message))
---                 log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
---             end
---             return nil
---         end
---     end
---     if output.type == 'FILE' or output.type == 'STREAM' then
---         -- Make neo-tree create a buffer for us
---         local command = ""
---         local open_command = 'read ++edit'
---         local event_handler_id = "netman_dummy_file_event"
---         if output.type == 'STREAM' then
---             command = '0append! ' .. table.concat(output.data) .. command
---         else
---             command = string.format("%s %s %s", open_command, output.data.local_path, command)
---         end
---         local dummy_file_open_handler = {
---             event = "file_opened",
---             id = event_handler_id
---         }
---         dummy_file_open_handler.handler = function()
---             events.unsubscribe(dummy_file_open_handler)
---         end
---         events.subscribe(dummy_file_open_handler)
---         neo_tree_utils.open_file(state, uri)
---         return children
---     end
---     local unsorted_children = {}
---     local children_map = {}
---     for _, item in ipairs(output.data) do
---         local child = {
---             id = item.URI,
---             name = item.NAME,
---             extra = {
---                 uri = item.URI,
---                 markable = true,
---                 searchable = false
---             }
---         }
---         if item.FIELD_TYPE == 'LINK' then
---             child.type = 'directory'
---             child.children = {}
---             child.extra.searchable = true
---         else
---             child.type = 'file'
---         end
---         table.insert(unsorted_children, child.name)
---         children_map[child.name] = child
---     end
---     local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
---     for _, child in ipairs(sorted_children) do
---         table.insert(children, children_map[child])
---     end
---     return children
--- end
-
--- M.internal.generate_node_children = function(state, node, opts)
---     opts = opts or {}
---     local children = {}
---     if not node then
---         -- No node was provided, assume we want the root providers
---         children = M.internal.generate_root_children()
---     elseif node.id == 'netman_providers' then
---         children = M.internal.get_providers()
---     elseif node.type == "netman_provider" then
---         if not node.extra.provider then
---             -- SCREAM!
---             log.error(string.format("Node %s says its a provider but doesn't have a provider. How tf????", node.name), {node=node})
---             return children
---         end
---         children = M.internal.get_provider_children(node.extra.provider, opts)
---     else
---         if not node.extra.uri then
---             -- SCREAM!
---             log.error(string.format("Node %s says its a netman node, but has no URI. How tf????", node.name), {node=node})
---             return children
---         end
---         children = M.internal.get_uri_children(state, node.extra.uri, opts)
---     end
---     return children
--- end
-
--- M.add_node = function(state, opts)
---     local tree, node
---     opts = opts or {}
---     tree = state.tree
---     node = tree:get_node()
---     if node.type == 'netman_provider' then
---         print("Adding new hosts to a provider isn't supported. Yet... 👀")
---         return
---     end
---     local message = "Enter name of new file/directory. End the name in / to make it a directory"
---     if opts.force_dir then
---         message = "Enter name of new directory"
---     end
---     local callback = function(response)
---         if opts.force_dir and response:sub(-1, -1) ~= '/' then
---             response = string.format("%s/", response)
---         end
---         -- Check to see if node is a directory. If not, get its parent
---         if node.type ~= 'directory' then tree:get_node(node:get_parent_id()) end
---         M.internal.add_item_to_node(state, node, response)
---     end
---     -- Check if the node is active before trying to add to it
---     -- Prompt for new item name
---     -- Create new item in netman.api with the provider ui and parent path
---     -- Refresh the parent only
---     -- Navigate to the item
---     input.input(message, "", callback)
--- end
-
--- M.internal.rename = function(old_uri, new_uri)
---     return api.move(old_uri, new_uri)
--- end
-
 --- Renames the selected or target node
 --- @param state NeotreeState
 --- @param target_node_id string
@@ -654,119 +410,6 @@ M.delete_nodes = function(state)
     local message = string.format("delete %s nodes", #uris)
     M.internal.confirm_target_node('', callback, message)
 end
-
--- M.copy_nodes = function(state, nodes, target_node)
---     
--- end
-
--- M.open_nodes = function(state, nodes)
---
--- end
-
--- M.internal.hide_root_nodes = function(state)
---     for _, node in ipairs(state.tree:get_nodes()) do
---         node.extra.previous_state = node:is_expanded()
---         node:collapse()
---     end
--- end
-
--- M.internal.show_root_nodes = function(state)
---     for _, node in ipairs(state.tree:get_nodes()) do
---         if node.extra.previous_state then node:expand() end
---     end
--- end
-
--- M.search = function(state)
---     local node = state.tree:get_node()
---     if node.type == 'netman_provider' then
---         notify.warn("Cannot perform search on a provider!")
---         return
---     end
---     -- I don't know that this is right. The idea is that
---     -- if the node is a directory, we should be able to search it,
---     -- however we should also allow for grepping the file....?
---     if not node.extra.searchable then
---         node = state.tree:get_node(node:get_parent_id())
---     end
---     local message = "Search Param"
---     local default = ""
---     local uri = node.extra.uri
---     -- Must be positive integer, there should be no file depth that is 100000 deep. Yaaaa jank
---     local depth = 100000
---     local callback = function(response)
---         -- Hide nodes?
---         M.internal.hide_root_nodes(state)
---         state.tree:get_node('netman_search').skip_node = false
---         renderer.redraw(state)
---         -- NEED TO STAT THE OUTPUT SO WE KNOW HOW TO DISPLAY IT
---         local stdout = {}
---         local stdout_callback = function(item)
---             if not item or not item.ABSOLUTE_PATH then return end
---             log.debug(item)
---             -- This hardcode makes it so we expect data to come back in unix compliant paths...
---             local parent = stdout
---             for item_node in item.ABSOLUTE_PATH:gmatch('[^/]+') do
---                 local child_node = {
---                     id = "find://" .. item_node.URI,
---                     name = item_node.NAME,
---                     type = 'file',
---                     extra = {
---                         uri = item.URI,
---                     }
---                 }
---                 if item_node ~= item.NAME then
---                     child_node.type = 'directory'
---                 end
---                 local new_parent = nil
---                 for _, child in ipairs(parent) do
---                     if child.name == item_node then
---                         new_parent = child
---                     end
---                 end
---                 if not new_parent then new_parent = parent end
---                 if not new_parent.children then new_parent.children = {} end
---                 table.insert(new_parent.children, child_node)
---                 -- This may cause some issues but it _shouldn't_
---                 parent = new_parent
---             end
---             -- local first_line = nil
---             -- local last_line = nil
---             -- for line in output:gmatch('[^\r\n]+') do
---                 -- log.debug("Line: " .. line)
---                 -- if not first_line then first_line = line end
---                 -- last_line = line
---                 -- log.debug(string.format("Processing %s", line))
---             -- local parent = stdout
---             -- for part in output:gmatch('[^/]+') do
---             --     if part:sub(-1, -1) ~= '/' then
---             --         table.insert(parent, part)
---             --     else
---             --         parent[part] = {}
---             --     end
---             --     parent = parent[part]
---             -- end
---             -- log.debug({first_line = first_line, last_line = last_line})
---         end
---         local exit_callback = function()
---             log.debug("Complete Search Tree", stdout)
---         end
---         log.debug(
---             api.search(
---                 uri,
---                 response,
---                 {
---                     max_depth       = depth,
---                     search          = 'filename',
---                     case_sensitive  = false,
---                     async           = true,
---                     stdout_callback = stdout_callback,
---                     exit_callback   = exit_callback
---                 }
---             )
---         )
---     end
---     input.input(message, default, callback)
--- end
 
 M.internal.delete_item = function(uri)
     local status, _error = pcall(api.delete, uri)
@@ -1140,6 +783,7 @@ M.internal.create_ui_node = function(data)
             markable = true,
             marked = false,
             searchable = false,
+            required_nodes = {},
             expandable = false,
             expire_amount = M.constants.DEFAULT_EXPIRATION_LIMIT
         }
@@ -1207,9 +851,12 @@ M.internal.generate_provider_children = function(provider)
                 last_access = host_details.LAST_ACCESSED,
                 provider = provider,
                 host = host,
+                accessed = false,
                 uri = host_details.URI,
                 searchable = true,
-                hidden_children = {}
+                required_nodes = {},
+                hidden_children = {},
+                entrypoint = host_details.ENTRYPOINT
             }
         })
         ::continue::
@@ -1219,15 +866,18 @@ M.internal.generate_provider_children = function(provider)
 end
 
 M.internal.generate_node_children = function(state, node, opts)
-    assert(state, "No state provided!")
-    assert(node, "No node provided!")
-    assert(node.extra, "No extra attributes on node!")
-    assert(node.extra.uri, "No uri found on node!")
-    local uri = node.extra.uri
     opts = opts or {}
+    local uri = opts.uri
+    assert(state, "No state provided!")
+    if not opts.uri then
+        assert(node, "No node provided!")
+        assert(node.extra, "No extra attributes on node!")
+        assert(node.extra.uri, "No uri found on node!")
+        uri = node.extra.uri
+    else
+        node = state.tree:get_node(uri)
+    end
     local children = {}
-    -- Get the output from netman.api.read
-    -- Do stuff with that output?
     local output = api.read(uri)
     if not output then
         log.info(string.format("%s did not return anything on read", uri))
@@ -1287,6 +937,22 @@ M.internal.generate_node_children = function(state, node, opts)
         table.insert(unsorted_children, child.name)
         children_map[child.name] = child
     end
+    for _, required_node in ipairs(node.extra.required_nodes) do
+        -- Ensure that the required nodes are present, and if they aren't add them
+        local match = false
+        for _, child in ipairs(unsorted_children) do
+            -- We might be able to do this in the same loop above where we are reading the output data...?
+            if match then break end
+            match = child == required_node.id
+        end
+        if not match then
+            -- We need to create a new node for this id and add it to to the unsorted children
+            local new_node = M.internal.create_ui_node(required_node)
+            children_map[new_node.name] = new_node
+            table.insert(unsorted_children, new_node.name)
+        end
+    end
+
     local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
     for _, child in ipairs(sorted_children) do
         table.insert(children, children_map[child])
@@ -1295,7 +961,7 @@ M.internal.generate_node_children = function(state, node, opts)
 end
 
 M.navigate = function(state, opts)
-    local tree, node, nodes, parent_id, sort_nodes
+    local tree, node, nodes, parent_id, render_id, sort_nodes
     opts = opts or {}
     nodes = {}
     -- Check to see if there is even a tree built
@@ -1336,6 +1002,7 @@ M.navigate = function(state, opts)
         end
     end
     parent_id = node.id
+    render_id = parent_id
     if node.id == M.constants.ROOT_IDS.NETMAN_PROVIDERS then
         nodes = M.internal.generate_providers()
     elseif node.type == M.constants.TYPES.NETMAN_PROVIDER then
@@ -1345,10 +1012,59 @@ M.navigate = function(state, opts)
         -- They selected a node provided by a provider, get its data
         nodes = M.internal.generate_node_children(state, node)
     end
+    -- We should check to see if the node has an extra.entrypoint
+    -- and if it does, we should navigate to that instead
+    if node.extra.entrypoint and not node.extra.accessed then
+    --     -- Walk the entrypoint and display the results.
+    --     -- Because we have an entrypoint, if we get any sort of errors, ignore them and
+    --     -- display the entrypoint anyway. The provider is what displays the entrypoint
+        local paths  = node.extra.entrypoint
+        if type(node.extra.entrypoint) == 'function' then
+            paths = node.extra.entrypoint()
+        end
+        local _nodes = nodes
+        local _parent_node = nil
+        for _, path_details in ipairs(paths) do
+            local path = path_details.uri
+            local name = path_details.name
+            local _node = state.tree:get_node(path)
+            if not _node then
+                -- Iterate through the "nodes" object to see if we can find our node there
+                for _, __parent_node in ipairs(_nodes) do
+                    if __parent_node.extra.uri == path then
+                        -- Found a match!
+                        _node = __parent_node
+                        break
+                    end
+                end
+            end
+            if not _node then
+                -- Nothing was returned from the generation, however we still
+                -- have nodes to process. This is likely a permission error
+                -- when trying to read the current node. Since the provider
+                -- told us to dig deeper, we will
+                _node = M.internal.create_ui_node({URI = path, NAME = name, FIELD_TYPE = 'LINK'})
+                if not _parent_node.children then _parent_node.children = {} end
+                -- We will need to resort the children ...
+                table.insert(_parent_node.children, _node)
+            end
+            local _children = M.internal.generate_node_children(state, _node)
+            _node._is_expanded = true
+            -- if not _node.extra.required_nodes then _node.extra.required_nodes = {} end
+            if _parent_node then
+                table.insert(_parent_node.extra.required_nodes, {URI=_node.id, NAME=_node.name, FIELD_TYPE='LINK'})
+            end
+            _node.children = _children
+            _nodes = _children
+            _parent_node = _node
+        end
+        render_id = paths[#paths].uri
+        node.extra.accessed = true
+    end
     ::render::
     if nodes then
         M.internal.add_nodes(state, nodes, parent_id, sort_nodes)
-        renderer.focus_node(state, parent_id)
+        renderer.focus_node(state, render_id)
     end
 end
 
@@ -1416,43 +1132,11 @@ M.internal.refresh_uri = function(state, uri, opts)
                     table.insert(walk_stack, new_child)
                 end
             end
-            local children = api.read(head.id)
-            if not children then
-                -- Something horrendous happened and we got nil back.
-                log.error(string.format("Nothing returned by api.read for %s!", uri))
-                notify.error("Unexpected Netman error. Please check logs for details. :h Nmlogs")
-                return
-            end
-            if not children.success then
-                local message = string.format("Unknown error while reading from api for %s", uri)
-                if children.error then
-                    if type(children.error) == 'string' then
-                        message = children.error
-                    else
-                        message = children.error.message
-                    end
-                end
-                notify.warn(message)
-                return
-            end
-            if children.data then
-                local unsorted_children = {}
-                local children_map = {}
-                if not head.children then head.children = {} end
-                for _, child_data in ipairs(children.data) do
-                    local child = flat_tree[child_data.URI]
-                    if not child then
-                        child = M.internal.create_ui_node(child_data)
-                        flat_tree[child.id] = child
-                    end
-                    children_map[child.name] = child
-                    table.insert(unsorted_children, child.name)
-                end
-                local sorted_children = neo_tree_utils.sort_by_tree_display(unsorted_children)
-                for _, child_name in ipairs(sorted_children) do
-                    -- Got weird nil error while inserting _something_
-                    table.insert(head.children, children_map[child_name])
-                end
+            if not head.children then head.children = {} end
+            for _, child in ipairs(M.internal.generate_node_children(state, nil, {uri = head.id})) do
+                local _child = flat_tree[child.id]
+                if not _child then _child = child end
+                table.insert(head.children, _child)
             end
         end
     end
@@ -1504,6 +1188,7 @@ M.refresh = function(state, opts)
         -- The user selected one of the bookmark nodes, those cannot be refreshed. Just ignore the
         -- action
     end
+    if node.extra.accessed then node.extra.accessed = false end
     node.type = cache_type
     if not opts.quiet then
         renderer.redraw(state)
