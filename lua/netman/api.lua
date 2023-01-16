@@ -410,6 +410,7 @@ end
 ---     - NAME (string)
 ---     - URI (string)
 ---     - STATE (string from netman.options.ui.states)
+---     - ENTRYPOINT (table of URIs, or a function to call to get said table of URIs)
 function M.providers.get_host_details(provider, host)
     local _provider = M._providers.path_to_provider[provider]
     if not _provider then
