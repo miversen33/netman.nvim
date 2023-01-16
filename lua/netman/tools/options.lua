@@ -96,7 +96,9 @@ return {
             NAME = "NAME",
             STATE = "STATE",
             LAST_ACCESSED = "LAST_ACCESSED",
-            URI = "URI"
+            URI = "URI",
+            OS = "OS",
+            ENTRYPOINT = 'ENTRYPOINT'
         },
         STATES = {
             UNKNOWN = "UNKNOWN",
