@@ -496,7 +496,8 @@ function M.read(uri, opts)
                 local_path = cached_file,
                 remote_path = uri
             },
-            type = netman_options.api.READ_TYPE.FILE
+            type = netman_options.api.READ_TYPE.FILE,
+            success = true
         }
         log.info(string.format("Found cached file %s for uri %s", cached_file, uri))
         log.trace('Short circuiting provider reach out')
