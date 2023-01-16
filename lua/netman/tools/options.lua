@@ -29,7 +29,8 @@ return {
             -- This should match what is available from libuv's fs_statpath https://github.com/luvit/luv/blob/master/docs.md#uvfs_statpath-callback
             -- Consider trying to interface with `stat` in your provider (if possible) as most of these are pretty easy
             -- to get from that
-            ATIME_SEC = "ATIME_SEC"
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH'
+            ,ATIME_SEC = "ATIME_SEC"
             ,ATIME_NSEC = "ATIME_NSEC"
             ,BAVAIL = "BAVAIL"
             ,BFREE = "BFREE"
@@ -69,11 +70,11 @@ return {
             ,URI = "URI"
         }
         ,FIELDS = {
-            FIELD_TYPE = "FIELD_TYPE"
-            ,NAME = "NAME"
-            ,ABSOLUTE_PATH = 'ABSOLUTE_PATH'
-            ,URI = "URI"
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH'
+            ,FIELD_TYPE = "FIELD_TYPE"
             ,METADATA = 'METADATA'
+            ,NAME = "NAME"
+            ,URI = "URI"
         }
         ,STANDARD_METADATA_FLAGS = {
             ABSOLUTE_PATH = 'ABSOLUTE_PATH',
@@ -95,7 +96,9 @@ return {
             NAME = "NAME",
             STATE = "STATE",
             LAST_ACCESSED = "LAST_ACCESSED",
-            URI = "URI"
+            URI = "URI",
+            OS = "OS",
+            ENTRYPOINT = 'ENTRYPOINT'
         },
         STATES = {
             UNKNOWN = "UNKNOWN",
