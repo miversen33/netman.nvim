@@ -1425,10 +1425,7 @@ function URI:new(uri, cache)
     else
         _uri.type = api_flags.ATTRIBUTES.FILE
         _uri.return_type = api_flags.READ_TYPE.FILE
-        _uri.extension = '.' .. _uri.path[#_uri.path]:match('[^%.]+$')
-        -- Some quick jank to ensure that things like tar.gz are caught properly
-        local tar_override = _uri.path[#_uri.path]:match('%.tar%.[a-z]+$')
-        if tar_override then _uri.extension = tar_override end
+        _uri.extension = _uri.path[#_uri.path]:match('%..*$') or ''
         _uri.unique_name = string.format("%s%s", string_generator(11), _uri.extension)
     end
     _uri.__type = 'netman_uri'
