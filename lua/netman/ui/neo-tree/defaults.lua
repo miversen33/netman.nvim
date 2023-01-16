@@ -44,7 +44,7 @@ config.window.mappings = {
     ['x'] = 'move_node',
     ['p'] = 'copy_node',
     ['m'] = 'mark_node',
-    ['f'] = 'search'
+    -- ['f'] = 'search'
 }
 
 return config
