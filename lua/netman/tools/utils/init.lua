@@ -62,7 +62,6 @@ local function load_self()
     -- Probably want to verify this?
     if not handle then return nil end
     for line in handle:lines() do
-        print(string.format("Processing Line: %s", line))
         local key, value = line:match('^([^=]+)=(.*)$')
         M[key] = value
     end
