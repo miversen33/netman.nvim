@@ -1,7 +1,6 @@
 -- TODO: Implement a container capabilities mechanic so we can take advantage of
 -- certain distro traits if they exist
-local log = require("netman.tools.utils").log
-local notify = require("netman.tools.utils").notify
+local logger = require("netman.tools.utils").get_provider_logger()
 local api_flags = require("netman.tools.options").api
 local string_generator = require("netman.tools.utils").generate_string
 local local_files = require("netman.tools.utils").files_dir
@@ -95,15 +94,15 @@ function Container:new(container_name, provider_cache)
         local check_docker_command = { "docker", "-v" }
         local _ = { [command_flags.STDOUT_JOIN] = '', [command_flags.STDERR_JOIN] = '' }
         local __ = shell:new(check_docker_command, _):run()
-        log.trace(__)
+        logger.trace(__)
         if __.exit_code ~= 0 then
             local _error = "Unable to verify docker is available to run"
-            log.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
+            logger.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
             return {}
         end
         if __.stdout:match('Got permission denied while trying to connect to the Docker daemon socket at') then
             local _error = "User does not have permission to run docker commands"
-            log.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
+            logger.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
             return {}
         end
         Container.internal.DOCKER_ENABLED = true
@@ -142,25 +141,25 @@ function Container:new(container_name, provider_cache)
 end
 
 function Container:_get_os()
-    log.trace(string.format("Checking OS For Container %s", self.name))
+    logger.trace(string.format("Checking OS For Container %s", self.name))
     local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
     local output = self:run_command(_get_os_command, {
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = ''
     })
     if output.exit_code ~= 0 then
-        log.warn(string.format("Unable to identify operating system for %s", self.name))
+        logger.warn(string.format("Unable to identify operating system for %s", self.name))
         return "Unknown"
     end
     return output.stdout:gsub('["\']', '')
 end
 
 function Container:_get_archive_availability_details()
-    log.trace(string.format("Checking Available Archive Formats for %s", self.name))
+    logger.trace(string.format("Checking Available Archive Formats for %s", self.name))
     local output = self:run_command('tar --version', { [command_flags.STDERR_JOIN] = '' })
     if output.exit_code ~= 0 then
         -- complain about being unable to find archive details...
-        log.warn(string.format("Unable to establish archive details for %s", self.name))
+        logger.warn(string.format("Unable to establish archive details for %s", self.name))
     end
     local schemes = {}
     local archive_commands = {}
@@ -270,7 +269,7 @@ function Container:run_command(command, opts)
             table.insert(_command, _c)
         end
     else
-        log.error(string.format("I have no idea what I am supposed to do with %s", command),
+        logger.error(string.format("I have no idea what I am supposed to do with %s", command),
             { type = type(command), command = command })
         return { exit_code = -1, stderr = "Invalid command passed to netman docker!", stdout = '' }
     end
@@ -279,7 +278,7 @@ function Container:run_command(command, opts)
     local _shell = shell:new(_command, opts)
     ---@diagnostic disable-next-line: missing-parameter
     local _shell_output = _shell:run()
-    log.trace(_shell:dump_self_to_table())
+    logger.trace(_shell:dump_self_to_table())
     return _shell_output
 end
 
@@ -305,18 +304,18 @@ function Container:current_status()
     ---@diagnostic disable-next-line: missing-parameter
     local command = shell:new(status_command, command_options)
     local command_output = command:run()
-    log.trace(command:dump_self_to_table())
+    logger.trace(command:dump_self_to_table())
 
 
     status = Container.CONSTANTS.STATUS.NOT_RUNNING
     if command_output.exit_code ~= 0 then
-        log.warn(string.format("Received non-0 exit code while checking status of container %s", self.name),
+        logger.warn(string.format("Received non-0 exit code while checking status of container %s", self.name),
             { error = command_output.error, exit_code = command_output.exit_code })
         status = Container.CONSTANTS.STATUS.ERROR
         goto continue
     end
     if not command_output.stdout[2] then
-        log.info(string.format("Container %s doesn't exist!", self.name))
+        logger.info(string.format("Container %s doesn't exist!", self.name))
         status = Container.CONSTANTS.STATUS.INVALID
         goto continue
     end
@@ -353,35 +352,35 @@ function Container:start(opts)
     opts = opts or {}
     local return_details = {}
     if self:current_status() == Container.CONSTANTS.STATUS.RUNNING then
-        log.info(string.format("Container %s is already running", self.name))
+        logger.info(string.format("Container %s is already running", self.name))
         return { success = true }
     end
     local start_command = { 'docker', 'container', 'start', self.name }
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
         if command_output.stderr and command_output.stderr:lower():match('no such container') then
-            -- Do we throw an actual error or just log it and return nil?
+            -- Do we throw an actual error or just logger it and return nil?
             return_details = { error = string.format("Container %s does not exist!", self.name), success = false }
-            log.error(string.format("Container %s does not exist!", self.name))
+            logger.error(string.format("Container %s does not exist!", self.name))
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Received non-0 exit code while trying to start container %s", self.name)
-            log.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
+            logger.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
             return_details = { error = _error, success = false}
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
         if self:current_status() == Container.CONSTANTS.STATUS.RUNNING then
-            log.info(string.format("Successfully Started Container: %s", self.name))
+            logger.info(string.format("Successfully Started Container: %s", self.name))
             return_details = { success = true }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
         local _error = string.format("Failed to start container: %s for reasons...?", self.name)
         return_details = { error = _error, success = false}
-        log.warn(_error, { exit_code = command_output.exit_code, stderr = command_output.exit_code })
+        logger.warn(_error, { exit_code = command_output.exit_code, stderr = command_output.exit_code })
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
     local command_options = {
@@ -389,7 +388,7 @@ function Container:start(opts)
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
     if opts.async then command_options[command_flags.ASYNC] = true end
-    notify.info(string.format("Attempting to start %s", self.name))
+    logger.infon(string.format("Attempting to start %s", self.name))
     ---@diagnostic disable-next-line: missing-parameter
     shell:new(start_command, command_options):run()
     if not opts.async then return return_details end
@@ -423,7 +422,7 @@ end
 ---     container:stop()
 function Container:stop(opts)
     if self:current_status() ~= Container.CONSTANTS.STATUS.RUNNING then
-        log.info(string.format("Container %s is already stopped", self.name))
+        logger.info(string.format("Container %s is already stopped", self.name))
         return { success = true }
     end
     opts = opts or {}
@@ -442,24 +441,24 @@ function Container:stop(opts)
     end
     table.insert(stop_command, self.name)
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
         if command_output.exit_code == nil then
             -- stop timed out
             local _error = string.format("Stop command timed out for %s", self.name)
-            log.warn(_error, { error = command_output.stderr })
+            logger.warn(_error, { error = command_output.stderr })
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
         if command_output.exit_code ~= 0 then
             local _error = string.format("Received non-0 exit code while trying to stop %s", self.name)
-            log.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
+            logger.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
         if self:current_status() == Container.CONSTANTS.STATUS.NOT_RUNNING then
-            log.info(string.format("Successfully Stopped Container: %s", self.name))
+            logger.info(string.format("Successfully Stopped Container: %s", self.name))
             return_details = { success = true }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
@@ -474,7 +473,7 @@ function Container:stop(opts)
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
     if opts.async then command_options[command_flags.ASYNC] = true end
-    notify.info(string.format("Attempting to stop %s", self.name))
+    logger.infon(string.format("Attempting to stop %s", self.name))
     ---@diagnostic disable-next-line: missing-parameter
     shell:new(stop_command, command_options):run()
     if not opts.async then return return_details end
@@ -568,7 +567,7 @@ function Container:archive(locations, archive_dir, compatible_scheme_list, provi
     local finish_callback = function(output)
         if output.exit_code ~= 0 then
             local _error = "Received non-0 exit code when trying to archive locations"
-            log.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
+            logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
             return_details =  { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
@@ -678,10 +677,10 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
         return return_details
     end
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
         if command_output.exit_code ~= 0 then
             local _error = string.format("Unable to extract %s", archive)
-            log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
         end
@@ -704,7 +703,7 @@ function Container:extract(archive, target_dir, scheme, provider_cache, opts)
         local fh = io.open(archive, 'r+b')
         if not fh then
             local _error = string.format("Unable to read %s", archive)
-            if not opts.ignore_errors then log.warn(_error) end
+            if not opts.ignore_errors then logger.warn(_error) end
             return { error = _error, success = false }
         end
         extract_command = {"docker", "exec", "-i", self.name, '/bin/sh', '-c', extraction_function(target_dir, '-')}
@@ -876,7 +875,7 @@ function Container:touch(locations, opts)
     local output = self:run_command(touch_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
-        log.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
         return { success = false, error = _error }
     end
     return { success = true }
@@ -917,7 +916,7 @@ function Container:mkdir(locations, opts)
     local output = self:run_command(mkdir_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to make %s", table.concat(locations, ' '))
-        log.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
         return { success = false, error = _error }
     end
     return { success = true }
@@ -967,7 +966,7 @@ function Container:rm(locations, opts)
     local output = self:run_command(rm_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to remove %s", table.concat(locations, ' '))
-        log.error(_error, { exit_code = output.exit_code, error = output.stderr })
+        logger.error(_error, { exit_code = output.exit_code, error = output.stderr })
         return { success = false, error = _error }
     end
     return { success = true }
@@ -1118,7 +1117,7 @@ function Container:put(file, location, opts)
         -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
         -- if we get an error. Thus, error == gud
         if status == true and _stat[location:to_string()].TYPE ~= 'directory' then
-            log.warn(string.format("Unable to verify that %s is a directory, you might see errors!", location:to_string()))
+            logger.warn(string.format("Unable to verify that %s is a directory, you might see errors!", location:to_string()))
             file_name = location:to_string()
             location = location:parent()
         end
@@ -1136,11 +1135,11 @@ function Container:put(file, location, opts)
         file_name = string.format("%s/%s", location:to_string(), opts.new_file_name)
     end
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
 
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to upload %s", file)
-            log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
             return_details = { error = _error, success = false}
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
@@ -1213,10 +1212,10 @@ function Container:get(location, output_dir, opts)
     assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman URI", location))
     local file_name = opts.new_file_name or location.path[#location.path]
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to download %s", location:to_string())
-            log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
             return_details = { error = _error, success = false}
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
@@ -1294,7 +1293,7 @@ function Container:stat(locations, target_flags)
     local stat_details = self:run_command(stat_command, {[command_flags.STDERR_JOIN] = ''})
     if stat_details.exit_code ~= 0 then
         -- Complain about stat failure??
-        log.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
+        logger.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
             { error = stat_details.stderr, exit_code = stat_details.exit_code }))
         return {}
     end
@@ -1436,7 +1435,7 @@ function Container:stat_mod(locations, targets, permission_mods, opts)
     end
     local output = self:run_command(command)
     if output.exit_code ~= 0 then
-        log.warn("Received Error trying to modify permissions")
+        logger.warn("Received Error trying to modify permissions")
         return false
     end
     return true
@@ -1478,7 +1477,7 @@ function Container:own_mod(locations, ownership, opts)
     end
     if #command <= 1 then
         -- We didn't find any matches to apply to the command!
-        log.warn("Invalid ownership provided", {locations = locations, ownership = ownership})
+        logger.warn("Invalid ownership provided", {locations = locations, ownership = ownership})
         return false
     end
     for _, location in ipairs(locations) do
@@ -1486,7 +1485,7 @@ function Container:own_mod(locations, ownership, opts)
     end
     local output = self:run_command(command)
     if output.exit_code ~= 0 then
-        log.warn("Received Error trying to modify ownership")
+        logger.warn("Received Error trying to modify ownership")
         return false
     end
     return true
@@ -1499,9 +1498,9 @@ function Container.get_all_containers()
     local command_options = {}
     command_options[command_flags.STDERR_JOIN] = ''
     local command_output = shell:new(command, command_options):run()
-    log.trace(command_output)
+    logger.trace(command_output)
     if command_output.exit_code ~= 0 then
-        log.warn(string.format("Received Error Code: %s", command_output.exit_code))
+        logger.warn(string.format("Received Error Code: %s", command_output.exit_code))
         return {}
     end
     local _containers = {}
@@ -1620,13 +1619,13 @@ function M.internal.validate(uri, cache)
                    if response:match('^[yY]') then
                         local started = container:start()
                         if started.success then
-                            notify.info(string.format("%s successfully started!", container.name))
+                            logger.infon(string.format("%s successfully started!", container.name))
                             return {retry = true}
                         else
                             return {retry = false, error=started.error}
                         end
                     else
-                        log.info(string.format("Not starting container %s", container.name))
+                        logger.info(string.format("Not starting container %s", container.name))
                         return {retry = false}
                     end
                 end
@@ -1909,7 +1908,7 @@ function M.ui.get_host_details(config, container_name, cache)
     else
         host_details.STATE = ui_states.UNKNOWN
     end
-    log.trace(host_details)
+    logger.trace(host_details)
     return host_details
 end
 
@@ -1955,15 +1954,15 @@ function M.init()
     local check_docker_command = { "docker", "-v" }
     local _ = { [command_flags.STDOUT_JOIN] = '', [command_flags.STDERR_JOIN] = '' }
     local __ = shell:new(check_docker_command, _):run()
-    log.trace(__)
+    logger.trace(__)
     if __.exit_code ~= 0 then
         local _error = "Unable to verify docker is available to run"
-        log.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
+        logger.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
         return false
     end
     if __.stdout:match('Got permission denied while trying to connect to the Docker daemon socket at') then
         local _error = "User does not have permission to run docker commands"
-        log.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
+        logger.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
         return false
     end
     -- Might as well set this here too since we have the ability

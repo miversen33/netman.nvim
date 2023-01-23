@@ -7,8 +7,7 @@ local shell = require("netman.tools.shell")
 local command_flags = shell.CONSTANTS.FLAGS
 local local_files = require("netman.tools.utils").files_dir
 
-local log = require("netman.tools.utils").log
-local notify = require("netman.tools.utils").notify
+local logger = require("netman.tools.utils").get_provider_logger()
 
 local HOST_MATCH_GLOB = "^[%s]*Host[%s=](.*)"
 local find_pattern_globs = {
@@ -200,25 +199,25 @@ function SSH:new(auth_details, provider_cache)
 end
 
 function SSH:_get_os()
-    log.trace(string.format("Checking OS For Host %s", self.host))
+    logger.trace(string.format("Checking OS For Host %s", self.host))
     local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
     local output = self:run_command(_get_os_command, {
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = ''
     })
     if output.exit_code ~= 0 then
-        log.warn(string.format("Unable to identify operating system for %s", self.host))
+        logger.warn(string.format("Unable to identify operating system for %s", self.host))
         return "Unknown"
     end
     return output.stdout:gsub('["\']', '')
 end
 
 function SSH:_get_archive_availability_details()
-    log.trace(string.format("Checking Available Archive Formats for %s", self.host))
+    logger.trace(string.format("Checking Available Archive Formats for %s", self.host))
     local output = self:run_command('tar --version', { [command_flags.STDERR_JOIN] = '' })
     if output.exit_code ~= 0 then
         -- complain about being unable to find archive details...
-        log.warn(string.format("Unable to establish archive details for %s", self.name))
+        logger.warn(string.format("Unable to establish archive details for %s", self.name))
     end
     local schemes = {}
     local archive_commands = {}
@@ -345,7 +344,7 @@ function SSH:run_command(command, opts)
             table.insert(pre_command, _c)
         end
     else
-        log.error(string.format("I have no idea what I am supposed to do with %s", command),
+        logger.error(string.format("I have no idea what I am supposed to do with %s", command),
             { type = type(command), command = command })
         return { exit_code = -1, stderr = "Invalid command passed to netman ssh !", stdout = '' }
     end
@@ -360,7 +359,7 @@ function SSH:run_command(command, opts)
     local _shell = shell:new(_command, opts)
     ---@diagnostic disable-next-line: missing-parameter
     local _shell_output = _shell:run()
-    log.trace(_shell:dump_self_to_table())
+    logger.trace(_shell:dump_self_to_table())
     return _shell_output
 end
 
@@ -449,10 +448,10 @@ function SSH:archive(locations, archive_dir, compatible_scheme_list, provider_ca
     local compress_command = compression_function(locations, provider_cache)
     local archive_path = string.format("%s/%s", archive_dir, archive_name)
     local finish_callback = function(output)
-        log.trace(output)
+        logger.trace(output)
         if output.exit_code ~= 0 then
             local _error = "Received non-0 exit code when trying to archive locations"
-            log.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
+            logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
@@ -563,10 +562,10 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
         return return_details
     end
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
         if command_output.exit_code ~= 0 then
             local _error = string.format("Unable to extract %s", archive)
-            log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
         end
@@ -590,7 +589,7 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
         local fh = io.open(archive, 'r+b')
         if not fh then
             local _error = string.format("Unable to read %s", archive)
-            if not opts.ignore_errors then log.warn(_error) end
+            if not opts.ignore_errors then logger.warn(_error) end
             return { error = _error, success = false }
         end
         extract_command = {}
@@ -772,7 +771,7 @@ function SSH:touch(locations, opts)
     local output = self:run_command(touch_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
-        log.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
         return { success = false, error = _error }
     end
     return { success = true }
@@ -813,7 +812,7 @@ function SSH:mkdir(locations, opts)
     local output = self:run_command(mkdir_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to make %s", table.concat(locations, ' '))
-        log.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
         return { success = false, error = _error }
     end
     return { success = true }
@@ -867,7 +866,7 @@ function SSH:rm(locations, opts)
     local output = self:run_command(rm_command, { no_shell = true })
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local _error = string.format("Unable to remove %s", table.concat(locations, ' '))
-        log.error(_error, { exit_code = output.exit_code, error = output.stderr })
+        logger.error(_error, { exit_code = output.exit_code, error = output.stderr })
         return { success = false, error = _error }
     end
     return { success = true }
@@ -1004,18 +1003,18 @@ function SSH:_get_user_home(user)
         return nil
     end
     if output.exit_code ~= 0 then
-        -- Log the exit code, and still attempt to read the output, we might be able to establish what we need
-        log.warn("Received Non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
+        -- Logger the exit code, and still attempt to read the output, we might be able to establish what we need
+        logger.warn("Received Non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
     end
     local success, details = pcall(vim.fn.json_decode, output.stdout)
     if success ~= true then
-        log.warn("Unable to parse home directory of user!")
+        logger.warn("Unable to parse home directory of user!")
         return nil
     end
     if details.COMMAND_OUTPUT then
         return details.COMMAND_OUTPUT
     end
-    log.warn("Unable to resolve home directory of user!")
+    logger.warn("Unable to resolve home directory of user!")
     return nil
     -- TODO: Mike, we need to figure out how to parse this better
     -- if details.FILE_READ then
@@ -1073,7 +1072,7 @@ function SSH:put(file, location, opts)
         if status == true then
             local _, _stat = next(___)
             if _stat.TYPE ~= 'directory' then
-                log.warn(_error)
+                logger.warn(_error)
                 file_name = location:to_string()
                 location = location:parent()
             end
@@ -1092,11 +1091,11 @@ function SSH:put(file, location, opts)
         file_name = string.format("%s/%s", location:to_string(), opts.new_file_name)
     end
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
 
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to upload %s", file)
-            log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
@@ -1176,10 +1175,10 @@ function SSH:get(location, output_dir, opts)
     assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman URI", location))
     local file_name = opts.new_file_name or location.path[#location.path]
     local finish_callback = function(command_output)
-        log.trace(command_output)
+        logger.trace(command_output)
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to download %s", location:to_string())
-            log.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
@@ -1267,7 +1266,7 @@ function SSH:stat(locations, target_flags)
     local stat_details = self:run_command(stat_command, { [command_flags.STDERR_JOIN] = '' })
     if stat_details.exit_code ~= 0 then
         -- Complain about stat failure??
-        log.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
+        logger.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
             { error = stat_details.stderr, exit_code = stat_details.exit_code }))
         return {}
     end
@@ -1411,7 +1410,7 @@ function SSH:stat_mod(locations, targets, permission_mods, opts)
     end
     local output = self:run_command(command)
     if output.exit_code ~= 0 then
-        log.warn("Received Error trying to modify permissions")
+        logger.warn("Received Error trying to modify permissions")
         return false
     end
     return true
@@ -1453,7 +1452,7 @@ function SSH:own_mod(locations, ownership, opts)
     end
     if #command <= 1 then
         -- We didn't find any matches to apply to the command!
-        log.warn("Invalid ownership provided", {locations = locations, ownership = ownership})
+        logger.warn("Invalid ownership provided", {locations = locations, ownership = ownership})
         return false
     end
     for _, location in ipairs(locations) do
@@ -1461,7 +1460,7 @@ function SSH:own_mod(locations, ownership, opts)
     end
     local output = self:run_command(command)
     if output.exit_code ~= 0 then
-        log.warn("Received Error trying to modify ownership")
+        logger.warn("Received Error trying to modify ownership")
         return false
     end
     return true
@@ -1576,7 +1575,7 @@ function URI:to_string(style)
     if style == 'auth' then
         return self.auth_uri
     end
-    log.warn(string.format("Invalid URI to_string style %s", style))
+    logger.warn(string.format("Invalid URI to_string style %s", style))
     return ''
 end
 
@@ -1644,7 +1643,7 @@ function M.ui.get_host_details(config, host, provider_cache)
                 table.insert(paths, {uri = URI:new(uri_as_string).uri, name = _})
             end
         end
-        log.debug("Paths", {host = host, paths = paths})
+        logger.debug("Paths", {host = host, paths = paths})
         return paths
     end
     return {
@@ -1665,7 +1664,7 @@ function M.internal.parse_user_sshconfig(config)
     local config_location = string.format("%s/.ssh/config", vim.loop.os_homedir())
     local _config = io.open(config_location, 'r')
     if not _config then
-        log.warn(string.format("Unable to open user ssh config: %s", config_location))
+        logger.warn(string.format("Unable to open user ssh config: %s", config_location))
         return
     end
 
@@ -1675,7 +1674,7 @@ function M.internal.parse_user_sshconfig(config)
         if host then
             -- Removing any trailing padding
             host = host:gsub('[%s]*$', '')
-            log.trace(string.format("Processing SSH host: %s", host))
+            logger.trace(string.format("Processing SSH host: %s", host))
             if host ~= '*' and not hosts[host] then
                 hosts[host] = {}
             end
@@ -1778,7 +1777,7 @@ function M.internal.find(uri, host, opts)
     end
     local raw_children = host:find(uri, opts)
     if raw_children.error then
-        log.info("Received potential error during find", {error = raw_children.error})
+        logger.info("Received potential error during find", {error = raw_children.error})
         raw_children = raw_children.output
     end
     -- if raw_children.error and not opts.ignore_errors then

@@ -460,7 +460,7 @@ describe("Netman Provider #docker", function()
                 return 'ERROR'
             end
             local _error_called = false
-            require("netman.tools.utils").notify.error = function() _error_called = true end
+            require("netman.tools.utils").logger.errorn = function() _error_called = true end
             local cache = require("netman.tools.cache"):new()
             assert.is_nil(require("netman.providers.docker").internal._validate_container('', '', cache), "Docker did not fail on error state of container")
             assert.is_not_false(_error_called, "Error was not thrown on invalid docker container state")

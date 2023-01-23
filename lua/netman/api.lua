@@ -1,10 +1,10 @@
 -- TODO: (Mike): MOAR LOGS
-local notify = require("netman.tools.utils").notify
-local log = require("netman.tools.utils").log
+require("netman.tools.utils")
 local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
 local generate_string = require("netman.tools.utils").generate_string
 local generate_session_log = require("netman.tools.utils").generate_session_log
+local logger = require("netman.tools.utils").get_system_logger()
 
 local M = {}
 
@@ -16,8 +16,19 @@ local M = {}
 M.internal = {
     config = require("netman.tools.configuration"):new(),
     -- This will be used to help track unused configurations
-    boot_timestamp = vim.loop.now()
+    boot_timestamp = vim.loop.now(),
+    config_path = require("netman.tools.utils").data_dir .. '/providers.json'
 }
+
+M.get_provider_logger = function()
+    return require("netman.tools.utils").get_provider_logger()
+end
+
+M.get_consumer_logger = function()
+    return require("netman.tools.utils").get_consumer_logger()
+end
+
+M.get_system_logger = function() return logger end
 
 --- Set of tools to communicate directly with provider(s) (in a generic sense).
 --- Note, this will not let you talk directly to the provider per say, (meaning you can't
@@ -28,10 +39,10 @@ M.providers = {}
 --- The default function that any provider configuration will have associated with its
 --- :save function.
 M.internal.config.save = function(self)
-    local _config = io.open(require("netman.tools.utils").netman_config_path, 'w+')
+    local _config = io.open(M.internal.config_path, 'w+')
     if not _config then
         error(string.format("Unable to write to netman configuration: %s",
-            require("netman.tools.utils").netman_config_path))
+            M.internal.config_path))
         return
     end
     local _data = self:serialize()
@@ -74,13 +85,12 @@ local _provider_required_attributes = {
 --- be laughed at and ridiculed
 function M.internal.init_config()
     local _lines = {}
-    local _config = io.open(require("netman.tools.utils").netman_config_path, 'r')
-    assert(_config,
-        string.format("Unable to read netman configuration file: %s", require("netman.tools.utils").netman_config_path))
+    local _config = io.open(M.internal.config_path, 'r')
+    assert(_config, string.format("Unable to read netman configuration file: %s", M.internal.config_path))
     for line in _config:lines() do table.insert(_lines, line) end
     _config:close()
     if next(_lines) then
-        log.trace("Decoding Netman Configuration")
+        logger.trace("Decoding Netman Configuration")
         local success = false
         success, _config = pcall(vim.fn.json_decode, _lines)
         if not success then
@@ -104,7 +114,7 @@ function M.internal.init_config()
         M.internal.config:save()
     end
 
-    log.trace("Loaded Configuration")
+    logger.trace("Loaded Configuration")
 end
 
 --- WARN: Do not rely on these functions existing
@@ -150,7 +160,7 @@ end
 function M.internal.validate_uri(uri)
     local provider, cache, protocol = M.internal.get_provider_for_uri(uri)
     if not provider then
-        log.warn(string.format("%s is not ours to deal with", uri))
+        logger.warn(string.format("%s is not ours to deal with", uri))
         return nil -- Nothing to do here, this isn't ours to handle
     end
     return uri, provider, cache, protocol
@@ -170,13 +180,13 @@ function M.internal.sanitize_explore_data(read_data)
     for _, data in pairs(read_data) do
         for key, value in pairs(data) do
             if netman_options.explorer.FIELDS[key] == nil then
-                log.info("Removing " .. key .. " from directory data as it " ..
+                logger.info("Removing " .. key .. " from directory data as it " ..
                     "does not conform with netman.options.explorer.FIELDS...")
                 data[key] = nil
             elseif key == netman_options.explorer.FIELDS.METADATA then
                 for _metadata_flag, _ in pairs(value) do
                     if netman_options.explorer.METADATA[_metadata_flag] == nil then
-                        log.warn("Removing metadata flag " .. _metadata_flag .. " from items metadata as it " ..
+                        logger.warn("Removing metadata flag " .. _metadata_flag .. " from items metadata as it " ..
                             "does not conform with netman.options.explorer.METADATA...")
                         value[_metadata_flag] = nil
                     end
@@ -186,7 +196,7 @@ function M.internal.sanitize_explore_data(read_data)
         local acceptable_output = true
         for _, field in ipairs(netman_options.explorer.FIELDS) do
             if data[field] == nil then
-                log.warn("Explorer Data Missing Required Field: " .. field)
+                logger.warn("Explorer Data Missing Required Field: " .. field)
                 acceptable_output = false
             end
         end
@@ -216,10 +226,10 @@ end
 --- @return table
 ---     Returns the validated table of information or (nil) if it cannot be validated
 function M.internal.sanitize_file_data(read_data)
-    log.trace("Validating Read File Data", read_data)
+    logger.trace("Validating Read File Data", read_data)
     local REQUIRED_KEYS = { 'local_path', 'origin_path' }
     if read_data.error then
-        log.warn("Received error from read attempt. Returning error")
+        logger.warn("Received error from read attempt. Returning error")
         return {
             error = read_data.error
         }
@@ -233,7 +243,7 @@ function M.internal.sanitize_file_data(read_data)
         end
     end
     if not valid then
-        log.warn("Read Data was missing the following required keys", MISSING_KEYS)
+        logger.warn("Read Data was missing the following required keys", MISSING_KEYS)
         ---@diagnostic disable-next-line: return-type-mismatch
         return nil
     end
@@ -243,23 +253,23 @@ end
 function M.internal.read_au_callback(callback_details)
     local uri = callback_details.match
     if M.internal.get_provider_for_uri(uri) then
-        log.trace(string.format("Reading %s", uri))
+        logger.trace(string.format("Reading %s", uri))
         require("netman").read(uri)
         return
     end
-    log.warn(string.format("Cannot find provider match for %s | Unable to read %s", uri, uri))
+    logger.warn(string.format("Cannot find provider match for %s | Unable to read %s", uri, uri))
 end
 
 function M.internal.write_au_callback(callback_details)
     -- For some reason, providers aren't being found on write?
-    log.debug({callback=callback_details})
+    logger.debug({callback=callback_details})
     local uri = callback_details.match
     if M.internal.get_provider_for_uri(uri) then
-        log.trace(string.format("Writing contents of buffer to %s", uri))
+        logger.trace(string.format("Writing contents of buffer to %s", uri))
         require("netman").write(uri)
         return
     end
-    log.warn(string.format("Cannot find provider match for %s | Unable to write to %s", uri, uri))
+    logger.warn(string.format("Cannot find provider match for %s | Unable to write to %s", uri, uri))
     return false
 end
 
@@ -274,7 +284,7 @@ function M.internal.buf_close_au_callback(callback_details)
     if M.internal.get_provider_for_uri(uri) then
         M.unload_buffer(uri)
     end
-    log.info(string.format("Cannot find provider match for %s | It appears that the uri was abandoned?", uri))
+    logger.info(string.format("Cannot find provider match for %s | It appears that the uri was abandoned?", uri))
 end
 
 function M.internal.init_provider_autocmds(provider, protocols)
@@ -297,7 +307,7 @@ function M.internal.init_provider_autocmds(provider, protocols)
                     callback = func
                 }
             })
-            log.debug(string.format("Creating Autocommand %s for Provider %s on Protocol %s", command, provider.name, protocol))
+            logger.debug(string.format("Creating Autocommand %s for Provider %s on Protocol %s", command, provider.name, protocol))
         end
     end
     for _, au_command in ipairs(aus) do
@@ -340,7 +350,7 @@ function M.internal.validate_entry_schema(provider, entry)
     local return_entry = {}
     for key, value in pairs(entry) do
         if not schema[key] then
-            log.warn(string.format("%s provided invalid key: %s, discarding details. To correct this, please remove %s from the provided details", provider, key, key))
+            logger.warn(string.format("%s provided invalid key: %s, discarding details. To correct this, please remove %s from the provided details", provider, key, key))
             valid_entry = false
             goto continue
         end
@@ -354,7 +364,7 @@ function M.internal.validate_entry_schema(provider, entry)
         ::continue::
     end
     if invalid_state then
-        log.warn(string.format("%s provided invalid state: %s for host: %s", provider, invalid_state, host))
+        logger.warn(string.format("%s provided invalid state: %s for host: %s", provider, invalid_state, host))
         valid_entry = false
     end
     ---@diagnostic disable-next-line: return-type-mismatch
@@ -388,19 +398,19 @@ function M.providers.get_hosts(provider)
     local _provider = M._providers.path_to_provider[provider]
     local hosts = nil
     if not _provider then
-        log.warn(string.format("%s is not a valid provider", provider))
+        logger.warn(string.format("%s is not a valid provider", provider))
         return hosts
     end
     local _config = M.internal.config:get(provider)
     if not _provider.provider.ui or not _provider.provider.ui.get_hosts then
-        log.info(string.format("%s has not implemented the ui.get_hosts function", provider))
+        logger.info(string.format("%s has not implemented the ui.get_hosts function", provider))
         return nil
     else
         local cache = _provider.cache
         _provider = _provider.provider
         hosts = _provider.ui.get_hosts(_config, cache)
     end
-    log.debug(string.format("Got hosts for %s", provider), { hosts = hosts })
+    logger.debug(string.format("Got hosts for %s", provider), { hosts = hosts })
     return hosts
 end
 
@@ -418,18 +428,18 @@ end
 function M.providers.get_host_details(provider, host)
     local _provider = M._providers.path_to_provider[provider]
     if not _provider then
-        log.warn(string.format("%s is not a valid provider", provider))
+        logger.warn(string.format("%s is not a valid provider", provider))
         ---@diagnostic disable-next-line: return-type-mismatch
         return nil
     end
     if not _provider.provider.ui or not _provider.provider.ui.get_host_details then
-        log.info(string.format("%s has not implemented the ui.get_host_details function", provider))
+        logger.info(string.format("%s has not implemented the ui.get_host_details function", provider))
         ---@diagnostic disable-next-line: return-type-mismatch
         return nil
     end
     local config = M.internal.config:get(provider)
     if not config then
-        log.info(string.format("%s has no configuration associated with it?!", provider))
+        logger.info(string.format("%s has no configuration associated with it?!", provider))
     end
     local cache = _provider.cache
     _provider = _provider.provider
@@ -487,7 +497,7 @@ function M.read(uri, opts)
         }
     end
     opts = opts or {}
-    log.info(
+    logger.info(
         string.format("Reaching out to %s to read %s", provider.name, uri)
     )
     if M._providers.file_cache[uri] and not opts.force then
@@ -500,13 +510,13 @@ function M.read(uri, opts)
             type = netman_options.api.READ_TYPE.FILE,
             success = true
         }
-        log.info(string.format("Found cached file %s for uri %s", cached_file, uri))
-        log.trace('Short circuiting provider reach out')
+        logger.info(string.format("Found cached file %s for uri %s", cached_file, uri))
+        logger.trace('Short circuiting provider reach out')
         return _data
     end
     local read_data = provider.read(uri, cache)
     if read_data == nil then
-        log.info("Received no read_data. I'm gonna get angry!")
+        logger.info("Received no read_data. I'm gonna get angry!")
         return {
             error = {
                 message = "Nil Read Data"
@@ -520,7 +530,7 @@ function M.read(uri, opts)
     end
     local read_type = read_data.type
     if netman_options.api.READ_TYPE[read_type] == nil then
-        log.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
+        logger.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
         return {
             error = {
                 message = "Invalid Read Type"
@@ -529,7 +539,7 @@ function M.read(uri, opts)
         }
     end
     if not read_data.data then
-        log.warn(string.format("No data passed back with read of %s ????", uri))
+        logger.warn(string.format("No data passed back with read of %s ????", uri))
         return {
             success = true
         }
@@ -540,7 +550,7 @@ function M.read(uri, opts)
     elseif read_type == netman_options.api.READ_TYPE.FILE then
         _data = M.internal.sanitize_file_data(read_data.data)
         if not _data.error and _data.local_path then
-            log.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
+            logger.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
             M._providers.file_cache[uri] = _data.local_path
         end
     elseif read_type == netman_options.api.READ_TYPE.STREAM then
@@ -562,7 +572,7 @@ function M.write(buffer_index, uri, options)
     local provider, cache, lines = nil, nil, {}
     uri, provider, cache = M.internal.validate_uri(uri)
     if not uri or not provider then return {success = false, error="Unable to find matching provider, or unable to validate uri!"} end
-    log.info(string.format("Reaching out to %s to write %s", provider.name, uri))
+    logger.info(string.format("Reaching out to %s to write %s", provider.name, uri))
     if buffer_index then
         lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
         -- Consider making this an iterator instead
@@ -575,11 +585,11 @@ function M.write(buffer_index, uri, options)
     -- TODO: Do this asynchronously
     local status = provider.write(uri, cache, lines, options)
     if not status.success then
-        log.warn(string.format("Received error from %s provider while trying to write %s", provider.name, uri), {error=status.error})
+        logger.warn(string.format("Received error from %s provider while trying to write %s", provider.name, uri), {error=status.error})
         return status
     end
     if not status.uri then
-        log.trace("No URI returned on write. Setting the return URI to itself")
+        logger.trace("No URI returned on write. Setting the return URI to itself")
         uri = uri
     else
         uri = status.uri
@@ -604,7 +614,7 @@ function M.rename(old_uri, new_uri)
     old_uri, old_provider = M.internal.validate_uri(old_uri)
     new_uri, new_provider, new_cache = M.internal.validate_uri(new_uri)
     if not old_provider or not new_provider then
-        log.warn("Unable to find matching providers to rename URIs!", {old_uri = old_uri, new_uri = new_uri})
+        logger.warn("Unable to find matching providers to rename URIs!", {old_uri = old_uri, new_uri = new_uri})
         return {
             error = { message = "Unable to find matching providers for rename" },
             success = false
@@ -612,7 +622,7 @@ function M.rename(old_uri, new_uri)
     end
     if old_provider ~= new_provider then
         -- The URIs are not using the same provider!
-        log.warn("Invalid Provider Match found for rename of uris", {old_uri = old_uri, new_uri = new_uri, old_provider = old_provider, new_provider = new_provider})
+        logger.warn("Invalid Provider Match found for rename of uris", {old_uri = old_uri, new_uri = new_uri, old_provider = old_provider, new_provider = new_provider})
         return {
             error = {
                 message = string.format("Mismatched Providers for %s and %s", old_uri, new_uri)
@@ -631,7 +641,7 @@ function M.internal.group_uris(uris)
             -- TODO: Mike, I wonder if this should completely fail instead
             -- in the event that we don't find a matching provider for one of the provided
             -- uris?
-            log.warn(string.format("Unable to find matching provider for %s", uri))
+            logger.warn(string.format("Unable to find matching provider for %s", uri))
             goto continue
         end
         if not grouped_uris[provider] then
@@ -667,7 +677,7 @@ function M.copy(uris, target_uri, opts)
     if not target_provider then
         -- Something is very much not right
         local _error = string.format("Unable to find provider for %s", target_uri)
-        log.error(_error)
+        logger.error(_error)
         return {
             error = { message = _error },
             success = false
@@ -676,7 +686,7 @@ function M.copy(uris, target_uri, opts)
     for provider, _ in pairs(grouped_uris) do
         if not provider.archive or not provider.archive.get then
             local _error = string.format("Provider %s did not implement archive.get", provider.name)
-            log.error(_error)
+            logger.error(_error)
             return {
                 error = { message = _error },
                 success = false
@@ -685,7 +695,7 @@ function M.copy(uris, target_uri, opts)
     end
     if not target_provider.archive or not target_provider.archive.put then
         local _error = string.format("Target provider for %s did not implement archive.put", target_uri)
-        log.error(_error)
+        logger.error(_error)
         return {
             error = { message = _error },
             success = false
@@ -698,12 +708,12 @@ function M.copy(uris, target_uri, opts)
             command = 'move'
         end
         if not target_provider[command] then
-            log.warn(string.format("%s does nto support internal %s, attempting to force", target_provider.name, command))
+            logger.warn(string.format("%s does nto support internal %s, attempting to force", target_provider.name, command))
             goto continue
         end
         local group = grouped_uris[target_provider]
         local target_uris = group.uris
-        log.info(string.format("Attempting to %s uris internally in provider %s", command, target_provider.name))
+        logger.info(string.format("Attempting to %s uris internally in provider %s", command, target_provider.name))
         local command_status = target_provider[command](target_uris, target_uri, target_cache)
         if command_status.success then
             -- The provider was able to interally move the URIs on it, removing them
@@ -720,7 +730,7 @@ function M.copy(uris, target_uri, opts)
     if available_compression_schemes.error then
         -- Complain that we got an error from the target and bail
         local message = string.format("Received failure while looking for archive schemes for %s", target_uri)
-        log.warn(message, available_compression_schemes)
+        logger.warn(message, available_compression_schemes)
         return { error = available_compression_schemes.error, success = false }
     end
     local temp_dir = require("netman.tools.utils").tmp_dir
@@ -732,24 +742,24 @@ function M.copy(uris, target_uri, opts)
         if archive_data.error then
             -- Something happened!
             local message = string.format("Received error while trying to archive uris on %s", provider.name)
-            notify.warn(message)
-            log.warn(message, archive_data.error)
+            logger.warnn(message)
+            logger.warn(message, archive_data.error)
             -- TODO: Consider a way to let the archival resume on failure if the user wishes...?
             return archive_data
         end
         local status = target_provider.archive.put(target_uri, target_cache, archive_data.archive_path, archive_data.scheme)
         if status.error then
             local message = string.format("Received error from %s while trying to upload archive", target_provider.name)
-            notify.warn(message)
-            log.warn(message, status)
+            logger.warnn(message)
+            logger.warn(message, status)
         end
         if opts.cleanup then
             for _, uri in ipairs(data.uris) do
                 status = provider.delete(uri, data.cache)
                 if status.error then
                     local message = string.format("Received error during cleanup of %s", uri)
-                    notify.warn(message)
-                    log.warn(message, status)
+                    logger.warnn(message)
+                    logger.warn(message, status)
                 end
             end
         end
@@ -789,11 +799,11 @@ function M.search(uri, param, opts)
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
     if not provider then
-        log.warn(string.format("Cannot find provider for %s", uri))
+        logger.warn(string.format("Cannot find provider for %s", uri))
         return nil
     end
     if not provider.search then
-        log.info(string.format("%s does not support searching at this time", provider.name))
+        logger.info(string.format("%s does not support searching at this time", provider.name))
         return nil
     end
     opts = opts or { search = 'filename', case_sensitive = false}
@@ -808,7 +818,7 @@ function M.delete(uri)
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
     if not uri or not provider then return nil end
-    log.info(string.format("Reaching out to %s to delete %s", provider.name, uri))
+    logger.info(string.format("Reaching out to %s to delete %s", provider.name, uri))
     -- Do this asynchronously
     provider.delete(uri, cache)
     M._providers.file_cache[uri] = nil
@@ -824,11 +834,11 @@ function M.get_metadata(uri, metadata_keys)
             table.insert(metadata_keys, key)
         end
     end
-    log.trace("Validating Metadata Request", uri)
+    logger.trace("Validating Metadata Request", uri)
     local sanitized_metadata_keys = {}
     for _, key in ipairs(metadata_keys) do
         if not netman_options.explorer.METADATA[key] then
-            log.warn("Metadata Key: " ..
+            logger.warn("Metadata Key: " ..
                 tostring(key) ..
                 " is not valid. Please check `https://github.com/miversen33/netman.nvim/wiki/API-Documentation#get_metadatarequested_metadata` for details on how to properly request metadata")
         else
@@ -859,19 +869,19 @@ end
 function M.unload_provider(provider_path, justification)
     local justified = false
     if justification then justified = true end
-    log.info("Attempting to unload provider: " .. provider_path)
+    logger.info("Attempting to unload provider: " .. provider_path)
     local status, provider = pcall(require, provider_path)
     if not status or provider == true or provider == false then
-        log.warn("Failed to fetch provider " .. provider_path .. " for unload!")
+        logger.warn("Failed to fetch provider " .. provider_path .. " for unload!")
         return
     end
     package.loaded[provider_path] = nil
     if provider.protocol_patterns then
-        log.info("Disassociating Protocol Patterns and Autocommands with provider: " .. provider_path)
+        logger.info("Disassociating Protocol Patterns and Autocommands with provider: " .. provider_path)
         for _, pattern in ipairs(provider.protocol_patterns) do
             local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
             if M._providers.protocol_to_path[new_pattern] then
-                log.trace("Removing associated autocommands with " .. new_pattern .. " for provider " .. provider_path)
+                logger.trace("Removing associated autocommands with " .. new_pattern .. " for provider " .. provider_path)
                 if not justified then
                     justification = {
                         reason = "Provider Unloaded"
@@ -899,20 +909,20 @@ end
 --- @return nil
 function M.load_provider(provider_path)
     if M._providers.path_to_provider[provider_path] then
-        log.warn(string.format("%s is already loaded! Consider calling require('netman.api').reload_provider('%s') if you want to reload it"
+        logger.warn(string.format("%s is already loaded! Consider calling require('netman.api').reload_provider('%s') if you want to reload it"
             , provider_path, provider_path))
         return
     end
     local status, provider = pcall(require, provider_path)
-    log.info("Attempting to import provider: " .. provider_path)
+    logger.info("Attempting to import provider: " .. provider_path)
     if not status or provider == true or provider == false then
-        log.info("Received following info on attempted import", { status = status, provider = provider })
-        notify.error("Failed to initialize provider: " ..
+        logger.info("Received following info on attempted import", { status = status, provider = provider })
+        logger.errorn("Failed to initialize provider: " ..
             tostring(provider_path) ..
             ". This is likely due to it not being loaded into neovim correctly. Please ensure you have installed this plugin/provider")
         return
     end
-    log.info("Validating Provider: " .. provider_path)
+    logger.info("Validating Provider: " .. provider_path)
     local missing_attrs = nil
     for _, required_attr in ipairs(_provider_required_attributes) do
         if not provider[required_attr] then
@@ -923,9 +933,9 @@ function M.load_provider(provider_path)
             end
         end
     end
-    log.info("Validation finished")
+    logger.info("Validation finished")
     if missing_attrs then
-        log.error("Failed to initialize provider: " ..
+        logger.error("Failed to initialize provider: " ..
             provider_path .. ". Missing the following required attributes (" .. missing_attrs .. ")")
         M._providers.uninitialized[provider_path] = {
             reason = string.format("Validation Failure: Missing attribute(s) %s", missing_attrs)
@@ -935,7 +945,7 @@ function M.load_provider(provider_path)
         }
         return
     end
-    log.trace("Initializing " .. provider_path .. ":" .. provider.version)
+    logger.trace("Initializing " .. provider_path .. ":" .. provider.version)
     M._providers.path_to_provider[provider_path] = { provider = provider,
         cache = cache_generator:new(cache_generator.MINUTE) }
     -- TODO(Mike): Figure out how to load configuration options for providers
@@ -957,7 +967,7 @@ function M.load_provider(provider_path)
             , M._providers.path_to_provider[provider_path].cache
         )
         if not status or valid ~= true then
-            log.warn(string.format("%s:%s refused to initialize. Discarding", provider_path, provider.version), valid)
+            logger.warn(string.format("%s:%s refused to initialize. Discarding", provider_path, provider.version), valid)
             M.unload_provider(provider_path, {
                 reason = "Initialization Failed"
                 , name = provider_path
@@ -971,12 +981,12 @@ function M.load_provider(provider_path)
 
     for _, pattern in ipairs(provider.protocol_patterns) do
         local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
-        log.trace("Reducing " .. pattern .. " down to " .. new_pattern)
+        logger.trace("Reducing " .. pattern .. " down to " .. new_pattern)
         local existing_provider_path = M._providers.protocol_to_path[new_pattern]
         if existing_provider_path then
             local existing_provider = M._providers.path_to_provider[existing_provider_path].provider
             if provider_path:find('^netman%.providers') then
-                log.trace(
+                logger.trace(
                     "Core provider: "
                     .. provider.name
                     .. ":" .. provider.version
@@ -993,7 +1003,7 @@ function M.load_provider(provider_path)
                 }
                 goto exit
             end
-            log.info("Provider " .. existing_provider_path .. " is being overriden by " .. provider_path)
+            logger.info("Provider " .. existing_provider_path .. " is being overriden by " .. provider_path)
             M.unload_provider(existing_provider_path, {
                 reason = "Overriden by " .. provider_path .. ":" .. provider.version
                 , name = existing_provider.name
@@ -1005,7 +1015,7 @@ function M.load_provider(provider_path)
     end
     M._providers.uninitialized[provider_path] = nil
     M.internal.init_provider_autocmds(provider, provider.protocol_patterns)
-    log.info("Initialized " .. provider_path .. " successfully!")
+    logger.info("Initialized " .. provider_path .. " successfully!")
     ::exit::
 end
 
@@ -1014,14 +1024,14 @@ function M.reload_provider(provider_path)
     M.load_provider(provider_path)
 end
 
---- Loads up the netman log into a buffer.
+--- Loads up the netman logger into a buffer.
 --- @param output_path string | Optional
----     Default: $HOME/random_string.log
+---     Default: $HOME/random_string.logger
 ---     If provided, this will be the file to write to. Note, this will write over whatever the file that is provided.
----     Note, you can provide "memory" to generate this as an in memory log dump only
+---     Note, you can provide "memory" to generate this as an in memory logger dump only
 function M.generate_log(output_path)
     if output_path ~= 'memory' then
-        output_path = output_path or string.format("$HOME/%s.log", generate_string(10))
+        output_path = output_path or string.format("$HOME/%s.logger", generate_string(10))
     end
     local neovim_details = vim.version()
     local host_details = vim.loop.os_uname()
@@ -1082,11 +1092,11 @@ end
 
 function M.init()
     if M._inited then
-        log.info("Netman API already initialized!")
+        logger.info("Netman API already initialized!")
         return
     end
-    log.info("--------------------Netman API initialization started!---------------------")
-    log.info("Creating Netman augroup")
+    logger.info("--------------------Netman API initialization started!---------------------")
+    logger.info("Creating Netman augroup")
     vim.api.nvim_create_augroup('Netman', {clear = true})
     M.internal.init_config()
     local core_providers = require("netman.providers")
@@ -1094,7 +1104,7 @@ function M.init()
         M.load_provider(provider)
     end
     M._inited = true
-    log.info("--------------------Netman API initialization complete!--------------------")
+    logger.info("--------------------Netman API initialization complete!--------------------")
 end
 
 M.init()

@@ -5,8 +5,7 @@ vim.g.netman_no_shim = true
 
 local utils  = require("netman.tools.utils")
 local api    = require('netman.api')
-local log    = utils.log
-local notify = utils.notify
+local logger    = api.get_system_logger()
 
 local M = {}
 
@@ -17,11 +16,11 @@ function M.read(...)
     local files = { f = select("#", ...), ... }
     for _, file in ipairs(files) do
         if not file then goto continue end
-        notify.info("Fetching file: ", file)
+        logger.infon("Fetching file: ", file)
         local data = api.read(file)
         local command = 'read ++edit '
         if not data then
-            log.warn(string.format("No data was returned from netman api for %s", file))
+            logger.warn(string.format("No data was returned from netman api for %s", file))
             goto continue
         end
         if not data.success then
@@ -42,8 +41,8 @@ function M.read(...)
                     )
                     return
                 else
-                    notify.error(string.format("Netman Error: %s", data.error.message))
-                    notify.info("See netman logs for more details. :h Nmlogs")
+                    logger.errorn(string.format("Netman Error: %s", data.error.message))
+                    logger.infon("See netman logs for more details. :h Nmlogs")
                 end
             end
             return
@@ -62,7 +61,7 @@ function M.read(...)
             vim.api.nvim_set_current_buf(buffer)
             vim.api.nvim_buf_set_name(0, file)
         end
-        require("netman.tools.utils").render_command_and_clean_buffer(command)
+        require("netman.ui").render_command_and_clean_buffer(command)
         ::continue::
     end
 end
@@ -70,14 +69,14 @@ end
 function M.write(uri)
     uri = uri or vim.fn.expand('%')
     if uri == nil then
-        notify.error("Write Incomplete! Unable to parse uri for buffer!")
+        logger.errorn("Write Incomplete! Unable to parse uri for buffer!")
         return
     end
     local buffer_index = vim.fn.bufnr(uri)
     local status = api.write(buffer_index, uri)
     if not status.success then
-        notify.error(status.error.message)
-        log.error(status)
+        logger.errorn(status.error.message)
+        logger.error(status)
         return
     end
     vim.api.nvim_command('sil! set nomodified')
@@ -85,7 +84,7 @@ end
 
 function M.delete(uri)
     if uri == nil then
-        notify.warn("No uri provided to delete!")
+        logger.warnn("No uri provided to delete!")
         return
     end
     api.delete(uri)
@@ -93,8 +92,8 @@ end
 
 function M.init()
     if not M._setup_commands then
-        log.info("--------------------Netman Core Initializating!--------------------")
-        log.trace("Setting Commands")
+        logger.info("--------------------Netman Core Initializating!--------------------")
+        logger.trace("Setting Commands")
         local commands = {
              'command -nargs=1 NmloadProvider   lua require("netman.api").load_provider(<f-args>)'
             ,'command -nargs=1 NmunloadProvider lua require("netman.api").unload_provider(<f-args>)'
@@ -106,19 +105,18 @@ function M.init()
             ,'command -nargs=1 Nmbrowse         lua require("netman").read(nil, <f-args>)'
         }
         for _, command in ipairs(commands) do
-            log.trace("Setting Vim Command: " .. command)
+            logger.trace("Setting Vim Command: " .. command)
             vim.api.nvim_command(command)
         end
         M._setup_commands = true
-        log.info("--------------------Netman Core Initialization Complete!--------------------")
+        logger.info("--------------------Netman Core Initialization Complete!--------------------")
     end
 end
 
 -- Some helper objects attached to the M object that is returned on
 -- require('netman') so you can chain things on setup
 M.api = api
-M.log = utils.log
-M.notify = utils.notify
+M.logger = api.get_consumer_logger()
 M.utils = utils
 
 M.init()
