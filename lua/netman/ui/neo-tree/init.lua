@@ -2,14 +2,12 @@
 --or read the state of this source.
 
 -- TODO: Ensure that we cant interact with search node unless its actively displayed....
-
+local logger = require("netman.ui").get_logger()
 local renderer = require("neo-tree.ui.renderer")
 local events = require("neo-tree.events")
 local neo_tree_utils = require("neo-tree.utils")
 local defaults = require("netman.ui.neo-tree.defaults")
 local input = require("neo-tree.ui.inputs")
-local log = require("netman.tools.utils").log
-local notify = require("netman.tools.utils").notify
 local api = require("netman.api")
 local CACHE_FACTORY = require("netman.tools.cache")
 
@@ -134,15 +132,15 @@ M.rename_node = function(state, target_node_id)
     tree = state.tree
     node = tree:get_node(target_node_id)
     if not node.extra then
-        log.warn(string.format("%s says its a netman node but its lyin", node.name))
+        logger.warn(string.format("%s says its a netman node but its lyin", node.name))
         return
     end
     if node.type == 'netman_provider' then
-        notify.info(string.format("Providers cannot be renamed at this time"))
+        logger.infon(string.format("Providers cannot be renamed at this time"))
         return
     end
     if node.type == 'netman_host' then
-        notify.info(string.format("Hosts cannot be renamed at this time"))
+        logger.infon(string.format("Hosts cannot be renamed at this time"))
         return
     end
     current_uri = node.extra.uri
@@ -156,7 +154,7 @@ M.rename_node = function(state, target_node_id)
         local new_uri = string.format("%s%s", parent_uri, response)
         local success = api.rename(current_uri, new_uri)
         if not success then
-            notify.warn(string.format("Unable to move %s to %s. Please check netman logs for more details", current_uri, new_uri))
+            logger.warnn(string.format("Unable to move %s to %s. Please check netman logs for more details", current_uri, new_uri))
             return
         end
         M.refresh(state, {refresh_only_id=parent_id, quiet=true})
@@ -186,7 +184,7 @@ M.mark_node = function(state)
 
     if not node.extra or node.extra.markable == nil then
         -- Node is not markable
-        log.debug(string.format("Cannot mark node %s, its not listed as markable", node.name))
+        logger.debug(string.format("Cannot mark node %s, its not listed as markable", node.name))
         return
     end
     local is_marked = nil
@@ -279,7 +277,7 @@ end
 
 M.copy_nodes = function(state)
     if not next(M.internal.marked_nodes) then
-        notify.warn("No nodes selected for copy! Please mark nodes to copy before pasting them")
+        logger.warnn("No nodes selected for copy! Please mark nodes to copy before pasting them")
         return
     end
     assert(state, "No state provided")
@@ -291,7 +289,7 @@ M.copy_nodes = function(state)
         target_node.type == M.constants.TYPES.NETMAN_BOOKMARK or target_node.type == M.constants.TYPES.NETMAN_PROVIDER
         or not target_node.extra
     then
-        notify.warn(string.format("%s is not a valid copy target. Please select a different location", target_node.name))
+        logger.warnn(string.format("%s is not a valid copy target. Please select a different location", target_node.name))
         return
     end
     while not target_node.extra.expandable do
@@ -300,7 +298,7 @@ M.copy_nodes = function(state)
         if target_node.extra.static then
             -- We reached the top of the tree and still didn't find anything to paste into.
             -- Not really sure the best way to handle this, complain for now
-            notify.error("Unable to find valid copy node target!")
+            logger.errorn("Unable to find valid copy node target!")
             return
         end
         target_node = state.tree:get_node(target_node:get_parent_id())
@@ -312,8 +310,8 @@ M.copy_nodes = function(state)
     local callback = function()
         local copy_status = api.copy(uris, target_node.id)
         if not copy_status.success then
-            log.error("Received error while trying to copy nodes", {nodes = uris, target = target_node.id, error = copy_status.error.message})
-            notify.error("Unable to copy nodes. Check netman logs for details. :h Nmlogs")
+            logger.error("Received error while trying to copy nodes", {nodes = uris, target = target_node.id, error = copy_status.error.message})
+            logger.errorn("Unable to copy nodes. Check netman logs for details. :h Nmlogs")
             return
         end
         if not target_node:is_expanded() then
@@ -321,14 +319,14 @@ M.copy_nodes = function(state)
         else
             M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
         end
-        notify.info(string.format("Successfully Copied %s nodes into %s", #uris, target_node.name))
+        logger.infon(string.format("Successfully Copied %s nodes into %s", #uris, target_node.name))
     end
     M.internal.confirm_target_node(target_node.name, callback, 'copy to')
 end
 
 M.move_nodes = function(state)
     if not next(M.internal.marked_nodes) then
-        notify.warn("No nodes selected for move! Please mark nodes to move before pasting them")
+        logger.warnn("No nodes selected for move! Please mark nodes to move before pasting them")
         return
     end
     assert(state, "No state provided")
@@ -340,7 +338,7 @@ M.move_nodes = function(state)
         target_node.type == M.constants.TYPES.NETMAN_BOOKMARK or target_node.type == M.constants.TYPES.NETMAN_PROVIDER
         or not target_node.extra
     then
-        notify.warn(string.format("%s is not a valid move target. Please select a different location", target_node.name))
+        logger.warnn(string.format("%s is not a valid move target. Please select a different location", target_node.name))
         return
     end
     while not target_node.extra.expandable do
@@ -349,7 +347,7 @@ M.move_nodes = function(state)
         if target_node.extra.static then
             -- We reached the top of the tree and still didn't find anything to paste into.
             -- Not really sure the best way to handle this, complain for now
-            notify.error("Unable to find valid move node target!")
+            logger.errorn("Unable to find valid move node target!")
             return
         end
         target_node = state.tree:get_node(target_node:get_parent_id())
@@ -361,11 +359,11 @@ M.move_nodes = function(state)
         table.insert(uris, uri)
     end
     local callback = function()
-        log.info("Moving Nodes")
+        logger.info("Moving Nodes")
         local move_status = api.copy(uris, target_node.id, { cleanup = true })
         if not move_status.success then
-            log.error("Received error while trying to copy nodes", {nodes = uris, target = target_node.id, error = move_status.error.message})
-            notify.error("Unable to copy nodes. Check netman logs for details. :h Nmlogs")
+            logger.error("Received error while trying to copy nodes", {nodes = uris, target = target_node.id, error = move_status.error.message})
+            logger.errorn("Unable to copy nodes. Check netman logs for details. :h Nmlogs")
             return
         end
         for parent_id, _ in pairs(uri_parents) do
@@ -376,13 +374,13 @@ M.move_nodes = function(state)
         else
             M.refresh(state, {refresh_only_id = target_node.id, quiet = true})
         end
-        notify.info(string.format("Successfully Moved %s nodes into %s", #uris, target_node.name))
+        logger.infon(string.format("Successfully Moved %s nodes into %s", #uris, target_node.name))
     end
     M.internal.confirm_target_node(target_node.name, callback, 'move to')
 end
 
 M.delete_nodes = function(state)
-    log.info("Deleting Nodes")
+    logger.info("Deleting Nodes")
     assert(state, "No state provided")
     assert(state.tree, "No tree associated with state")
     local uris = {}
@@ -405,7 +403,7 @@ M.delete_nodes = function(state)
         for parent_id, _ in pairs(uri_parents) do
             M.refresh(state, { refresh_only_id = parent_id, auto = true, quiet = true})
         end
-        notify.info(string.format("Successfully deleted %s nodes", #uris))
+        logger.infon(string.format("Successfully deleted %s nodes", #uris))
     end
     local message = string.format("delete %s nodes", #uris)
     M.internal.confirm_target_node('', callback, message)
@@ -414,7 +412,7 @@ end
 M.internal.delete_item = function(uri)
     local status, _error = pcall(api.delete, uri)
     if not status then
-        log.warn(string.format("Received error while trying to delete uri %s", uri), {error=_error})
+        logger.warn(string.format("Received error while trying to delete uri %s", uri), {error=_error})
         return false
     end
     return true
@@ -435,7 +433,7 @@ M.internal.query_node_tree = function(tree, node, query_type)
         if not parent_id then
             -- Something horrific happened and we somehow escaped
             -- the node path!
-            log.warn("I don't know how you did it chief, but you provided a node outside a recognized node path", {provided_node = _})
+            logger.warn("I don't know how you did it chief, but you provided a node outside a recognized node path", {provided_node = _})
             return nil
         end
         node = tree:get_node(parent_id)
@@ -446,7 +444,7 @@ end
 M.internal.show_node = function(state, node)
     local host = M.internal.query_node_tree(state.tree, node, 'host')
     if not host then
-        log.warn("Unable to locate host for node!", node)
+        logger.warn("Unable to locate host for node!", node)
         return
     end
     host.extra.hidden_children[node.id] = nil
@@ -458,7 +456,7 @@ end
 M.internal.hide_node = function(state, node)
     local host = M.internal.query_node_tree(state.tree, node, 'host')
     if not host then
-        log.warn("Unable to locate host for node!", node)
+        logger.warn("Unable to locate host for node!", node)
         return
     end
     if not host.extra then host.extra = {} end
@@ -475,7 +473,7 @@ M.internal.unfocus_path = function(state, node)
     assert(node, "No node provided")
     local host = M.internal.query_node_tree(state.tree, node, 'host')
     if not host then
-        log.warn("Unable to locate host for node!", node)
+        logger.warn("Unable to locate host for node!", node)
         return
     end
     -- Host has no children hidden
@@ -527,7 +525,7 @@ M.internal.focus_path = function(state, start_node, end_node)
     end
     if not host then
         -- complain
-        log.error("Unable to find host for node focusing, reverting focus changes", {last_checked_node=previous_node, initial_node=start_node})
+        logger.error("Unable to find host for node focusing, reverting focus changes", {last_checked_node=previous_node, initial_node=start_node})
         for _, child in ipairs(hidden_children) do
             child.skip_node = child.extra.cache_skip_node
             child.extra.cache_skip_node = nil
@@ -579,7 +577,7 @@ M.internal.search_netman = function(state, uri, param)
     local host = M.internal.query_node_tree(tree, tree:get_node(uri), 'host')
     if not host then
         -- Complain about not getting a host?
-        notify.warn(string.format("Unable to locate netman host for %s", uri))
+        logger.warnn(string.format("Unable to locate netman host for %s", uri))
         return
     end
     M.internal.enable_search_mode(state, param, host)
@@ -630,7 +628,7 @@ M.search = function(state)
     end
     local node = state.tree:get_node()
     if node.type == 'netman_provider' then
-        notify.warn("Cannot perform search on a provider!")
+        logger.warnn("Cannot perform search on a provider!")
         return
     end
     -- TODO:
@@ -795,7 +793,7 @@ M.internal.create_ui_node = function(data)
             node.extra.searchable = true
         end
     else
-        log.error("Unable to determine type of node!", data)
+        logger.error("Unable to determine type of node!", data)
     end
     return node
 end
@@ -808,7 +806,7 @@ M.internal.generate_providers = function()
             -- Failed to import the provider for some reason
             -- or the provider is not UI ready
             if not provider.ui then
-                log.info(string.format("%s is not ui ready, it is missing the ui attribute", provider_path))
+                logger.info(string.format("%s is not ui ready, it is missing the ui attribute", provider_path))
             end
             goto continue
         end
@@ -837,7 +835,7 @@ M.internal.generate_provider_children = function(provider)
     for _, host in ipairs(api.providers.get_hosts(provider)) do
         local host_details = api.providers.get_host_details(provider, host)
         if not host_details then
-            log.warn(string.format("%s did not return any details for %s", provider, host))
+            logger.warn(string.format("%s did not return any details for %s", provider, host))
             goto continue
         end
         table.insert(hosts, {
@@ -880,7 +878,7 @@ M.internal.generate_node_children = function(state, node, opts)
     local children = {}
     local output = api.read(uri)
     if not output then
-        log.info(string.format("%s did not return anything on read", uri))
+        logger.info(string.format("%s did not return anything on read", uri))
         return nil
     end
     if output.error then
@@ -904,7 +902,7 @@ M.internal.generate_node_children = function(state, node, opts)
             if not opts.ignore_unhandled_errors then
                 -- No callback was provided, display the error and move on with our lives
                 print(string.format("Unable to read %s, received error %s", uri, message))
-                log.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
+                logger.warn(string.format("Received error while trying to run read of uri: %s", uri), {error=message})
             end
             return nil
         end
@@ -1070,7 +1068,7 @@ M.internal.refresh_provider = function(state, provider, opts)
     local provider_node = tree:get_node(provider)
     assert(provider_node, string.format("No node associated with provider: %s", provider))
     if not opts.quiet then
-        notify.info(string.format("Refreshing %s", provider))
+        logger.infon(string.format("Refreshing %s", provider))
     end
     if provider_node:has_children() then
         for _, child_id in ipairs(provider_node:get_child_ids()) do
@@ -1105,7 +1103,7 @@ M.internal.refresh_uri = function(state, uri, opts)
     assert(node, string.format("Unable to serialize Neotree node for %s", uri))
 
     if not opts.quiet then
-        notify.info(string.format("Refreshing %s", uri))
+        logger.infon(string.format("Refreshing %s", uri))
     end
     local walk_stack = { node }
     local flat_tree = {}
@@ -1152,7 +1150,7 @@ M.refresh = function(state, opts)
     local cache_type = node.type
     if not node then
         -- Complain that there is no node selected for refresh
-        log.warn("No node selected for refresh")
+        logger.warn("No node selected for refresh")
         return
     end
     if node.extra.uri then
@@ -1214,7 +1212,7 @@ M.internal.add_item_to_node = function(state, node, item)
         if #children == 0 and not is_item_dir then new_uri = new_uri:sub(1, -2) end
         local write_status = api.write(nil, new_uri)
         if not write_status.success then
-            notify.error(write_status.error.message)
+            logger.errorn(write_status.error.message)
             return false
         end
         uri = write_status.uri
@@ -1250,10 +1248,10 @@ M.create_node = function(state, opts)
         end
         -- Check to see if node is a directory. If not, get its parent
         if node.type ~= 'directory' then tree:get_node(node:get_parent_id()) end
-        notify.info(string.format("Attempting to create %s", response))
+        logger.infon(string.format("Attempting to create %s", response))
         local success = M.internal.add_item_to_node(state, node, response)
         if success then
-            notify.info(string.format("Successfully created %s", response))
+            logger.infon(string.format("Successfully created %s", response))
         end
     end
     -- Check if the node is active before trying to add to it

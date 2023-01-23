@@ -54,7 +54,7 @@ describe('Netman init #netman_init', function()
         it("should throw an error if no uri is able to be found", function()
             local _error = nil
             vim.fn.expand = function(_) end
-            require("netman.tools.utils").notify.error = function(_) _error = _ end
+            require("netman.tools.utils").logger.errorn = function(_) _error = _ end
             require("netman").write()
             assert.is_not_nil(_error, "Write did not throw an error on invalid uri")
         end)
@@ -81,7 +81,7 @@ describe('Netman init #netman_init', function()
         it("should warn and do nothing on no uri", function()
             local warn_called = false
             local api_called = false
-            require("netman.tools.utils").notify.warn = function(_) warn_called = true end
+            require("netman.tools.utils").logger.warnn = function(_) warn_called = true end
             require("netman.api").delete = function(_) api_called = true end
             require("netman").delete()
             assert.is_not_false(warn_called, "Delete did not warn on invalid uri")

@@ -2,7 +2,6 @@
 local input = require("neo-tree.ui.inputs")
 local cc = require("neo-tree.sources.common.commands")
 local ui = require("netman.ui.neo-tree")
-local notify = require("netman.tools.utils").notify
 local M = {}
 
 local do_callback = function(callback)
@@ -140,14 +139,14 @@ end
 --             message = status.error
 --         end
 --     end
---     notify.warn(message)
+--     logger.warnn(message)
 --     do_callback(callback)
 -- end
 --
 -- M.paste_from_clipboard = function(state, callback)
 --     local node = state.tree:get_node()
 --     if not node.extra then
---         notify.info(string.format("%s is not a valid Netman Node. Cannot paste here", node.name))
+--         logger.infon(string.format("%s is not a valid Netman Node. Cannot paste here", node.name))
 --         return
 --     end
 --
