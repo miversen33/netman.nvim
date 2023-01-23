@@ -2,7 +2,6 @@
 
 -- Planning ahead for if/when Neovim deprecates this :/
 local unpack = unpack
-local async  = vim.async
 local uv     = vim and vim.loop or require('luv')
 local mkdir  = nil
 local delete = nil
@@ -44,13 +43,9 @@ else
     end
 end
 
-
-if not async then async = require("netman.tools.async") end
-
 return {
     unpack = unpack,
     uv     = uv,
-    async  = async,
     mkdir  = mkdir,
     delete = delete
 }
