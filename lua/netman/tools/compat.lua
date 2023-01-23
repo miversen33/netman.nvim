@@ -2,10 +2,15 @@
 
 -- Planning ahead for if/when Neovim deprecates this :/
 local unpack = unpack
-local uv     = vim and vim.loop or require('luv')
+local uv     = nil
 local mkdir  = nil
 local delete = nil
 if table.unpack then unpack = table.unpack end
+if vim and vim.loop then
+    uv = vim.loop
+else
+    uv = require("luv")
+end
 if vim and vim.fn then
     mkdir = vim.fn.mkdir
     delete = vim.fn.delete

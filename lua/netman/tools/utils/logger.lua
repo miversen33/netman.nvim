@@ -40,7 +40,7 @@ local CONSTANTS = {
 }
 
 local DEFAULTS = {
-    level = CONSTANTS.LEVELS.WARN,
+    level = CONSTANTS.LEVELS.WARN.real_level,
     name = 'root'
 }
 
@@ -283,11 +283,11 @@ M.new = function(opts)
             )
         end
         logger[string.format('%sf', string_level:lower())] = function(preformatted_message, ...)
-            local argc = select('#', ...)
+            -- local argc = select('#', ...)
             local data = {}
             local message = ''
-            for i = 1, argc do
-                table.insert(data, select(i, ...))
+            for _, item in ipairs({...}) do
+                table.insert(data, item)
             end
             if #data > 0 then
                 message = string.format(preformatted_message, compat.unpack(data))

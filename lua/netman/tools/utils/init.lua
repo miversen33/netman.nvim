@@ -3,7 +3,7 @@ local compat = require("netman.tools.compat")
 local M = {
     _inited = false,
     cache_dir = '',
-    tmp_dir = '',
+    tmp_dir = '/tmp/netman/',
     files_dir = '',
     data_dir = '',
     socket_dir = '',
@@ -18,7 +18,6 @@ local function create_dirs()
     M._remote_cache = M.cache_dir .. 'remote_files/'
     M.files_dir = M._remote_cache .. M.pid .. '/'
     M.data_dir  = vim.fn.stdpath('data')  .. '/netman/'
-    M.tmp_dir   = '/tmp/netman/'
     M.socket_dir = M.tmp_dir
     M.logs_dir = M.data_dir .. 'logs'
     -- Iterate over each directory and ensure it exists
@@ -33,7 +32,16 @@ local function get_logger(target, opts)
     opts.session_id = M.session_id
     opts.name = target
     opts.logs_dir = opts.logs_dir or M.logs_dir
-    opts.level = opts.level or vim.g.netman_log_level or 3
+    opts.level = opts.level
+    if not opts.level then
+        -- Walking this a bit more than usual
+        -- because vim.g doesn't exist in luv threads mode
+        if vim and vim.g and vim.g.netman_log_level then
+            opts.level = vim.g.netman_log_level
+        else
+            opts.level = 3
+        end
+    end
     return require("netman.tools.utils.logger").new(opts)
 end
 
@@ -49,15 +57,16 @@ local function serialize_self()
 end
 
 local function load_self()
+    local _file = string.format("%s%s", M.tmp_dir, M.pid)
     local handle = io.open(M.tmp_dir .. M.pid, 'r')
     -- Probably want to verify this?
     if not handle then return nil end
-    local cache_contents = handle:read()
-    assert(cache_contents, "Unable to read netman utils cache")
-    for line in cache_contents:lines() do
+    for line in handle:lines() do
+        print(string.format("Processing Line: %s", line))
         local key, value = line:match('^([^=]+)=(.*)$')
         M[key] = value
     end
+    assert(handle:close(), "Unable to close netman utils cache")
     return true
 end
 
@@ -158,6 +167,8 @@ function M.is_process_alive(pid)
     end
     return true
 end
+
+M.debug = { load_self = load_self}
 
 if not M._inited then
     setup()
