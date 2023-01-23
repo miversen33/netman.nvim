@@ -1,8 +1,5 @@
 local compat = require("netman.tools.compat")
 
--- Probably want this to eventually be OS agnostic?
-local utils_state_file = string.format('/tmp/netman_utils_%s_cache', vim.loop.getpid())
-
 local M = {
     _inited = false,
     cache_dir = '',
@@ -61,6 +58,7 @@ local function load_self()
         local key, value = line:match('^([^=]+)=(.*)$')
         M[key] = value
     end
+    return true
 end
 
 local function clear_orphans(include_self)
@@ -74,26 +72,33 @@ local function clear_orphans(include_self)
         child = compat.uv.fs_scandir_next(parent_dir_id)
         if child and (child ~= M.pid or include_self) then table.insert(children, child) end
     end
+    if include_self then
+        logger.tracef("Cleaning up after ourself too! Pid: %s", M.pid)
+    end
+    -- Integer to string comparisons don't work here
+    local our_pid = string.format("%s", M.pid)
     for _, child_id in ipairs(children) do
         logger.tracef("Checking if %s is alive", child_id)
-        if not M.is_process_alive(child_id) or (include_self and child_id == M.pid) then
+        if not M.is_process_alive(child_id) or (include_self and child_id == our_pid) then
             local _dir = string.format("%s%s", M._remote_cache, child_id)
-            if(child_id == M.pid) then
+            if(child_id == our_pid) then
                 logger.tracef("Removing Process Temporary Directory %s", _dir)
             else
                 logger.tracef("Removing Orphaned Directory %s", _dir)
             end
             compat.delete(_dir, 'rf')
+            -- Clearing out the child utils state if it exists too
+            compat.delete(M.tmp_dir .. child_id, 'rf')
         end
     end
     logger.info("Orphaned directories cleared")
-
 end
 
 local function setup_exit_handler()
     M.get_system_logger().trace("Setting Exit Handler")
     vim.api.nvim_create_autocmd({'VimLeave'}, {
         pattern = { '*' },
+        desc = "Netman Utils Cleanup Autocommand",
         callback = function()
             clear_orphans(true)
         end
@@ -104,13 +109,9 @@ local function setup()
     -- Seeding the random module for strings
     math.randomseed(os.time())
     M.pid = compat.uv.getpid()
-    -- Ensuring the state file exists and is "writable"
-    -- does cache file exist?
-    local _ = compat.uv.fs_stat(utils_state_file)
-    if _ then
+    if load_self() then
         -- cache file exists, read it in to get the location of stuff
         -- otherwise, hopefully vim.fn exists...
-        load_self()
         M._inited = true
         return
     end
