@@ -85,18 +85,22 @@ local _provider_required_attributes = {
 --- be laughed at and ridiculed
 function M.internal.init_config()
     local _lines = {}
-    local _config = io.open(M.internal.config_path, 'r')
-    assert(_config, string.format("Unable to read netman configuration file: %s", M.internal.config_path))
-    for line in _config:lines() do table.insert(_lines, line) end
-    _config:close()
-    if next(_lines) then
-        logger.trace("Decoding Netman Configuration")
-        local success = false
-        success, _config = pcall(vim.fn.json_decode, _lines)
-        if not success then
+    local _config = io.open(M.internal.config_path, 'r+')
+    if _config then
+        for line in _config:lines() do table.insert(_lines, line) end
+        _config:close()
+        if next(_lines) then
+            logger.trace("Decoding Netman Configuration")
+            local success = false
+            success, _config = pcall(vim.fn.json_decode, _lines)
+            if not success then
+                _config = {}
+            end
+        else
             _config = {}
         end
     else
+        logger.infof("No netman configuration found at %s", M.internal.config_path)
         _config = {}
     end
     ---@diagnostic disable-next-line: need-check-nil
