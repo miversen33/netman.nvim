@@ -167,7 +167,26 @@ function M.is_process_alive(pid)
     return true
 end
 
-M.debug = { load_self = load_self}
+function M.get_real_path(path)
+    local logger = M.get_system_logger()
+    if not path then return '' end
+    -- Should make this OS agnostic
+    local _path = {}
+    for node in path:gmatch('[^/]+') do
+        if node == '~' then
+            node = '$HOME'
+        end
+        -- Stripping off leading `$`
+        if node:match('^%$') then
+            node = node:sub(2, -1)
+        end
+        local _ = compat.uv.os_getenv(node)
+        table.insert(_path, _ or node)
+    end
+    local new_path = table.concat(_path, '/')
+    if new_path:sub(1,1) ~= '/' then new_path = '/' .. new_path end
+    return new_path
+end
 
 if not M._inited then
     setup()

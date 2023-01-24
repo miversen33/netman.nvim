@@ -1,10 +1,11 @@
 -- TODO: (Mike): MOAR LOGS
-require("netman.tools.utils")
+local utils = require("netman.tools.utils")
 local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
 local generate_string = require("netman.tools.utils").generate_string
 local generate_session_log = require("netman.tools.utils").generate_session_log
 local logger = require("netman.tools.utils").get_system_logger()
+local compat = require("netman.tools.compat")
 
 local M = {}
 
@@ -1034,9 +1035,7 @@ end
 ---     If provided, this will be the file to write to. Note, this will write over whatever the file that is provided.
 ---     Note, you can provide "memory" to generate this as an in memory logger dump only
 function M.generate_log(output_path)
-    if output_path ~= 'memory' then
-        output_path = output_path or string.format("$HOME/%s.logger", generate_string(10))
-    end
+    logger.tracef("Generating Session Log and dumping to %s", output_path)
     local neovim_details = vim.version()
     local host_details = vim.loop.os_uname()
     local headers = {
@@ -1079,12 +1078,35 @@ function M.generate_log(output_path)
 
     vim.api.nvim_buf_set_option(log_buffer, 'modifiable', true)
     vim.api.nvim_set_current_buf(log_buffer)
-    local pre_prepared_logs = generate_session_log(output_path, headers)
+    local pre_prepared_logs = require("netman.tools.utils.logger").get_session_logs(require("netman.tools.utils").session_id)
+    for i = #headers, 1, -1 do
+        local _log = headers[i]
+        -- stuffing the headers into the pre_prepared_logs
+        table.insert(pre_prepared_logs, 1, _log)
+    end
     local logs = {}
+    local handle = nil
+    if output_path then
+        local true_path = utils.get_real_path(output_path)
+        if true_path then
+            handle = io.open(true_path, 'w')
+            logger.trace2f("Opening Handle to %s", output_path)
+        else
+            logger.warnnf("Unable to open %s to write to. Logs will be dropped into memory. You can save the buffer manually", output_path)
+        end
+    end
     for _, logline in ipairs(pre_prepared_logs) do
         for line in logline:gmatch('[^\r\n]+') do
             table.insert(logs, line)
+            if handle then
+                assert(handle:write(string.format('%s\n', line)), string.format("Unable to write log to %s", output_path))
+            end
         end
+    end
+    if handle then
+        logger.trace2f("Closing handle  for %s", output_path)
+        assert(handle:flush(), string.format("Unable to save log file %s", output_path))
+        assert(handle:close(), string.format("Unable to close log file %s", output_path))
     end
     vim.api.nvim_buf_set_lines(log_buffer, 0, -1, false, logs)
     vim.api.nvim_command('%s%\\n%\r%g')

@@ -353,4 +353,18 @@ M.new = function(opts)
     return logger
 end
 
+--- Returns the logs for a session id
+--- @param session_id string
+---     The id of the session. Utils should have this
+---     Note: if not provided, we will return _all_ logs
+--- @return table
+---     Returns a 1 or 2 dimensional table of the logs.
+---     It will be a 1 dimensional table if a valid session id is provided (meaning
+---     that the table will basically just be an array of logs), and a 2 dimensional table
+---     if an invalid session_id was provided (as the keys will be the session_ids available)
+--- Note: This does _not_ read from the filestore
+M.get_session_logs = function(session_id)
+    return _session_logs[session_id] or _session_logs
+end
+
 return M

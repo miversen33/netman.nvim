@@ -62,24 +62,19 @@ See Also: |netman.api.unload_provider|
 
                                                                         *Nmlogs*
 :Nmlogs ~
-Takes at most 1 argument (the path to dump logs to) and calls 
-|netman.api.dump_info|. This will mostly be used by developers debugging their
-providers. If no argument is passed, Nmlogs will create a file with a random
-name in your home directory.
-Note: You can optionally pass `memory` as the argument to this function
-and `:Nmlogs` will not create a log file
+Takes at most 1 argument (the path to dump logs to) and calls
+|netman.api.generate_log|. This will mostly be used by developers debugging their
+providers. If no argument is passed, Nmlogs will dump to memory only. In
+either instance, a buffer will be opened with the current session logs
+visible.
 Example: >
     :Nmlogs
 < OR >
     :Nmlogs my_log_file
 < OR >
-    :Nmlogs memory
+    :lua require("netman").api.generate_log()
 < OR >
-    :lua require("netman.api"):dump_info()
-< OR >
-    :lua require("netman.api"):dump_info("my_log_file")
-< OR >
-    :lua require("netman.api"):dump_info("memory)
+    :lua require("netman").api.generate_log("my_log_file")
 <
 See Also: |netman.api.dump_info|
 
