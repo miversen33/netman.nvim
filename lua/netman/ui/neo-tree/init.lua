@@ -669,8 +669,7 @@ M.internal.add_nodes = function(state, nodes, parent_id, sort_nodes)
     if #nodes == 0 and next(nodes) then nodes = { nodes } end
     local parent_children = {}
     local serialized_children = nil
-    if state.tree then
-        -- parent_children = state.tree:get_nodes(parent_id)
+    if state.tree and parent_id then
         local parent_node = state.tree:get_node(parent_id)
         if parent_node:has_children() then
             for _, child_id in ipairs(parent_node:get_child_ids()) do
