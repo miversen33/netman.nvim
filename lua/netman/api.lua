@@ -2,9 +2,8 @@
 local utils = require("netman.tools.utils")
 local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
-local generate_string = require("netman.tools.utils").generate_string
-local generate_session_log = require("netman.tools.utils").generate_session_log
 local logger = require("netman.tools.utils").get_system_logger()
+local rand_string = require("netman.tools.utils").generate_string
 local compat = require("netman.tools.compat")
 
 local M = {}
@@ -18,7 +17,14 @@ M.internal = {
     config = require("netman.tools.configuration"):new(),
     -- This will be used to help track unused configurations
     boot_timestamp = vim.loop.now(),
-    config_path = require("netman.tools.utils").data_dir .. '/providers.json'
+    config_path = require("netman.tools.utils").data_dir .. '/providers.json',
+    -- Used to track callbacks for events
+    events = {
+        -- Ties ids to callbacks
+        handler_map = {},
+        -- Ties events to ids to callback
+        event_map = {}
+    }
 }
 
 M.get_provider_logger = function()
@@ -1114,6 +1120,92 @@ function M.generate_log(output_path)
     vim.api.nvim_buf_set_option(log_buffer, 'modifiable', false)
     vim.api.nvim_buf_set_option(log_buffer, 'modified', false)
     vim.api.nvim_command('0')
+end
+
+-- api.register_event_callback
+-- @param event string
+--     The event you wish to listen for.
+-- @param callback function
+--     The function you want me to call back.
+--     When the event if fired, your function will be called, and provided a `data` param. The contents of the param will be
+--         - event string
+--             - The event that was fired
+--         - source string
+--             - The thing that triggered this event. May be nil, and will likely contain the name of the URI on things like
+--                remote saves/reads/stat/exec, etc
+-- @return integer
+--     An integer ID that will be unique to your registered callback. Must be used to unregister. @see api.unregister_event_callback
+-- @throw
+--     INVALID_EVENT_ERROR
+--        An error that is thrown if the requested event is not valid per `:h netman-events`s
+--     INVALID_EVENT_CALLBACK_ERROR
+--        An error that is thrown if there is no callback provided
+-- @example
+--     -- Dummy callback, use the data provided to it however you want
+--     local callback = function(data) print(vim.inspect(data)) end
+--     require("netman.api").register_event_callback("netman_provider_load", callback)
+function M.register_event_callback(event, callback)
+    assert(event, "INVALID_EVENT_ERROR: No event provided")
+    assert(callback, "INVALID_EVENT_CALLBACK_ERROR: No callback provided")
+    local id = rand_string(10)
+    -- Ensuring we don't end up getting a duplicate id...
+    while M.internal.events.handler_map[id] do id = rand_string(10) end
+    local event_map = M.internal.events.event_map[event]
+    if not event_map then
+        event_map = {}
+        M.internal.events.event_map[event] = event_map
+    end
+    table.insert(event_map, id)
+    logger.debugf("Generated Event ID: %s for Event: %s", id, event)
+    M.internal.events.handler_map[id] = callback
+    return id
+end
+
+-- api.unregister_event_callback
+-- Unregisters the callback associated with the id
+-- @param id integer
+--     The id that was provided on the registration of the callback. @see netman.api.register_event_callback
+-- @throw
+--    INVALID_ID_ERROR
+--      An error that is thrown if the id is nil
+-- @example
+--    local id = require("netman.api").register_event_callback('netman_provider_load', function(data) end)
+--    require("netman.api").unregister_event_callback(id)
+function M.unregister_event_callback(id)
+    assert(id, "INVALID_ID_ERROR: No id provided")
+    for event, e_map in pairs(M.internal.events.event_map) do
+        for _, callback_id in ipairs(e_map) do
+            if callback_id == id then
+                logger.debugf("Removing ID: %s from Event: %s", id, event)
+                table.remove(e_map, _)
+            end
+        end
+    end
+    M.internal.events.handler_map[id] = nil
+end
+
+-- api.emit_event
+-- Emits the event, and will also call any functions that might care about it
+-- @param event string
+--     A valid netman event
+-- @param source string | Optional
+--    Default: nil
+--    If provided, this will be the URI source of the event.
+-- @example
+--     require("netman.api").emit_event("netman_provider_load")
+function M.emit_event(event, source)
+    local callbacks = M.internal.events.event_map[event]
+    local message = string.format("Emitting Event: %s", event)
+    if source then message = string.format("%s from %s", message , source) end
+    logger.debug(message)
+    if callbacks then
+        logger.debugf("Found %s callbacks for event %s", #callbacks, event)
+        for _, id in ipairs(callbacks) do
+            -- TODO: Figure out how to make these calls asynchronously
+            logger.tracef("Calling callback for %s for event %s", id, event)
+            M.internal.events.handler_map[id](source)
+        end
+    end
 end
 
 function M.init()
