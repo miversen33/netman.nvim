@@ -95,14 +95,14 @@ function M.init()
         logger.info("--------------------Netman Core Initializating!--------------------")
         logger.trace("Setting Commands")
         local commands = {
-             'command -nargs=1 NmloadProvider   lua require("netman.api").load_provider(<f-args>)'
-            ,'command -nargs=1 NmunloadProvider lua require("netman.api").unload_provider(<f-args>)'
-            ,'command -nargs=1 NmreloadProvider lua require("netman.api").reload_provider(<f-args>)'
-            ,'command -nargs=? Nmlogs           lua require("netman.api").generate_log(<f-args>)'
-            ,'command -nargs=1 Nmdelete         lua require("netman").delete(<f-args>)'
-            ,'command -nargs=+ Nmread           lua require("netman").read(<f-args>)'
-            ,'command          Nmwrite          lua require("netman").write()'
-            ,'command -nargs=1 Nmbrowse         lua require("netman").read(nil, <f-args>)'
+             'command! -nargs=1 NmloadProvider   lua require("netman.api").load_provider(<f-args>)'
+            ,'command! -nargs=1 NmunloadProvider lua require("netman.api").unload_provider(<f-args>)'
+            ,'command! -nargs=1 NmreloadProvider lua require("netman.api").reload_provider(<f-args>)'
+            ,'command! -nargs=? Nmlogs           lua require("netman.api").generate_log(<f-args>)'
+            ,'command! -nargs=1 Nmdelete         lua require("netman").delete(<f-args>)'
+            ,'command! -nargs=+ Nmread           lua require("netman").read(<f-args>)'
+            ,'command!          Nmwrite          lua require("netman").write()'
+            ,'command! -nargs=1 Nmbrowse         lua require("netman").read(nil, <f-args>)'
         }
         for _, command in ipairs(commands) do
             logger.trace("Setting Vim Command: " .. command)
