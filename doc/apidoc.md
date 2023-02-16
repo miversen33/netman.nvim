@@ -241,6 +241,8 @@ There are several required attributes a provider must implement, those being
 - [`read`](#readuri-cache)
 - [`write`](#writebufferindex-uri-cache)
 - [`delete`](#deleteuri-cache)
+- [`move`](#moveuris-target_uri-cache---table)
+- [`copy`](#copyuris-target_uri-cache---table)
 - [`get_metadata`](#getmetadatarequestedmetadata)
 - [`name`](#name)
 - [`protocol_patterns`](#protocolpatterns)
@@ -315,6 +317,50 @@ Details on how to implement a [`provider`](#providers) can be found within the [
 - Notes
     - [`api`](#api) does not currently provide any tools for dealing with oddities in the delete process (user verification, permission error, network failure, etc), and those errors and validations are left up to the provider to handle.
     - **NOTE: [`api`](#api) calls the [`delete`](#deleteuri-cache) function asynchronously and thus the provider cannot expect the [`api`](#api) to block on it. The provider should get whatever details it will need for the delete immediately before doing any long running tasks as those resources may change over time**
+## move(uris, target_uri, cache) -> Table
+- Version Added: 0.2
+- `uris`
+    - Type: [Table](https://www.lua.org/pil/2.5.html)
+    - Details: The table of string [`URIs`](#uri) to move
+- `target_uri`
+    - Type: [String](https://www.lua.org/pil/20.html)
+    - Details: The string location to move the URIs to. Consider this a "parent" location to move into. Note, if a single uri is provided, it is expected that
+        that the uri is "renamed" to the target_uri (as opposed to moving into that location)
+- `cache`
+    - Type: [Table](https://www.lua.org/pil/2.5.html)
+    - Details: The provider cache as provided by the [`api`](#api)
+- Returns: [Table](https://www.lua.org/pil/2.5.html)
+    - Details
+        - A table should be returned with the following key/value pairs (**some are optional**)
+            - success: boolean
+                - This should be a true or false to indicate if the move was successful or not
+            - error: table (optional)
+                - This should be provided in the event that you have an error to pass
+                    to the caller.
+                    The contents of this should be a table with a single `message` attribute (which houses a string)
+                    EG: `error = { message = "SOMETHING CATASTROPHIC HAPPENED!" }`
+## copy(uris, target_uri, cache) -> Table
+- Version Added: 0.2
+- `uris`
+    - Type: [Table](https://www.lua.org/pil/2.5.html)
+    - Details: The table of string [`URIs`](#uri) to copy
+- `target_uri`
+    - Type: [String](https://www.lua.org/pil/20.html)
+    - Details: The string location to copy the URIs to. Consider this a "parent" location to copy into. Note, if a single uri is provided, it is expected that
+        that the uri is named to the target_uri (as opposed to copied into that location)
+- `cache`
+    - Type: [Table](https://www.lua.org/pil/2.5.html)
+    - Details: The provider cache as provided by the [`api`](#api)
+- Returns: [Table](https://www.lua.org/pil/2.5.html)
+    - Details
+        - A table should be returned with the following key/value pairs (**some are optional**)
+            - success: boolean
+                - This should be a true or false to indicate if the copy was successful or not
+            - error: table (optional)
+                - This should be provided in the event that you have an error to pass
+                    to the caller.
+                    The contents of this should be a table with a single `message` attribute (which houses a string)
+                    EG: `error = { message = "SOMETHING CATASTROPHIC HAPPENED!" }`
 ## get_metadata(uri, requested_metadata)
 - Version Added: 0.95
 - `uri`
