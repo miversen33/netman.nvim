@@ -21,9 +21,6 @@ return {
             error = 'error'
         }
     }
-    ,protocol = {
-        EXPLORE = 'EXPLORE'
-    }
     ,explorer = {
         METADATA = {
             -- This should match what is available from libuv's fs_statpath https://github.com/luvit/luv/blob/master/docs.md#uvfs_statpath-callback
