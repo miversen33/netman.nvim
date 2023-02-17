@@ -20,7 +20,7 @@ function M.read(...)
         local data = api.read(file)
         local command = 'read ++edit '
         if not data then
-            logger.warn(string.format("No data was returned from netman api for %s", file))
+            logger.warnf("No data was returned from netman api for %s", file)
             goto continue
         end
         if not data.success then
@@ -102,7 +102,6 @@ function M.init()
             ,'command! -nargs=1 Nmdelete         lua require("netman").delete(<f-args>)'
             ,'command! -nargs=+ Nmread           lua require("netman").read(<f-args>)'
             ,'command!          Nmwrite          lua require("netman").write()'
-            ,'command! -nargs=1 Nmbrowse         lua require("netman").read(nil, <f-args>)'
         }
         for _, command in ipairs(commands) do
             logger.trace("Setting Vim Command: " .. command)

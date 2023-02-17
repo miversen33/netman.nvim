@@ -183,8 +183,7 @@ end
 --- these functions is not working in your plugin, you will
 --- be laughed at and ridiculed
 --- @param read_data table
----     A table which should contain the following keys
----         remote_files: 1 dimensional table
+---     A 1 dimensional table
 --- @return table
 function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
@@ -224,8 +223,6 @@ end
 ---     - remote_path  (Required)
 ---         - Value: String
 ---     - local_path   (Required)
----         - Value: String
----     - display_name (Optional)
 ---         - Value: String
 ---     - error        (Required if other fields are missing)
 ---         - TODO: Document this
@@ -458,7 +455,7 @@ function M.providers.get_host_details(provider, host)
     return M.internal.validate_entry_schema(provider, _data)
 end
 
-function M.remove_config(provider)
+function M.internal.remove_config(provider)
     if provider and provider:match('^netman%.') then
         print('i BeT iT wOuLd Be FuNnY tO rEmOvE a CoRe CoNfiGuRaTiOn ( ͡°Ĺ̯ ͡° )')
         return
@@ -482,13 +479,13 @@ function M.clear_unused_configs(assume_yes)
                 }, function(option)
                     if option == 'y' or option == 'Y' then
                         print(string.format("Removing Netman Configuration: %s", key))
-                        M.remove_config(key)
+                        M.internal.remove_config(key)
                     else
                         print(string.format("Preserving Netman Configuration: %s", key))
                     end
                 end)
             else
-                M.remove_config(key)
+                M.internal.remove_config(key)
             end
         end
         ::continue::
@@ -662,6 +659,13 @@ function M.internal.group_uris(uris)
         ::continue::
     end
     return grouped_uris
+end
+
+--- @see api.copy as this basically just does that (with the clean up option provided)
+function M.move(uris, target_uri, opts)
+    opts = opts or {}
+    opts.cleanup = true
+    return M.copy(uris, target_uri, opts)
 end
 
 --- @param uris table | string
@@ -845,7 +849,7 @@ function M.get_metadata(uri, metadata_keys)
             table.insert(metadata_keys, key)
         end
     end
-    logger.trace("Validating Metadata Request", uri)
+    logger.tracef("Validating Metadata Request for %s", uri)
     local sanitized_metadata_keys = {}
     for _, key in ipairs(metadata_keys) do
         if not netman_options.explorer.METADATA[key] then
@@ -865,8 +869,16 @@ function M.get_metadata(uri, metadata_keys)
 end
 
 -- TODO: (Mike): Do a thing with this?
-function M.unload_buffer(uri, buffer_handle)
-    M._providers.file_cache[uri] = nil
+function M.unload_buffer(uri)
+    local cached_file = M._providers.file_cache[uri]
+    if vim.loop.fs_stat(cached_file) then
+        compat.delete(cached_file)
+    end
+    M._providers.file_cache[uri]= nil
+    local provider, cache = M.internal.get_provider_for_uri(uri)
+    if provider.close_connection then
+        provider.close_connection(uri, cache)
+    end
 end
 
 --- Unload Provider is a function that is provided to allow a user (developer)
@@ -1122,7 +1134,6 @@ function M.generate_log(output_path)
     vim.api.nvim_command('0')
 end
 
--- api.register_event_callback
 -- @param event string
 --     The event you wish to listen for.
 -- @param callback function
@@ -1161,7 +1172,6 @@ function M.register_event_callback(event, callback)
     return id
 end
 
--- api.unregister_event_callback
 -- Unregisters the callback associated with the id
 -- @param id integer
 --     The id that was provided on the registration of the callback. @see netman.api.register_event_callback
@@ -1184,7 +1194,6 @@ function M.unregister_event_callback(id)
     M.internal.events.handler_map[id] = nil
 end
 
--- api.emit_event
 -- Emits the event, and will also call any functions that might care about it
 -- @param event string
 --     A valid netman event
@@ -1203,7 +1212,7 @@ function M.emit_event(event, source)
         for _, id in ipairs(callbacks) do
             -- TODO: Figure out how to make these calls asynchronously
             logger.tracef("Calling callback for %s for event %s", id, event)
-            M.internal.events.handler_map[id](source)
+            M.internal.events.handler_map[id]({event = event, source = source})
         end
     end
 end
