@@ -1997,6 +1997,10 @@ function M.archive.schemes(uri, cache)
     return host.archive_schemes
 end
 
+function M.close_connection(uri, cache)
+
+end
+
 function M.init(config)
     M.internal.prepare_config(config)
     M.internal.parse_user_sshconfig(config)

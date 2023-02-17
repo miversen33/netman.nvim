@@ -1970,7 +1970,7 @@ function M.init()
     return true
 end
 
-function M.close_connection()
+function M.close_connection(uri, cache)
 
 end
 
