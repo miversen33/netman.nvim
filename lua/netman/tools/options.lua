@@ -1,14 +1,7 @@
 return {
     utils = {
-        command = {
-             IGNORE_WHITESPACE_ERROR_LINES  =
-                'IGNORE_WHITESPACE_ERROR_LINES'
-            ,IGNORE_WHITESPACE_OUTPUT_LINES =
-                'IGNORE_WHITESPACE_OUTPUT_LINES'
-            ,STDOUT_JOIN = "STDOUT_JOIN"
-            ,STDERR_JOIN = "STDERR_JOIN"
-            ,SHELL_ESCAPE = "SHELL_ESCAPE"
-        }
+        command = require("netman.tools.shell").CONSTANTS.FLAGS
+       ,LRU_CACHE_TICK_LIMIT = 1000 -- CPU Ticks
     }
     ,api = {
         READ_TYPE = {
@@ -20,24 +13,31 @@ return {
             FILE = "FILE"
             ,DIRECTORY = "DIRECTORY"
             ,LINK = "LINK"
+        },
+        READ_RETURN_SCHEMA = {
+            origin_path  = 'origin_path',
+            local_path   = 'local_path',
+            display_name = 'display_name',
+            error = 'error'
         }
-    }
-    ,protocol = {
-        EXPLORE = 'EXPLORE'
     }
     ,explorer = {
         METADATA = {
             -- This should match what is available from libuv's fs_statpath https://github.com/luvit/luv/blob/master/docs.md#uvfs_statpath-callback
             -- Consider trying to interface with `stat` in your provider (if possible) as most of these are pretty easy
             -- to get from that
-            ATIME = "ATIME"
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH'
+            ,ATIME_SEC = "ATIME_SEC"
+            ,ATIME_NSEC = "ATIME_NSEC"
             ,BAVAIL = "BAVAIL"
             ,BFREE = "BFREE"
-            ,BIRTHTIME = "BIRTHTIME"
             ,BLKSIZE = "BLKSIZE"
             ,BLOCKS = "BLOCKS"
             ,BSIZE = "BSIZE"
-            ,CTIME = "CTIME"
+            ,BTIME_SEC = "BTIME_SEC"
+            ,BTIME_NSEC = "BTIME_NSEC"
+            ,CTIME_SEC = "CTIME_SEC"
+            ,CTIME_NSEC = "CTIME_NSEC"
             ,DESTINATION = "DESTINATION"
             ,DEV = "DEV"
             ,FIELD_TYPE = "FIELD_TYPE"
@@ -52,7 +52,8 @@ return {
             ,LASTACCESS = "LAST_ACCESS"
             ,LINK = "LINK"
             ,MODE = "MODE"
-            ,MTIME = "MTIME"
+            ,MTIME_SEC = "MTIME_SEC"
+            ,MTIME_NSEC = "MTIME_NSEC"
             ,NAME = "NAME"
             ,NLINK = "NLINK"
             ,USER = "OWNER_USER"
@@ -66,9 +67,41 @@ return {
             ,URI = "URI"
         }
         ,FIELDS = {
-            FIELD_TYPE = "FIELD_TYPE"
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH'
+            ,FIELD_TYPE = "FIELD_TYPE"
+            ,METADATA = 'METADATA'
             ,NAME = "NAME"
             ,URI = "URI"
+        }
+        ,STANDARD_METADATA_FLAGS = {
+            ABSOLUTE_PATH = 'ABSOLUTE_PATH',
+            BLKSIZE = "BLKSIZE",
+            FIELD_TYPE = "FIELD_TYPE",
+            GROUP = "GROUP",
+            INODE = "INODE",
+            MTIME_SEC = "MTIME_SEC",
+            NAME = "NAME",
+            PERMISSIONS = "PERMISSIONS",
+            SIZE = "SIZE",
+            TYPE = "TYPE",
+            URI = "URI",
+            USER = "USER",
+        }
+    }
+    ,ui = {
+        ENTRY_SCHEMA = {
+            NAME = "NAME",
+            STATE = "STATE",
+            LAST_ACCESSED = "LAST_ACCESSED",
+            URI = "URI",
+            OS = "OS",
+            ENTRYPOINT = 'ENTRYPOINT'
+        },
+        STATES = {
+            UNKNOWN = "UNKNOWN",
+            AVAILABLE = "AVAILABLE",
+            ERROR = "ERROR",
+            REFRESHING = "REFRESHING"
         }
     }
 }

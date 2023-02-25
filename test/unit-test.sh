@@ -1,1 +1,8 @@
-$NEOVIM_DIRECTORY/bin/./nvim --headless -u $NEOVIM_PLUGIN_HOME/netman.nvim/test/minimal-testing-config.vim -c "PlenaryBustedDirectory $NEOVIM_PLUGIN_HOME/netman.nvim/test/core/ {minimal_init = '$NEOVIM_PLUGIN_HOME/netman.nvim/test/minimal-testing-config.vim'}"
+i=1
+flags=""
+for flag in "$@"
+do
+    flags="$flags -t $flag"
+done
+# TODO: Figure out how to run this regardless of the directory its run from...?
+busted -m "../?.lua"  --keep-going --helper lua.netman.tools.bootstrap ./core/ ./behavioral/ ./regression/ $flags

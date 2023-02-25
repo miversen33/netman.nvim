@@ -1,0 +1,1 @@
+-- Write a test to ensure that "saving" an unwritten file doesn't crash everything
