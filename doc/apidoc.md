@@ -684,10 +684,6 @@ Options can be found in `netman.options`. These "options" are a table which acts
         - FIELD_TYPE
         - NAME
         - URI
-## protocol_patterns
-- Version Added: 0.9
-- Notes
-    - [`protocol_patterns`](#protocolpatterns) should be simply `netman.options.protocol.EXPLORE`. Anything else will cause the [`shim`](#exploredetails) to not be recognized as a valid [`explore_shim`](#shim)
 ## version
 - Version Added: 0.9
 - Notes
@@ -703,5 +699,3 @@ Term used to indicate method of network communication to use. EG: `ssh`, `rsync`
 Program that integrates with `Netman` to provide a bridge between a program that supports a [protocol](#protocol) and `vim`
 ## URI: 
 A string representation of a path to a stream/file. EG: `sftp://host/file` or `ftp://ip_address/file`. A more technical definition can be found [on wikipedia](https://en.wikipedia.org/wiki/Uniform_Resource_Identifier)
-## Shim: 
-A program that acts as a "wedge" or "shim" between 2 programs. Usually used to modify the input/output between the 2 programs
