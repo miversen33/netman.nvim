@@ -10,7 +10,7 @@ local M = {
     logs_dir = '',
     pid = nil,
     session_id = nil,
-    deprecation_date = nil
+    deprecation_date = "2023-03-31"
 }
 
 local function create_dirs()
