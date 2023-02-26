@@ -4,6 +4,7 @@
 --- module path. If your module path changes, you will receive
 --- a new configuration (and the old will likely be lost).
 local Configuration = {}
+local logger = require("netman.tools.utils").get_system_logger()
 
 --- Creates a new configuration object. You shouldn't be here
 --- unless you are looking at how a provider gets its configuration
@@ -50,7 +51,13 @@ end
 
 --- Returns the configuration as a string
 function Configuration:serialize()
-    return vim.fn.json_encode(self:_as_table())
+    local success, data = pcall(vim.fn.json_encode, self:_as_table())
+    if not success then
+        -- Something happened while trying to serialize!
+        logger.error("Unable to serialize configuration", {error = data, config = self})
+        return {}
+    end
+    return data
 end
 
 --- Returns the data within the configuration in a table
