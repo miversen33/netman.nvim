@@ -9,7 +9,8 @@ local M = {
     socket_dir = '',
     logs_dir = '',
     pid = nil,
-    session_id = nil
+    session_id = nil,
+    deprecation_date = "2023-03-31"
 }
 
 local function create_dirs()
@@ -129,6 +130,9 @@ local function setup()
     -- This can probably be done asynchronously
     clear_orphans()
     setup_exit_handler()
+    if M.deprecation_date then
+        M.branch_deprecated()
+    end
     M._inited = true
 end
 
@@ -186,6 +190,10 @@ function M.get_real_path(path)
     local new_path = table.concat(_path, '/')
     if new_path:sub(1,1) ~= '/' then new_path = '/' .. new_path end
     return new_path
+end
+
+function M.branch_deprecated()
+    M.get_system_logger().warnnf("This branch of Netman has been deprecated. It will be removed on the end of %s. Please consider moving back to Main or to one of the other dev branches.", M.deprecation_date)
 end
 
 if not M._inited then
