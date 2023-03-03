@@ -134,8 +134,8 @@ function Shell:reset(command, options)
     self._stderr_is_binary = options[Shell.CONSTANTS.FLAGS.STDERR_FILE_IS_BINARY]
     self._stdout_filehandle = nil
     self._stderr_filehandle = nil
-    self._user_stdout_callbacks = options[Shell.CONSTANTS.FLAGS.STDOUT_CALLBACK] or {}
-    self._user_stderr_callbacks = options[Shell.CONSTANTS.FLAGS.STDERR_CALLBACK] or {}
+    self._user_stdout_callbacks = {options[Shell.CONSTANTS.FLAGS.STDOUT_CALLBACK]} or {}
+    self._user_stderr_callbacks = {options[Shell.CONSTANTS.FLAGS.STDERR_CALLBACK]} or {}
     self._user_signal_callback = options[Shell.CONSTANTS.FLAGS.SIGNAL_CALLBACK]
     self._stdout_pipe_limit = options[Shell.CONSTANTS.FLAGS.STDOUT_PIPE_LIMIT] or -1
     self._stderr_pipe_limit = options[Shell.CONSTANTS.FLAGS.STDERR_PIPE_LIMIT] or -1
