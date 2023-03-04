@@ -90,6 +90,157 @@ Shell.CONSTANTS = {
     }
 }
 
+--- This will create the handler that is expected from @see Shell:run()
+--- Note, this does _not_ create an asynchronous shell object. @see Shell:new for this. This is
+--- explicitly to create the handler that is used to communicate with asynchronous netman.tools.shell
+--- processes
+--- @param type string
+---     I understand this is alot to provide and create. Thus there a couple helper "shortcuts" that can
+---     be used instead. This is done by specifying different `type`s. Below are the acceptable `type` values
+---     that can be provided
+---     - "manual" (See above for the requirements for that)
+---     - "plenary"
+---     - "vimjob"
+--- 
+--- @param handler_opts table
+---     This is a bit complicated so hang on!
+---     There are several ways to create a new async handler, and they are all associated with the
+---     param `type` that is provided. Below is the table that is expected with the `"manual"` type.
+---     - pid integer
+---         - The current process pid
+---     - read function
+---         - @param read_target string | Optional
+---             - Default: 'stdout'
+---             - Valid Options ('stdout', 'stderr')
+---             - This will read out the contents of either the stdout or stderr pipe
+---         - @param save boolean | Optional
+---             - Default: false
+---             - If provided, will _not_ clear the pipe on read
+---         - @return table
+---             - A table containing each (single) line from the requested read target.
+---     - write function
+---         - @param data string
+---             - Data to write to stdin
+---             - WARN: This will throw an error if you try to write after the process is closed!
+---     - close function
+---         - @param force boolean | Optional
+---             - Default: false
+---             - This will close the shell process. Force will execute a kill -9 on the process.
+---     - add_exit_callback function
+---         - @param callback
+---             - This should add a function to the available exit callbacks
+---             - This function expects a table provided as its parameter and that table **needs to have
+---             `exit_code` and `signal` attributes on it**
+---    --------------------------------------------------------------------------------------------
+---
+---     Type `"plenary"` can take a standard Plenary Job and "wrap" it in a way that Netman can use for async
+---     communication. See https://github.com/nvim-lua/plenary.nvim#plenaryjob for details
+---     NOTE: This does _not_ cause plenary to be a requirement of this project. Netman will work fine without
+---     plenary. However I do recognize that job management is painful (which is why Shell was created). Because
+---     of this, this function will allow you to use plenary jobs, vim jobs, or netman jobs interchangably
+---     throughout netman. Anything that expects a handler will be able to utilize what is returned
+---     from this function regardless of how the job was started or what manages it (provided its one
+---     of the above approved types)
+---     - job table
+---         - Whatever plenary returned from `Job:new` should be put here
+---
+---     Too good for plenary and netman? Feel free to use the inbuilt `job` system within vim! You will need
+---     type `"vimjob"` for this
+---     - id integer
+---         - This is the job id that is provided via :h jobstart
+---
+--- @return table
+---     - pid integer
+---         - The current process pid
+---     - read function
+---         - @param read_target string | Optional
+---             - Default: 'stdout'
+---             - Valid Options ('stdout', 'stderr')
+---             - This will read out the contents of either the stdout or stderr pipe
+---         - @param save boolean | Optional
+---             - Default: false
+---             - If provided, will _not_ clear the pipe on read
+---         - @return table
+---             - A table containing each (single) line from the requested read target.
+---     - write function
+---         - @param data string
+---             - Data to write to stdin
+---             - WARN: This will throw an error if you try to write after the process is closed!
+---     - close function
+---         - @param force boolean | Optional
+---             - Default: false
+---             - This will close the shell process. Force will execute a kill -9 on the process.
+---     - exit_code integer
+---         - This will be nil until the process is stopped at which time it will be populated with
+---         whatever the exit code was
+---     - exit_signal string
+---         - This will be nil until the process is stopped at which time it will be populated with
+---         whatever the signal was on exit
+function Shell.new_async_handler(type, handler_opts)
+    -- We could probably break this into it separate functions but 🤷
+    local handle = {
+        pid = nil,
+        read = nil,
+        write = nil,
+        close = nil,
+        exit_code = nil,
+        exit_signal = nil
+    }
+    local required_attrs = {}
+    if type == 'vimjob' then
+        required_attrs = {"id"}
+        for _, attr in ipairs(required_attrs) do
+            assert(handler_opts[attr], string.format("No %s attribute provided with async handle!", attr))
+        end
+        -- Since jobs may be inside neovim, we are going to say the id is the pid
+        handle.pid = handler_opts.id
+        -- TODO: Finish setting this up. Looks like there might be some weirdness with
+        -- reading from the stdio pipes here...
+    elseif type == 'plenary' then
+        required_attrs = {"job"}
+        for _, attr in ipairs(required_attrs) do
+            assert(handler_opts[attr], string.format("No %s attribute provided with async handle!", attr))
+        end
+        local success, _
+        success, _ = pcall(function() handle.pid = handler_opts:pid() end)
+        assert(success, "Unable to get pid from plenary job for Async Handle!")
+        handle.read = function(target, save)
+            -- We will _not_ manipulate the plenary pipe
+            if target == 'stdout' and handler_opts.enable_recording then
+                return handler_opts:result()
+            end
+            if target == 'stderr' and handler_opts.enable_recording then
+                return handler_opts:stderr_result()
+            end
+        end
+        handle.write = function(data)
+            handler_opts:send(data)
+        end
+        handle.close = function(force)
+            -- It looks like plenary jobs don't have a force option. Omitting for now
+            -- Also the function expects a code and signal.
+            local signal = force and 9 or 15
+            handler_opts:shutdown(-1, signal)
+        end
+        handler_opts:add_exit_callback(function(code, signal)
+            handle.exit_code = code
+            handle.exit_signal = signal
+        end)
+    else
+        required_attrs = {"pid", "read", "write", "stop"}
+        for _, attr in ipairs(required_attrs) do
+            assert(handler_opts[attr], string.format("No %s attribute provided with async handle!", attr))
+            handle[attr] = handler_opts[attr]
+        end
+        assert(handler_opts.add_exit_callback, "No add exit_callback provided with async handle!")
+        handler_opts.add_exit_callback(function(exit_info)
+            handle.exit_code = exit_info.exit_code
+            handle.exit_signal = exit_info.signal
+        end)
+    end
+    return handle
+end
+
 --- Creates a new shell object (but does not start it)
 --- @param command table
 ---     Array (table that is not key,value pairs) of commands to run
@@ -401,7 +552,7 @@ function Shell:run(timeout)
         return self:dump_self_to_table()
     ---@diagnostic disable-next-line: missing-return
     end
-    return {pid=self._pid, handle=self.handle}
+    return Shell.new_async_handler('manual', self.handle)
 end
 
 function Shell:add_exit_callback(callback)
