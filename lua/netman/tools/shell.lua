@@ -209,8 +209,8 @@ function Shell:_prepare()
     self.handle = {
         __type = 'netman_shell_handle',
         pid = nil,
-        close = function(force)
-            Shell.close(self, force)
+        stop = function(force)
+            Shell.stop(self, force)
         end,
         write = function(data)
             Shell.write(self, data)
@@ -232,7 +232,7 @@ function Shell:_prepare()
             end
             return pipe
         end,
-        _add_exit_callback = function(callback)
+        add_exit_callback = function(callback)
             Shell.add_exit_callback(self, callback)
         end
     }
@@ -381,6 +381,7 @@ function Shell:run(timeout)
         self:close()
         goto do_return
     end
+    self.handle.pid = self._pid
     self._stdout_pipe:read_start(function(...) self:_stdout_callback(...) end)
     self._stderr_pipe:read_start(function(...) self:_stderr_callback(...) end)
     if timeout > 0 then
