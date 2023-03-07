@@ -580,7 +580,6 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
         [command_flags.STDOUT_PIPE_LIMIT] = 0,
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
-    -- if opts.async then command_options[command_flags.ASYNC] = true end
     if not opts.remote_dump then
         -- There is no way for us to do this command "asynchronously" as we have to perform the commands in sync
         opts.async = false
@@ -641,7 +640,7 @@ end
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how copy works
 ---     Valid Options
----     - ignore_errors: 
+---     - ignore_errors:
 ---         If provided, we will not report any errors received while attempting copy
 --- @return table
 ---     Returns a table that contains the following key/value pairs
