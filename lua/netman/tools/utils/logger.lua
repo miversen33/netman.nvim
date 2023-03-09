@@ -41,7 +41,11 @@ local CONSTANTS = {
 
 local DEFAULTS = {
     level = CONSTANTS.LEVELS.WARN.real_level,
-    name = 'root'
+    name = 'root',
+    -- The maximium that is kept in the log queue internally
+    -- This means the last 2000 logs are kept in memory regardless of level
+    -- NOTE: This does _not_ affect the backing store, only the in memory store
+    internal_limit = 2000,
 }
 
 -- store for loggers.
@@ -233,6 +237,10 @@ M.new = function(opts)
         if not _session_logs[session_id] then _session_logs[session_id] = {} end
         local _generated_log = table.concat(log_parts, '\t')
         table.insert(_session_logs[session_id], header .. '\t' .. _generated_log)
+        while #_session_logs[session_id] > opts.internal_limit do
+            -- Keep popping the head off the internal log queue until we at the limit
+            table.remove(_session_logs[session_id], 1)
+        end
         if not _opts.filtered and logger._log_file_handle then
             logger._log_file_handle:write(header .. '\t' .. _generated_log .. '\n')
             -- I wonder if we actually need to flush??
