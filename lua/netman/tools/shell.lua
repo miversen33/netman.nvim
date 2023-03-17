@@ -310,6 +310,8 @@ function Shell:reset(command, options)
     self._pid = nil
     self._dun = false
     self._timeout_timer = nil
+    self._start_time = nil
+    self._end_time = nil
 
     if type(self._user_exit_callbacks) == 'function' then
         self._user_exit_callbacks = {self._user_exit_callbacks}
@@ -518,6 +520,7 @@ function Shell:run(timeout)
     assert(not self._running, "Shell is already running!")
     timeout = timeout or (10 * 1000)
     self:_prepare()
+    self._start_time = uv.hrtime()
     self._running = true
     self._process_handle, self._pid = uv.spawn(
         self._command,
@@ -576,6 +579,7 @@ function Shell:_on_exit(exit_code, signal)
         -- This means the user decided that the signal they caught wasn't worth stopping?
         return
     end
+    self._end_time = uv.hrtime()
     -- Ensures that data cannot be written to the closed pipe or anything else of that nature
     self.handle.write = function() error("Unable to write to closed handle!") end
     -- I mean, if you wanna close it after the fact, ok cool?
@@ -661,7 +665,9 @@ function Shell:dump_self_to_table()
         stdout = self.stdout,
         stderr = self.stderr,
         exit_code = self.exit_code,
-        signal = self.signal
+        signal = self.signal,
+        elapsed_time = self._end_time - self._start_time,
+        elapsed_time_ml = (self._end_time - self._start_time) / 1000000
     }
 end
 
