@@ -56,7 +56,7 @@ local SSH = {
             URI = 'URI'
         },
         SSH_CONNECTION_TIMEOUT = 10,
-        SSH_SOCKET_FILE_NAME = '%h-%p-%r',
+        SSH_SOCKET_FILE_NAME = '%C', -- Much more compressed way to represent the "same" connection details
         SSH_PROTO_GLOB = '^([sftcp]+)://',
         MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
     },
@@ -144,10 +144,10 @@ function SSH:new(auth_details, provider_cache)
 
     table.insert(_ssh.console_command, '-o')
     table.insert(_ssh.console_command,
-        string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
     table.insert(_ssh._put_command, '-o')
     table.insert(_ssh._put_command,
-        string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
 
     table.insert(_ssh.console_command, '-o')
     table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
