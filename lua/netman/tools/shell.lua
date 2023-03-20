@@ -166,10 +166,10 @@ Shell.CONSTANTS = {
 ---         - @param data string
 ---             - Data to write to stdin
 ---             - WARN: This will throw an error if you try to write after the process is closed!
----     - close function
+---     - stop function
 ---         - @param force boolean | Optional
 ---             - Default: false
----             - This will close the shell process. Force will execute a kill -9 on the process.
+---             - This will stop the shell process. Force will execute a kill -9 on the process.
 ---     - exit_code integer
 ---         - This will be nil until the process is stopped at which time it will be populated with
 ---         whatever the exit code was
@@ -182,7 +182,7 @@ function Shell.new_async_handler(type, handler_opts)
         pid = nil,
         read = nil,
         write = nil,
-        close = nil,
+        stop = nil,
         exit_code = nil,
         exit_signal = nil
     }
@@ -216,7 +216,7 @@ function Shell.new_async_handler(type, handler_opts)
         handle.write = function(data)
             handler_opts:send(data)
         end
-        handle.close = function(force)
+        handle.stop = function(force)
             -- It looks like plenary jobs don't have a force option. Omitting for now
             -- Also the function expects a code and signal.
             local signal = force and 9 or 15
