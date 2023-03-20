@@ -658,7 +658,10 @@ function Shell:dump_self_to_table()
     for _, arg in ipairs(self._args) do
         table.insert(cmd_pieces, arg)
     end
+    local elapsed_time = self._end_time and self._end_time - self._start_time
+    local elapsed_time_ml = self._end_time and (self._end_time - self._start_time) / 1000000
     return {
+        pid = self._pid,
         command = self._command_as_string,
         cmd_pieces = cmd_pieces,
         opts = self._options,
@@ -666,8 +669,8 @@ function Shell:dump_self_to_table()
         stderr = self.stderr,
         exit_code = self.exit_code,
         signal = self.signal,
-        elapsed_time = self._end_time - self._start_time,
-        elapsed_time_ml = (self._end_time - self._start_time) / 1000000
+        elapsed_time = elapsed_time,
+        elapsed_time_ml = elapsed_time_ml
     }
 end
 
