@@ -1216,7 +1216,7 @@ function SSH:get(location, output_dir, opts)
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to download %s", location:to_string())
             logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
-            return_details = { error = _error, success = false }
+            return_details = { error = {message = _error}, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
