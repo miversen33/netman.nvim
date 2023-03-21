@@ -1155,18 +1155,31 @@ end
 ---         force will instead cat the file from within the docker environment and pipe the STDOUT
 ---         into the file location provided
 ---     - finish_callback: function
----         - A function to call when the get is complete. Note, this is an asychronous function
----         so if you want to get output from the get, you will want to provide this
+---         - A function to call when the get is complete. Note, this is basically required if you provide
+---         `async = true` in the options. If you want to get output from the get, you will want to provide this
 ---     - new_file_name: string
 ---         - If provided, sets the downloaded file name to this. By default the file will maintain its
 ---         current filename
 --- @return table
----     NOTE: This is provided to the `finish_callback` if its provided.
----     Returns a table that contains the following key/value pairs
----     - success: boolean
----         - A true/false indicating if the get was successful
----     - error: string | Optional
----         - A string of errors that occured during the get
+---     The return contents here varies depending on if `:get` is called asynchronously or not.
+---     If it is called with `opts.finish_callback` defined, you will get the following a shell handled returned.
+---     for details on this, please see netman.tools.shell.new_async_handler
+---
+---     If opts.finish_callback is not provided, you will receive the below table, and if it is provided, this
+---     table will be sent to the aforementioned callback associated with `opts.finish_callback`
+---     {
+---         - success: boolean
+---             - A true/false indicating if the get was successful
+---         - error: {
+---             - message: string
+---             - A string of errors that occured during the get. Note, this table will only be provided if there
+---             - were errors encountered
+---           }
+---         - data: {
+---             - file: string
+---               - String representation of the local absolute path of the downloaded file
+---           }
+---     }
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:get('/tmp/ubuntu.tar.gz', '/tmp/')
