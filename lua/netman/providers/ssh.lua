@@ -1193,17 +1193,20 @@ function SSH:get(location, output_dir, opts)
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
-        return_details = { success = true }
+        return_details = {
+            success = true,
+            data = {
+                file = string.format("%s%s", output_dir, file_name)
+            }
+        }
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
     local copy_command = nil
     local command_options = {
         [command_flags.STDERR_JOIN] = '',
-        [command_flags.EXIT_CALLBACK] = finish_callback
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async and true or false
     }
-    if opts.async then
-        command_options[command_flags.ASYNC] = true
-    end
     if opts.force then
         -- Shenanigans activate!
         command_options[command_flags.STDOUT_FILE] = string.format('%s/%s', output_dir, file_name)
