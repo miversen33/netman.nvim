@@ -1183,6 +1183,16 @@ end
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:get('/tmp/ubuntu.tar.gz', '/tmp/')
+---     -- OR
+---     local callback = function(result)
+---         if not result.success then
+---             -- Handle failure to download?
+---             print(string.format("Unable to download /tmp/ubuntu.tar.gz. Received Error: %s", result.error.message))
+---             return
+---         end
+---         print(string.format("Downloaded /tmp/ubuntu.tar.gz to %s", result.data.file))
+---     end
+---     host:get('/tmp/ubuntu.tar.gz', '/tmp/', {async = true, finish_callback = callback}) -- This will run the get command asynchronously
 function SSH:get(location, output_dir, opts)
     opts = opts or {}
     local return_details = {}
