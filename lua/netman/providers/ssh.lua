@@ -1262,7 +1262,18 @@ end
 ---     - If provided, will return a table with only these keys and their respective values
 ---     - NOTE: You will _always_ get `NAME` back, even if you explicitly tell us not to return
 ---     it. We use it to order the stat entries on return, so deal with it
+--- @param opts table | Optional
+---     Defualt: {}
+---     - If provided, the following key/value pairs are acceptable
+---         - async: boolean
+---             - If provided, tells stat to run asynchronously. This affects the output of this function
+---             as we now will return a handle to the job instead of the data
+---         - finish_callback: function
+---             - If provided, we will call this function with the output of stat. Note, we do _not_ stream
+---             the results, instead just calling this with the same big table as we would return synchronously
 --- @return table
+---     The output of this function depends on if `opts.async` is defined or not.
+---     If it is, this function will return 
 ---     - Returns a table where each key is the uri's _local_ name, and its value is a stat table
 ---     containing at most, the following keys
 ---         - mode
@@ -1280,9 +1291,36 @@ end
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     print(vim.inspect(host:stat('/tmp')))
-function SSH:stat(locations, target_flags)
+function SSH:stat(locations, target_flags, opts)
+    --TODO: (Mike) Consider caching this for a short amount of time????
+    opts = opts or {}
     -- Coerce into a table for iteration
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    local return_details = nil
+    local finish_callback = function(output)
+        logger.trace(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 then
+            local _error = "Received non-0 exit code while trying to stat"
+            logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code, stdout = output.stdout})
+            return_details = { error = _error, success = false}
+            if callback then callback(return_details) end
+            return
+        end
+        local data = self:_stat_parse(output.stdout, target_flags)
+        if not data then
+            local _error = "Unable to process stat output"
+            logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code, output=output.stdout })
+            return_details = { error = _error, success = false }
+            if callback then callback(return_details) end
+            return
+        end
+        return_details = {
+            success = true,
+            data = data
+        }
+        if callback then callback(return_details) end
+    end
     local stat_flags = {
         '-L',
         '-c',
@@ -1299,15 +1337,17 @@ function SSH:stat(locations, target_flags)
         table.insert(stat_command, location)
     end
     locations = __
-    local stat_details = self:run_command(stat_command, { [command_flags.STDERR_JOIN] = '' })
-    if stat_details.exit_code ~= 0 then
-        -- Complain about stat failure??
-        logger.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
-            { error = stat_details.stderr, exit_code = stat_details.exit_code }))
-        return {}
-    end
-    --TODO: (Mike) Consider caching this for a short amount of time????
-    return self:_stat_parse(stat_details.stdout, target_flags)
+    local command_opts = {
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    }
+    local handle = self:run_command(stat_command, command_opts)
+    -- If async was not specified then this will block until the above `finish_callback` is complete
+    -- which will subsequently set return_details
+    if opts.async then return handle end
+    return return_details
+    -- return self:_stat_parse(stat_details.stdout, target_flags)
 end
 
 function SSH:_stat_parse(stat_output, target_flags)
