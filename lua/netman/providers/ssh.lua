@@ -1806,14 +1806,13 @@ function M.internal.read_directory(uri, host, callback)
                     METADATA = metadata
                 }
                 if callback then
-                    callback(obj)
+                    callback({type = api_flags.READ_TYPE.EXPLORE, data = obj})
                 else
                     table.insert(children, obj)
                 end
             end
             ::continue::
         end
-
     end
     local exit_callback = function()
         if #partial_output > 0 then
@@ -1823,7 +1822,14 @@ function M.internal.read_directory(uri, host, callback)
         if callback then callback(nil, true) end
     end
     local async = callback and true or false
-    local handle = M.internal.find(uri, host, {max_depth = 1, exec = find_cmd, stdout_callback = stdout_callback, exit_callback = exit_callback, async = async})
+    local opts = {
+        max_depth = 1,
+        exec = find_cmd,
+        stdout_callback = stdout_callback,
+        exit_callback = exit_callback,
+        async = async
+    }
+    local handle = M.internal.find(uri, host, opts)
     -- Assuming callback means we are doing this asynchronously
     if callback then return handle end
     -- We can't get here until we are done if we aren't running asynchronously
@@ -1834,23 +1840,93 @@ function M.internal.read_directory(uri, host, callback)
     }
 end
 
-function M.internal.read_file(uri, host)
-    local status = host:get(uri, local_files, { new_file_name = uri.unique_name })
-    if status.success then
-        return {
-            success = true,
-            data = {
-                local_path = string.format("%s%s", local_files, uri.unique_name),
-                origin_path = uri:to_string()
-            },
-            type = api_flags.READ_TYPE.FILE
+function M.internal.read_file(uri, host, callback)
+    local process_handle = function(handle)
+        if handle.success then
+            return {
+                success = true,
+                data = {
+                    local_path = string.format("%s%s", local_files, uri.unique_name),
+                    origin_path = uri:to_string()
+                },
+                type = api_flags.READ_TYPE.FILE
+            }
+        else
+            return handle
+        end
+    end
+    local _saved_callback = callback
+    if callback then
+        callback = function(data)
+            _saved_callback({
+                type = api_flags.READ_TYPE.FILE,
+                data = process_handle(data)
+            })
+        end
+    end
+    local opts = {
+        new_file_name = uri.unique_name,
+        async = callback and true or false,
+        finish_callback = callback
+    }
+    local handle = host:get(uri, local_files, opts)
+    if opts.async then
+        return
+        {
+            type = api_flags.READ_TYPE.FILE,
+            handle = handle
         }
     else
-        return status
+        return process_handle(handle)
     end
 end
 
 --- Exposed endpoints
+
+function M.read_a(uri, cache, callback)
+    local host = nil
+    if uri.__type and uri.__type == 'netman_uri' then
+        uri = uri.uri
+    end
+    local validation = M.internal.validate(uri, cache)
+    if validation.error then return validation end
+    uri = validation.uri
+    host = validation.host
+    -- This should really be asynchronous
+    local stat = host:stat(uri, { M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE})
+    if not stat.success then
+        return {
+            success = false,
+            error = {
+                message = stat.error
+            }
+        }
+    end
+    local _ = nil
+    _, stat = next(stat.data)
+    if not stat then
+        return {
+            success = false,
+            error = {
+                message = string.format("Unable to find stat results for %s", uri:to_string())
+            }
+        }
+    end
+    -- If the container is running there is no reason we can't quickly stat the file in question...
+    if stat.TYPE == 'directory' then
+        return {
+            type = api_flags.READ_TYPE.EXPLORE,
+            handle = M.internal.read_directory(uri, host, callback)
+        }
+    else
+        -- We don't support stream read type so its either a directory or a file...
+        -- Idk maybe we change that if we allow archive reading but 🤷
+        return {
+            type = api_flags.READ_TYPE.FILE,
+            handle = M.internal.read_file(uri, host, callback)
+        }
+    end
+end
 
 --- Reads contents from a host and returns them in the prescribed netman.api.read return format
 --- @param uri string
@@ -1860,28 +1936,43 @@ end
 --- @return table
 ---     @see :help netman.api.read for details on what this returns
 function M.read(uri, cache)
-    local host = nil
-    local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
-    uri = validation.uri
-    host = validation.host
-    local _, stat = next(host:stat(uri, { M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE }))
-    if not stat then
-        return {
-            success = false,
-            error = {
-                message = string.format("%s doesn't exist", uri:to_string())
-            }
-        }
+    -- sleep while we wait?
+    local read_return = nil
+    local return_cache = {}
+    local dead = false
+    local _type = nil
+    local callback = function(data, complete)
+        if _type == api_flags.READ_TYPE.FILE then
+            -- The data we get back will be a bit different
+            -- if we are handling an async file pull vs a directory stream
+            return_cache = data
+            complete = true
+        else
+            table.insert(return_cache, data)
+        end
+        if complete then read_return = return_cache end
     end
-    -- If the container is running there is no reason we can't quickly stat the file in question...
-    if stat.TYPE == 'directory' then
-        return M.internal.read_directory(uri, host)
-    else
-        -- We don't support stream read type so its either a directory or a file...
-        -- Idk maybe we change that if we allow archive reading but 🤷
-        return M.internal.read_file(uri, host)
+    local _ = M.read_a(uri, cache, callback)
+    _type = _.type
+    local handle = _.handle
+    local kill_timer = vim.loop.new_timer()
+    -- This should probably be configurable
+    kill_timer:start(5000, 0, function()
+        dead = true
+        logger.debug({handle = handle})
+        logger.warn(string.format("Read Handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not read_return and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
     end
+    kill_timer:stop()
+    return {
+        success = true,
+        data = read_return,
+        type = _type
+    }
 end
 
 function M.internal.grep()
