@@ -2094,7 +2094,14 @@ function M.get_metadata(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    return host:stat(uri)
+    local stat = host:stat(uri)
+    if stat.success then
+        local _ = nil
+        _, stat = next(stat.data)
+        if not stat then return string.format("Unable to get stat details for %s", uri:to_string()) end
+        return stat
+    end
+    return stat.error
 end
 
 function M.update_metadata(uri, cache, updates)
