@@ -693,57 +693,98 @@ function M.read(uri, opts)
         logger.trace('Short circuiting provider reach out')
         return _data
     end
-    local read_data = provider.read(uri, cache)
-    if read_data == nil then
-        logger.info("Received no read_data. I'm gonna get angry!")
-        return {
-            error = {
-                message = "Nil Read Data"
-            },
-            success = false
-        }
-    end
-    if not read_data.success then
-        -- We failed to read data, return the error up
-        return read_data
-    end
-    local read_type = read_data.type
-    if netman_options.api.READ_TYPE[read_type] == nil then
-        logger.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
-        return {
-            error = {
-                message = "Invalid Read Type"
-            },
-            success = false
-        }
-    end
-    if not read_data.data then
-        logger.warn(string.format("No data passed back with read of %s ????", uri))
-        return {
-            success = true
-        }
-    end
-    local _data = nil
-    if read_type == netman_options.api.READ_TYPE.EXPLORE then
-        _data = M.internal.sanitize_explore_data(read_data.data)
-    elseif read_type == netman_options.api.READ_TYPE.FILE then
-        _data = M.internal.sanitize_file_data(read_data.data)
-        if not _data.error and _data.local_path then
-            logger.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
-            M._providers.file_cache[uri] = _data.local_path
+    -- We need to probably overhaul this entire subsection
+    local func = provider.read
+    local is_async = false
+    if opts.callback then
+        -- Caller provided a callback, we assume that means they want this to be done asynchronously
+        -- TODO: Add check to see if the async version of read exists...
+        func = provider.read_a
+        if provider.read_a then is_async = true end
+        local saved_callback = opts.callback
+        opts.callback = function(data)
+            if not netman_options.api.READ_TYPE[data.type] then
+                -- This return type is invalid
+                logger.warnf("Unable to trust data type %s. Sent from provider %s while trying to read %s", data.type or 'nil', provider.name, uri)
+                return
+            end
+            if not data.data then
+                logger.warnf("Provider %s did not pass back anything useful when requesting read of %s", provider.name, uri)
+                return
+            end
+            -- There isn't a great way to handle errors with this...?
+            if data.type == netman_options.api.READ_TYPE.EXPLORE then
+                -- Sanitize the data before sending it
+                data = M.internal.sanitize_explore_data({data.data})
+            elseif data.type == netman_options.api.READ_TYPE.FILE then
+                data = M.internal.sanitize_file_data(data.data)
+                if not data.error and data.local_path then
+                    logger.trace(string.format("Caching %s to local file %s", uri, data.local_path))
+                    M._providers.file_cache[uri] = data.local_path
+                end
+            end
+            saved_callback(data)
         end
-    elseif read_type == netman_options.api.READ_TYPE.STREAM then
-        _data = read_data.data
     end
-    local _error = _data.error
-    -- Removing error key value from data as it will be a parent level attribute
-    _data.error = nil
-    return {
-        success = true,
-        error = _error,
-        data = _data,
-        type = read_type
-    }
+    local read_data = func(uri, cache, opts.callback)
+    -- If its an async read, there is nothing for us to do but return the handle provided
+    if is_async then
+        if not read_data.handle then
+            logger.errorf("Provider %s did not return a handle on the attempted async read of %s. Disabling async for this provider in the future...", provider.name, uri)
+        end
+        return read_data.handle
+    else
+        if read_data == nil then
+            logger.info("Received no read_data. I'm gonna get angry!")
+            return {
+                error = {
+                    message = "Nil Read Data"
+                },
+                success = false
+            }
+        end
+        if not read_data.success then
+            -- We failed to read data, return the error up
+            return read_data
+        end
+        local read_type = read_data.type
+        if netman_options.api.READ_TYPE[read_type] == nil then
+            logger.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
+            return {
+                error = {
+                    message = "Invalid Read Type"
+                },
+                success = false
+            }
+        end
+        if not read_data.data then
+            logger.warn(string.format("No data passed back with read of %s ????", uri))
+            return {
+                success = true
+            }
+        end
+        local _data = nil
+        if read_type == netman_options.api.READ_TYPE.EXPLORE then
+            _data = M.internal.sanitize_explore_data(read_data.data)
+        elseif read_type == netman_options.api.READ_TYPE.FILE then
+            _data = M.internal.sanitize_file_data(read_data.data)
+            if not _data.error and _data.local_path then
+                logger.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
+                M._providers.file_cache[uri] = _data.local_path
+            end
+        elseif read_type == netman_options.api.READ_TYPE.STREAM then
+            _data = read_data.data
+        end
+        local _error = _data.error
+        -- Removing error key value from data as it will be a parent level attribute
+        _data.error = nil
+        return {
+            success = true,
+            error = _error,
+            data = _data,
+            type = read_type
+        }
+    end
 end
 
 function M.write(buffer_index, uri, options)
