@@ -1,5 +1,7 @@
 # Welcome to the Netman Developer Guide!
 <sup>[Source can be found here](https://github.com/miversen33/netman.nvim/blob/main/doc/devguide.md)</sup>  
+**Note: This doc is still relatively correct but has some key flaws to it. Consider this a good overview for how providers work with Netman, but please consult one of the existing providers (such as [`the docker provider`](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/providers/docker.lua) until this note is removed)**
+
 Here you will find a breakdown of the following items
 - [TLDR](#tldr)
 - [The Netman Buffer Object Life Cycle](#the-netman-buffer-object-life-cycle)
