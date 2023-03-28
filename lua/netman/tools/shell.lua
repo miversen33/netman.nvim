@@ -705,31 +705,41 @@ function Shell:dump_self_to_table()
     }
 end
 
---- Blocks current thread while waiting for the shells to complete
+--- Waits for all the provided shells to finish.
+--- NOTE: This _will_ lockup the thread running this command until all shells are finished
 --- @param shells table
----     A 1 dimensional array of shell objects to wait on. Can also be a shell handle object
---- @return nil
+---     A 1 dimensional table of netman_shell_handle objects. See Shell.new_async_handler for details
 function Shell.join(shells)
+    if type(shells) ~= 'table' or #shells == 0 then
+        -- I don't know what the hell you gave me but we are wrapping it in a table so it can "properly"
+        -- fail later
+        shells = { shells }
+    end
     local waiting_shells = {}
     for _, shell in ipairs(shells) do
-        local pid = shell._pid or shell.pid
-        assert(pid ~= nil, "Unable to find pid for shell join!")
-        assert(shell.__type == 'netman_shell' or shell.__type == 'netman_shell_handle', string.format("Invalid object type %s. Must be either a Netman Shell or Netman Shell Handle", shell.__type))
-        table.insert(waiting_shells, pid)
-        local callback_function = function()
+        require("netman").logger.debug(shell)
+        assert(shell.__type == 'netman_shell_handle', string.format("Invalid object type %s. Must be a Netman Shell Handle", shell.__type))
+        assert(shell.pid, "Unable to find pid for shell!")
+        table.insert(waiting_shells, shell.pid)
+        local callback = function()
             local index = -1
             for i, w_pid in ipairs(waiting_shells) do
-                index = i
-                if w_pid == pid then break end
+                if w_pid == shell.pid then
+                    index = i
+                    break
+                end
             end
-            table.remove(waiting_shells, index)
+            if index > -1 then
+                -- This should always be the case but 🤷
+                table.remove(waiting_shells, index)
+            end
         end
-        if shell.__type == 'netman_shell' then shell:add_exit_callback(callback_function)
-        else shell.add_exit_callback(callback_function) end
+        shell.add_exit_callback(callback)
     end
     while #waiting_shells > 0 do
-        -- Wait for the shells to open up?
-        uv.sleep(5)
+        uv.run('once')
+        uv.sleep(1)
+        -- Sleep for 1 millisecond and then run the uv loop once.
     end
 end
 
