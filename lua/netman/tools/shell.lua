@@ -170,6 +170,9 @@ Shell.CONSTANTS = {
 ---         - @param force boolean | Optional
 ---             - Default: false
 ---             - This will stop the shell process. Force will execute a kill -9 on the process.
+---     - add_exit_callback function
+---         - @param callback function
+---             - Saves the callback for later callback when the handle's underlying process is complete
 ---     - exit_code integer
 ---         - This will be nil until the process is stopped at which time it will be populated with
 ---         whatever the exit code was
@@ -184,7 +187,10 @@ function Shell.new_async_handler(type, handler_opts)
         write = nil,
         stop = nil,
         exit_code = nil,
-        exit_signal = nil
+        exit_signal = nil,
+        add_exit_callback = nil,
+        __exit_callbacks = {},
+        __dun = false
     }
     local required_attrs = {}
     if type == 'vimjob' then
@@ -225,9 +231,20 @@ function Shell.new_async_handler(type, handler_opts)
         handler_opts:add_exit_callback(function(code, signal)
             handle.exit_code = code
             handle.exit_signal = signal
+            handle.__dun = true
+            for _, callback in ipairs(handle.__exit_callbacks) do
+                callback(code, signal)
+            end
         end)
+        handle.add_exit_callback = function(callback)
+            if handle.__dun then
+                callback(handle.exit_code, handle.exit_signal)
+                return
+            end
+            table.insert(handle.__exit_callbacks, callback)
+        end
     else
-        required_attrs = {"pid", "read", "write", "stop"}
+        required_attrs = {"pid", "read", "write", "stop", "add_exit_callback"}
         for _, attr in ipairs(required_attrs) do
             assert(handler_opts[attr], string.format("No %s attribute provided with async handle!", attr))
             handle[attr] = handler_opts[attr]
@@ -236,7 +253,18 @@ function Shell.new_async_handler(type, handler_opts)
         handler_opts.add_exit_callback(function(exit_info)
             handle.exit_code = exit_info.exit_code
             handle.exit_signal = exit_info.signal
+            handle.__dun = true
+            for _, callback in ipairs(handle.__exit_callbacks) do
+                callback(exit_info.code, exit_info.signal)
+            end
         end)
+        handle.add_exit_callback = function(callback)
+            if handle.__dun then
+                callback(handle.exit_code, handle.exit_signal)
+                return
+            end
+            table.insert(handle.__exit_callbacks, callback)
+        end
     end
     return handle
 end
