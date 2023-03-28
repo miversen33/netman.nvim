@@ -98,7 +98,7 @@ Shell.CONSTANTS = {
 ---     I understand this is alot to provide and create. Thus there a couple helper "shortcuts" that can
 ---     be used instead. This is done by specifying different `type`s. Below are the acceptable `type` values
 ---     that can be provided
----     - "manual" (See above for the requirements for that)
+---     - "manual" (See below for the requirements for that)
 ---     - "plenary"
 ---     - "vimjob"
 --- 
