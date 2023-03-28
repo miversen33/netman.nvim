@@ -189,6 +189,7 @@ function Shell.new_async_handler(type, handler_opts)
         exit_code = nil,
         exit_signal = nil,
         add_exit_callback = nil,
+        __type = 'netman_shell_handle',
         __exit_callbacks = {},
         __dun = false
     }
