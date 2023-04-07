@@ -90,6 +90,36 @@ local _provider_required_attributes = {
 --- WARN: If you put an issue in saying anything about using
 --- these functions is not working in your plugin, you will
 --- be laughed at and ridiculed
+function M.internal.wrap_shell_handle(handle)
+    local return_handle = {
+        read     = nil,
+        write    = nil,
+        stop     = nil,
+        _handle  = handle,
+        _stopped = false
+    }
+
+    function return_handle.read(pipe)
+        return return_handle._handle and return_handle._handle.read(pipe)
+    end
+
+    function return_handle.write(data)
+        return return_handle._handle and return_handle._handle.write(data)
+    end
+
+    function return_handle.stop(force)
+        return_handle._stopped = true
+        return return_handle._handle and return_handle._handle.stop(force)
+    end
+
+    return return_handle
+end
+
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
 function M.internal.init_config()
     local _lines = {}
     local _config = io.open(M.internal.config_path, 'r+')
@@ -491,6 +521,147 @@ function M.clear_unused_configs(assume_yes)
         ::continue::
     end
     if not ran then print("There are currently no unused netman provider configurations") end
+end
+
+function M.connect_to_uri_host(uri, callback)
+    local orig_uri = uri
+    local provider, cache = nil, nil
+    uri, provider, cache = M.internal.validate_uri(uri)
+    if not uri or not provider then
+        local msg = string.format("Unable to find provider for %s, cannot execute disconnection", orig_uri)
+        logger.warn(msg)
+        local response = { message = msg, is_error = true }
+        if callback then
+            callback(response)
+            return
+        else
+            return response
+        end
+    end
+    if not provider.connect_host then
+        local msg = string.format("Provider %s does not report a `close_host` function. Unable to manually connect host of %s", provider.name, uri)
+        logger.warn(msg)
+        local response = { message = msg, is_error = true }
+        if callback then
+            callback(response)
+            return
+        else
+            return response
+        end
+    end
+    logger.debugf("Reaching out to %s to connect to the host of %s", provider.name, uri)
+    local handle = nil
+    if callback then
+        if not provider.connect_host_a then
+            logger.warnf("Provider %s does not support asynchronous host connection", provider.name)
+            callback(provider.connect_host(uri, cache))
+            return
+        else
+            logger.tracef("Attempting asynchronous connection to host of %s", uri)
+            handle = provider.connect_host_a(uri, cache, callback)
+            if not handle then
+                logger.warnf("Provider %s did not provide a handle for asynchronous host connection. Removing the ability to asynchronously connect to hosts")
+                provider.connect_host_a = nil
+                callback()
+                return
+            end
+            if handle.message then
+                -- This is an error response and _not_ what we are expecting
+                logger.warn("Received message instead of async handle", { message = handle.message, is_error = handle.is_error})
+                callback(handle)
+                return
+            end
+            local wrapped_handle = M.internal.wrap_shell_handle(handle)
+            if not wrapped_handle then
+                logger.warnf("Provider %s returned an invalid handle for asynchronous connect. Removing the ability to asynchronously connect hosts")
+                provider.connect_host_a = nil
+                callback()
+                return
+            end
+            M.emit_event('netman_provider_host_connect', 'netman.api.connect_to_uri_host')
+            return wrapped_handle
+        end
+    end
+    M.emit_event('netman_provider_host_connect', 'netman.api.connect_to_uri_host')
+    return provider.connect_host(uri, cache)
+end
+
+function M.disconnect_from_uri_host(uri, callback)
+    local orig_uri = uri
+    local provider, cache = nil, nil
+    uri, provider, cache = M.internal.validate_uri(uri)
+    if not uri or not provider then
+        local msg = string.format("Unable to find provider for %s, cannot execute disconnection", orig_uri)
+        logger.warn(msg)
+        local response = { message = msg, is_error = true }
+        if callback then
+            callback(response)
+            return
+        else
+            return response
+        end
+    end
+    if not provider.close_host then
+        local msg = string.format("Provider %s does not report a `close_host` function. Unable to disconnect host of %s", provider.name, uri)
+        logger.warn(msg)
+        local response = { message = msg, is_error = true }
+        if callback then
+            callback(response)
+            return
+        else
+            return response
+        end
+    end
+    logger.debugf("Reaching out to %s to disconnect the host of %s", provider.name, uri)
+    local handle = nil
+    if callback then
+        if not provider.close_host_a then
+            logger.warnf("Provider %s does not support asynchronous host disconnection", provider.name)
+            callback(provider.close_host(uri, cache))
+            return
+        else
+            handle = provider.close_host_a(uri, cache)
+            if not handle then
+                logger.warnf("Provider %s did not provide a handle for asynchronous host disconnection. Removing the ability to asynchronously disconnect hosts")
+                provider.close_host_a = nil
+                callback()
+                return
+            end
+            if handle.message then
+                -- This is an error response and _not_ what we are expecting
+                logger.warn("Received message instead of async handle", { message = handle.message, is_error = handle.is_error })
+                callback(handle)
+                return
+            end
+            local wrapped_handle = M.internal.wrap_shell_handle(handle)
+            if not wrapped_handle then
+                logger.warnf("Provider %s returned an invalid handle for asynchronous disconnect. Removing the ability to asynchronously disconnect hosts")
+                provider.close_host_a = nil
+                callback()
+                return
+            end
+            M.emit_event('netman_provider_host_disconnect', 'netman.api.disconnect_from_uri_host')
+            return wrapped_handle
+        end
+    end
+    M.emit_event('netman_provider_host_disconnect', 'netman.api.disconnect_from_uri_host')
+    return provider.close_host(uri, cache)
+end
+
+function M.has_connection_to_uri_host(uri)
+    local orig_uri = uri
+    local provider, cache = nil, nil
+    uri, provider, cache = M.internal.validate_uri(uri)
+    if not uri or not provider then
+        logger.warnf("Unable to find provider for %s, cannot verify connection status", orig_uri)
+        return nil
+    end
+    if not provider.is_connected then
+        logger.infof("Provider %s does not report an `is_connected` function. Unable to verify connection status of %s", provider.name, uri)
+        return false
+    end
+    logger.debugf("Reaching out to %s to verify connection status of %s", provider.name, uri)
+    return provider.is_connected(uri, cache)
 end
 
 --- TODO: Where Doc?
