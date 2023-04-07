@@ -528,7 +528,7 @@ function M.connect_to_uri_host(uri, callback)
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
     if not uri or not provider then
-        local msg = string.format("Unable to find provider for %s, cannot execute disconnection", orig_uri)
+        local msg = string.format("Unable to find provider for %s, cannot execute connection", orig_uri)
         logger.warn(msg)
         local response = { message = msg, is_error = true }
         if callback then
