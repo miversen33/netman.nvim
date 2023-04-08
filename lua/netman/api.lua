@@ -990,10 +990,10 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
     if not netman_options.api.READ_TYPE[read_data.type] then
         logger.warnf("Provider %s returned invalid read type %s. See :h netman.api.read for read type details", provider.name, read_data.type or 'nil')
         return {
-            error = {
-                message = "Invalid Read Type"
-            },
-            success = false
+            success = true,
+            error = _error,
+            data = _data,
+            type = read_type
         }
     end
     if not read_data.data then
