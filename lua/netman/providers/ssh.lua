@@ -1931,6 +1931,29 @@ function M.delete(uri, cache)
     return host:rm(uri, { force = true })
 end
 
+function M.connect_host(uri, cache)
+    -- Just run connect_a and block until complete
+    local connected = false
+    local callback = function(success) connected = success end
+    shell.join(M.connect_host_a(uri, cache, callback))
+    return connected
+end
+
+function M.connect_host_a(uri, cache, exit_callback)
+    local host = nil
+    local validation = M.internal.validate(uri, cache)
+    if validation.error then return validation end
+    uri = validation.uri
+    host = validation.host
+    local callback = function(response)
+        exit_callback(response and response.success)
+    end
+    return host:stat(uri, nil, {
+        async = true,
+        finish_callback = callback
+    })
+end
+
 function M.get_metadata(uri, cache)
     local host = nil
     local validation = M.internal.validate(uri, cache)
