@@ -5,16 +5,16 @@ local config = {
 config.renderers =
 {
     file = {
-        { 'indent' },
-        { 'marked' },
-        { 'icon' },
-        { 'name' }
+        { 'indent'  },
+        { 'marked'  },
+        { 'icon'    },
+        { 'name'    }
     },
     directory = {
-        { 'indent' },
-        { 'marked' },
-        { 'icon' },
-        { 'name' }
+        { 'indent'  },
+        { 'marked'  },
+        { 'icon'    },
+        { 'name'    }
     },
     netman_provider = {
         { 'icon' },
@@ -22,18 +22,19 @@ config.renderers =
     },
     netman_host = {
         { 'indent' },
-        { 'state' },
+        { 'state'  },
         { 'icon'   },
+        { 'name'   }
     },
     netman_bookmark = {
         { 'indent' },
-        { 'icon' },
-        { 'name' }
+        { 'icon'   },
+        { 'name'   }
     },
     netman_refresh = {
         { 'indent' },
-        { 'icon' },
-        { 'name' }
+        { 'icon'   },
+        { 'name'   }
     },
 }
 
