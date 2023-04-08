@@ -523,6 +523,49 @@ function M.clear_unused_configs(assume_yes)
     if not ran then print("There are currently no unused netman provider configurations") end
 end
 
+--- Attempts to execute a connection event on the underlying
+--- provider for the provided URI. Note, successful
+--- connection to the URI host (per the provider) will trigger
+--- a `netman_provider_host_connect` event
+--- @param uri: string
+---     The string URI to connect to
+--- @param callback: function | Optional
+---     If provided, indicates that the connection event
+---     should be asynchronous if possible.
+---     NOTE: Even if it is impossible to asynchronously execute
+---     the connection, the response will still be provided
+---     via the callback as that is what is expected by the end user
+--- @return table | boolean
+---     If an error is encountered while trying to execute the
+---     connection event, a table will be returned with the following structure
+---     {
+---         message: string,
+---         -- Whatever the message is,
+---         process: function | Optional,
+---         -- If this is provided, call this function with whatever
+---         -- response the user provides to the message that was provided
+---         is_error: boolean | Optional
+---         -- If provided, indicates that the message is an error
+---     }
+---     
+---     If the requested connection event is synchronous, this will
+---     simply return the boolean (T/F) response from the provider
+---     after completing the connection request
+---     
+---     If the requested connection event was asynchronous, this will
+---     return a table that contains the following key/value pairs
+---     {
+---         read: function,
+---         -- Takes an optional string parameter that can be
+---         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
+---         -- Defaults to "STDOUT"
+---         write: function,
+---         -- Takes a string or table of data to write to the
+---         -- underlying handle
+---         stop: function
+---         -- Takes an optional boolean to indicate the stop should
+---         -- be forced
+---     }
 function M.connect_to_uri_host(uri, callback)
     local orig_uri = uri
     local provider, cache = nil, nil
@@ -586,6 +629,49 @@ function M.connect_to_uri_host(uri, callback)
     return provider.connect_host(uri, cache)
 end
 
+--- Attempts to execute a disconnection event on the underlying
+--- provider for the provided URI. Note, successful
+--- disconnection from the URI host (per the provider) will trigger
+--- a `netman_provider_host_disconnect` event
+--- @param uri: string
+---     The string URI to disconnect from
+--- @param callback: function | Optional
+---     If provided, indicates that the disconnection event
+---     should be asynchronous if possible.
+---     NOTE: Even if it is impossible to asynchronously execute
+---     the disconnection, the response will still be provided
+---     via the callback as that is what is expected by the end user
+--- @return table | boolean
+---     If an error is encountered while trying to execute the
+---     disconnection event, a table will be returned with the following structure
+---     {
+---         message: string,
+---         -- Whatever the message is,
+---         process: function | Optional,
+---         -- If this is provided, call this function with whatever
+---         -- response the user provides to the message that was provided
+---         is_error: boolean | Optional
+---         -- If provided, indicates that the message is an error
+---     }
+---     
+---     If the requested disconnection event is synchronous, this will
+---     simply return the boolean (T/F) response from the provider
+---     after completing the disconnection request
+---     
+---     If the requested disconnection event was asynchronous, this will
+---     return a table that contains the following key/value pairs
+---     {
+---         read: function,
+---         -- Takes an optional string parameter that can be
+---         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
+---         -- Defaults to "STDOUT"
+---         write: function,
+---         -- Takes a string or table of data to write to the
+---         -- underlying handle
+---         stop: function
+---         -- Takes an optional boolean to indicate the stop should
+---         -- be forced
+---     }
 function M.disconnect_from_uri_host(uri, callback)
     local orig_uri = uri
     local provider, cache = nil, nil
