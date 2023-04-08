@@ -940,10 +940,10 @@ M.internal.generate_node_children = function(state, node, opts, callback)
                 events.unsubscribe(dummy_file_open_handler)
             end
             events.subscribe(dummy_file_open_handler)
-            vim.schedule_wrap(function()
+            vim.defer_fn(function()
                 renderer.redraw(state)
                 neo_tree_utils.open_file(state, uri)
-            end)
+            end, 1)
             if callback then
                 callback()
             end
