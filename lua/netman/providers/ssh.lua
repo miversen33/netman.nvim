@@ -1954,6 +1954,10 @@ function M.connect_host_a(uri, cache, exit_callback)
     })
 end
 
+function M.close_connection(uri, cache)
+    
+end
+
 function M.get_metadata(uri, cache)
     local host = nil
     local validation = M.internal.validate(uri, cache)
@@ -2052,10 +2056,6 @@ function M.archive.schemes(uri, cache)
     uri = validation.uri
     host = validation.host
     return host.archive_schemes
-end
-
-function M.close_connection(uri, cache)
-
 end
 
 function M.init(config)
