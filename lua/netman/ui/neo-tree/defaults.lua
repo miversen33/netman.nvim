@@ -22,9 +22,8 @@ config.renderers =
     },
     netman_host = {
         { 'indent' },
-        { 'state'  },
+        { 'state' },
         { 'icon'   },
-        { 'name'   }
     },
     netman_bookmark = {
         { 'indent' },
