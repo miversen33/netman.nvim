@@ -1,3 +1,4 @@
+local JSON = require("netman.tools.parsers.json")
 local socket_files = require("netman.tools.utils").socket_dir
 local CACHE = require("netman.tools.cache")
 local metadata_options = require("netman.tools.options").explorer.METADATA
@@ -1016,9 +1017,9 @@ function SSH:_get_user_home(user)
         -- Logger the exit code, and still attempt to read the output, we might be able to establish what we need
         logger.warn("Received Non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
     end
-    local success, details = pcall(vim.fn.json_decode, output.stdout)
+    local success, details = pcall(JSON.decode, JSON, output.stdout)
     if success ~= true then
-        logger.warn("Unable to parse home directory of user!")
+        logger.warn("Unable to parse home directory of user!", {error = details})
         return nil
     end
     if details.COMMAND_OUTPUT then
