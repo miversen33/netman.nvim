@@ -734,10 +734,25 @@ function M.disconnect_from_uri_host(uri, callback)
     return provider.close_host(uri, cache)
 end
 
-function M.has_connection_to_uri_host(uri)
+--- Attempts to reach out to the provider
+--- to verify if the URI has a connected host
+--- @param uri: string
+---     The string URI to check
+--- @param provider: table | Optional
+---     For internal use only, used to bypass uri validation
+--- @param cache: table | Optional
+---     For internal use only, used to bypass uri validation
+--- @return boolean
+---     Will return True if (and only if) the provider
+---     explicitly informed us that the URI was connected.
+---     Failure to connect to the provider for this check,
+---     or a false response from the provider will both return
+---     false on this call
+function M.has_connection_to_uri_host(uri, provider, cache)
     local orig_uri = uri
-    local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
+    if not provider or not cache then
+        uri, provider, cache = M.internal.validate_uri(uri)
+    end
     if not uri or not provider then
         logger.warnf("Unable to find provider for %s, cannot verify connection status", orig_uri)
         return nil
