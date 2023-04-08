@@ -997,7 +997,6 @@ M.navigate = function(state, opts)
             sort_nodes = true,
             defer = false
         }
-        -- parent_id, sort_nodes, render_id)
         if nodes then
             local defer_func = function()
                 M.internal.add_nodes(state, nodes, render_opts.parent_id, render_opts.sort_nodes)
