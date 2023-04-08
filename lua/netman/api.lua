@@ -765,11 +765,349 @@ function M.has_connection_to_uri_host(uri, provider, cache)
     return provider.is_connected(uri, cache)
 end
 
---- TODO: Where Doc?
-function M.read(uri, opts)
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
+--- @param uri string
+---     The uri to read
+--- @param provider table
+---     The provider to execute asynchronous read against
+--- @param cache netman.tools.Cache
+---     The provider's cache
+--- @param is_connected boolean
+---     A boolean indicating if the provider already has
+---     a connection established for this uri
+--- @param output_callback function
+---     A callback to call for any output received
+---     as well as when we are complete
+---     We expect this function to have the following signature
+---     output_callback(output_data: table, read_complete: boolean)
+--- @param force boolean
+---     If provided, will ignore any cache results we might
+---     have for the read, and will inform the provider it should
+---     do the same
+--- @return table | boolean
+---     If there is a failure in starting the async command (due to invalid
+---     params or the provider being unable to run asynchronously), this
+---     will return `false`. Otherwise the below table is returned
+---     {
+---         async: boolean,
+---         -- A boolean to indicate if the read command was
+---         -- asynchronously ran.
+---         -- NOTE: This does _not_ indicate success
+---         success: boolean,
+---         -- A boolean to indicate if the read command was successful
+---         -- NOTE: this does _not_ indicate if the command
+---         -- was async or not
+---         handle: table (Optional),
+---         -- A table that contains the following items related to the current
+---         -- asynchronous running process
+---         --     {
+---         --         read(pipe): function,
+---         --         -- A function that can be called
+---         --         -- to read from the the pipe defined.
+---         --         -- Valid pipes:
+---         --         -- - 'STDOUT' (Default if nil provided)
+---         --         -- - 'STDERR'
+---         --         write(data): function,
+---         --         -- A function that can be called to write
+---         --         -- input to the current process.
+---         --         stop(force): function
+---         --         -- A function that can be called to stop the process
+---         --    }
+---         error: table (Optional),
+---         -- A table that if returned will contain any errors that arose
+---         -- during the async startup. If this exists, it will be in the following
+---         -- format
+---         --    {
+---         --        message: string
+---         --    }
+---     }
+function M.internal._read_async(uri, provider, cache, is_connected, output_callback, force)
+    local required_async_commands = {'read_a'}
+    if not provider then
+        logger.errorf("No provider provided for %s", uri)
+        return false
+    end
+    for _, cmd in ipairs(required_async_commands) do
+        if not provider[cmd] then
+            logger.errorf("Provider %s is missing async command %s", provider.name, cmd)
+            return false
+        end
+    end
+    local opts = {}
+    local dun = false
+    opts.force = force
+    local protected_callback = function(data, complete)
+        local success, error = pcall(output_callback, data, complete)
+        if not success then
+            logger.warn("Async output processing experienced a failure!", error)
+        end
+    end
+    opts.callback = function(data, complete, _force)
+        -- Short circuit in case we are killed while still processing
+        if dun then return end
+
+        -- If _force is provided, we will return whatever was
+        -- provided to us. This is useful internally only.
+        if _force then
+            protected_callback(data, complete)
+            return
+        end
+        if complete and not data then
+            -- There is nothing of substance passed,
+            -- but the complete flag was provided.
+            -- Call the consumer's complete handle and return
+            protected_callback(nil, complete)
+            return
+        end
+        if not netman_options.api.READ_TYPE[data.type] then
+            logger.warnf("Unable to trust data type %s. Sent from provider %s while trying to read %s", data.type or 'nil', provider.name, uri)
+            return
+        end
+        if not data.data then
+            logger.warnf("Provider %s did not pass back anything useful when requesting asynchronous read of %s", provider.name, uri)
+        end
+        local return_data = nil
+        if data.type == netman_options.api.READ_TYPE.EXPLORE then
+            -- Handle "directory" style data
+            return_data = M.internal.sanitize_explore_data({data.data})
+        elseif data.type == netman_options.api.READ_TYPE.FILE then
+            -- Handle "file" style data
+            return_data = M.internal.sanitize_file_data(data.data)
+            if not return_data.error and return_data.local_path then
+                logger.tracef("Caching %s to local file %s", uri, return_data.local_path)
+                M._providers.file_cache[uri] = return_data.local_path
+            end
+        else
+            -- Handle "stream" style data
+            return_data = data.data
+        end
+        protected_callback({data = return_data, type = data.type}, complete)
+    end
+    local handle = nil
+    local read_from_handle = function(pipe)
+        return handle and handle.read(pipe)
+    end
+
+    local write_to_handle = function(data)
+        return handle and handle.write(data)
+    end
+
+    local stop_handle = function(_force)
+        dun = true
+        return handle and handle.stop(_force)
+    end
+
+    local return_handle = {
+        read  = read_from_handle,
+        write = write_to_handle,
+        stop  = stop_handle
+    }
+
+    local do_provider_read = function()
+        if dun then
+            -- Figure out what we are returning?
+            logger.tracef("Read process for %s was stopped externally. Escaping read", uri)
+            opts.callback(nil, true)
+            return
+        end
+        logger.tracef("Executing asynchronous read of %s with %s", uri, provider.name)
+        local response = provider.read_a(uri, cache, opts.callback)
+        if not response then
+            logger.errorf("Provider %s did not return anything for async read of %s. First of all, how dare you", provider.name, uri)
+            return
+        end
+        if not response.handle then
+            logger.errorf("Provider %s did not return a handle on asynchronous read of %s. Disabling async for this provider in the future...", provider.name, uri)
+            provider.read_a = nil
+            -- Check to see if we received synchronous output
+            if not response.success then
+                logger.warnf("Provider %s synchronously failed during async read of %s. Yes I know that makes no sense. You're telling me...", provider.name, uri)
+                opts.callback(response, true, true)
+                return
+            end
+            if not response.data then
+                logger.warnf("No data passed back with read of %s ????", uri)
+                opts.callback(nil, true)
+            end
+            opts.callback(response, true)
+            return
+        end
+        handle = response.handle
+    end
+
+    if not is_connected and provider.connect_host_a then
+        logger.infof("Attempting provider %s connect to %s", provider.name, uri)
+        -- connect to the uri, return a valid return and chain off the
+        -- proper exit
+        handle = provider.connect_host_a(
+            uri,
+            cache,
+            function(success)
+                if not success then
+                    logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+                end
+                do_provider_read()
+            end
+        )
+    else
+        do_provider_read()
+    end
+    return return_handle
+end
+
+function M.internal._read_sync(uri, provider, cache, is_connected, force)
+    assert(provider, "No provider provided to read")
+    if not is_connected and provider.connect then
+        local connected = provider.connect(uri)
+        if not connected then
+            logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+        end
+    end
+    logger.infof("Reaching out to %s to read %s", provider.name, uri)
+    local read_data = provider.read(uri, cache)
+    if not read_data then
+        logger.warnf("Provider %s did not return read data for %s. I'm gonna get angry!", provider.name, uri)
+        return {
+            error = {
+                message = 'Nil Read Data'
+            },
+            success = false
+        }
+    end
+    if not read_data.success then
+        logger.warnf(string.format("Provider %s reported a failure in the read of %s", provider.name, uri), {response = read_data})
+        return {
+            error = {
+                message = read_data
+            },
+            success = false
+        }
+    end
+    if not netman_options.api.READ_TYPE[read_data.type] then
+        logger.warnf("Provider %s returned invalid read type %s. See :h netman.api.read for read type details", provider.name, read_data.type or 'nil')
+        return {
+            error = {
+                message = "Invalid Read Type"
+            },
+            success = false
+        }
+    end
+    if not read_data.data then
+        logger.warnf("No data passed back with read of %s ????", uri)
+        return {
+            success = false
+        }
+    end
+    local return_data = nil
+    if read_data.type == netman_options.api.READ_TYPE.EXPLORE then
+        return_data = M.internal.sanitize_explore_data(read_data.data)
+    elseif read_data.type == netman_options.api.READ_TYPE.FILE then
+        return_data = M.internal.sanitize_file_data(read_data.data)
+    else
+        return_data = read_data.data
+    end
+    local _error = return_data.error
+    return_data.error = nil
+    return {
+        success = true,
+        error = _error,
+        data = return_data,
+        type = read_data.type
+    }
+end
+
+--- Executes remote read of uri
+--- NOTE: Read also caches results for a short time, and will
+--- return those cached results instead of repeatedly reaching
+--- out to the underlying provider for repeat requests.
+--- @param uri string
+---     The string representation of the remote resource URI
+--- @param opts table | Optional
+---     Default: {}
+---     Options to provide to the provider. Valid options include
+---     - force: boolean
+---         If provided, indicates that we should invalidate any cached
+---         instances of the URI before pull
+--- @param callback function | Optional
+---     Default: nil
+---     If provided, we will attempt to treate the read request as asynchronous.
+---     NOTE: this affects the return value!
+--- @return table
+---     If the read request is asynchronous, you will recieve the following table
+---     {
+---         async: boolean,
+---         -- A boolean that should be set to true to indicate that
+---         -- the read request is asynchronously being completed
+---         read: function,
+---         -- Takes an optional string parameter that can be
+---         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
+---         -- Defaults to "STDOUT"
+---         write: function,
+---         -- Takes a string or table of data to write to the
+---         -- underlying handle
+---         stop: function
+---         -- Takes an optional boolean to indicate the stop should
+---         -- be forced
+---     }
+---     Note, the synchronous output below will be provided to the callback param
+---     as a parameter to it instead, with the exception of the following keys
+---     - async, success
+---     Its pretty obvious that the results are async as they are being streamed to
+---     you, and success is also obvious if you are receiving the output
+---     
+---     If the read request is synchronous, you will receive the following table
+---     {
+---         async: boolean,
+---         -- A boolean that should be set to false to indicate that
+---         -- the read request was synchronously completed
+---         success: boolean,
+---         -- A boolean indicating if the read was successfully completed
+---         type: string,
+---         -- A string indicating what type of result you will receive. Valid
+---         -- types are
+---         -- - "EXPLORE"
+---         --     -- Indicates a directory style set of data. This
+---         --     -- means the `data` key will be a 1 dimensional array
+---         --     -- containing a stat table for each item returned
+---         -- - "FILE"
+---         --     -- Indicates an individual file type of data. This
+---         --     -- means that there is a file located somewhere on the host
+---         --     -- machine that is the result of whatever was pulled down
+---         --     -- from the URI. `data` will be formatted in the following manner
+---         --     -- {
+---         --            local_path: string,
+---         --                -- The local path to the downloaded file
+---         --            origin_path: string,
+---         --                -- The remote path that was read for this file
+---         --     -- }
+---         -- - "STREAM"
+---         --     -- Indicates a stream of data. This means that there
+---         --     -- is no data stored locally and and such `data` will be
+---         --     -- a 1 dimensional array of "lines" of output
+---         data: table,
+---         -- See `type` for details on how this table will be formatted,
+---         -- based on the type of data returned by the provider
+---         message: table | Optional,
+---         -- An optional table that may be returned by the provider.
+---         -- If this table exists, it will be in the following format
+---         -- {
+---         --     message: string,
+---         --     -- The message to relay to the consumer
+---         --     process: function | Optional,
+---         --     -- If provided, indicates that the provider expects
+---         --     -- the message to be an input prompt of some kind.
+---         --     -- Call process with the result of the prompt so the
+---         --     -- provider can continue with whatever it was doing
+---         -- }
+---     }
+function M.read(uri, opts, callback)
     local orig_uri = uri
-    local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
+    local provider, cache, is_connected = nil, nil, nil
+    uri, provider, cache, _ = M.internal.validate_uri(uri)
     if not uri or not provider then
         return {
             success = false,
@@ -794,97 +1132,11 @@ function M.read(uri, opts)
         logger.trace('Short circuiting provider reach out')
         return _data
     end
-    -- We need to probably overhaul this entire subsection
-    local func = provider.read
-    local is_async = false
-    if opts.callback then
-        -- Caller provided a callback, we assume that means they want this to be done asynchronously
-        -- TODO: Add check to see if the async version of read exists...
-        func = provider.read_a
-        if provider.read_a then is_async = true end
-        local saved_callback = opts.callback
-        opts.callback = function(data)
-            if not netman_options.api.READ_TYPE[data.type] then
-                -- This return type is invalid
-                logger.warnf("Unable to trust data type %s. Sent from provider %s while trying to read %s", data.type or 'nil', provider.name, uri)
-                return
-            end
-            if not data.data then
-                logger.warnf("Provider %s did not pass back anything useful when requesting read of %s", provider.name, uri)
-                return
-            end
-            -- There isn't a great way to handle errors with this...?
-            if data.type == netman_options.api.READ_TYPE.EXPLORE then
-                -- Sanitize the data before sending it
-                data = M.internal.sanitize_explore_data({data.data})
-            elseif data.type == netman_options.api.READ_TYPE.FILE then
-                data = M.internal.sanitize_file_data(data.data)
-                if not data.error and data.local_path then
-                    logger.trace(string.format("Caching %s to local file %s", uri, data.local_path))
-                    M._providers.file_cache[uri] = data.local_path
-                end
-            end
-            saved_callback(data)
-        end
-    end
-    local read_data = func(uri, cache, opts.callback)
-    -- If its an async read, there is nothing for us to do but return the handle provided
-    if is_async then
-        if not read_data.handle then
-            logger.errorf("Provider %s did not return a handle on the attempted async read of %s. Disabling async for this provider in the future...", provider.name, uri)
-        end
-        return read_data.handle
+    is_connected = M.has_connection_to_uri_host(uri, provider, cache)
+    if callback and provider.read_a then
+        return M.internal._read_async(uri, provider, cache, is_connected, callback, opts.force)
     else
-        if read_data == nil then
-            logger.info("Received no read_data. I'm gonna get angry!")
-            return {
-                error = {
-                    message = "Nil Read Data"
-                },
-                success = false
-            }
-        end
-        if not read_data.success then
-            -- We failed to read data, return the error up
-            return read_data
-        end
-        local read_type = read_data.type
-        if netman_options.api.READ_TYPE[read_type] == nil then
-            logger.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
-            return {
-                error = {
-                    message = "Invalid Read Type"
-                },
-                success = false
-            }
-        end
-        if not read_data.data then
-            logger.warn(string.format("No data passed back with read of %s ????", uri))
-            return {
-                success = true
-            }
-        end
-        local _data = nil
-        if read_type == netman_options.api.READ_TYPE.EXPLORE then
-            _data = M.internal.sanitize_explore_data(read_data.data)
-        elseif read_type == netman_options.api.READ_TYPE.FILE then
-            _data = M.internal.sanitize_file_data(read_data.data)
-            if not _data.error and _data.local_path then
-                logger.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
-                M._providers.file_cache[uri] = _data.local_path
-            end
-        elseif read_type == netman_options.api.READ_TYPE.STREAM then
-            _data = read_data.data
-        end
-        local _error = _data.error
-        -- Removing error key value from data as it will be a parent level attribute
-        _data.error = nil
-        return {
-            success = true,
-            error = _error,
-            data = _data,
-            type = read_type
-        }
+        return M.internal._read_sync(uri, provider, cache, is_connected, opts.force)
     end
 end
 
