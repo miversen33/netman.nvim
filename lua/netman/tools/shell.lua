@@ -707,7 +707,12 @@ end
 --- NOTE: This _will_ lockup the thread running this command until all shells are finished
 --- @param shells table
 ---     A 1 dimensional table of netman_shell_handle objects. See Shell.new_async_handler for details
-function Shell.join(shells)
+--- @param sleep_check function | Optional
+---     Default: nil
+---     If provided, this will be called directly before each iteration of the "wait" loop is performed.
+---     We will check the return of this function and if it is "truthy", we will stop the wait loop and cancel
+---     all running shells. Basically, a quick dirty "stop all things"
+function Shell.join(shells, sleep_check)
     if type(shells) ~= 'table' or #shells == 0 then
         -- I don't know what the hell you gave me but we are wrapping it in a table so it can "properly"
         -- fail later
@@ -734,10 +739,23 @@ function Shell.join(shells)
         end
         shell.add_exit_callback(callback)
     end
+    local stop = false
     while #waiting_shells > 0 do
         uv.run('once')
+        if sleep_check and sleep_check() then
+            stop = sleep_check()
+            if stop then
+                break
+            end
+        end
         uv.sleep(1)
         -- Sleep for 1 millisecond and then run the uv loop once.
+    end
+    if stop then
+        -- Caller requested full stop. Kill all the things
+        for _, shell in ipairs(shells) do
+            shell.stop(true)
+        end
     end
 end
 
