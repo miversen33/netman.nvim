@@ -902,6 +902,7 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
     end
 
     local return_handle = {
+        async = true,
         read  = read_from_handle,
         write = write_to_handle,
         stop  = stop_handle
@@ -988,12 +989,11 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
         }
     end
     if not netman_options.api.READ_TYPE[read_data.type] then
-        logger.warnf("Provider %s returned invalid read type %s. See :h netman.api.read for read type details", provider.name, read_data.type or 'nil')
+        local message = string.format("Provider %s returned invalid read type %s. See :h netman.api.read for read type details", provider.name, read_data.type or 'nil')
+        logger.warn(message)
         return {
-            error = {
-                message = "Invalid Read Type"
-            },
-            success = false
+            success = false,
+            message = { message = message }
         }
     end
     if not read_data.data then
@@ -1014,7 +1014,8 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
     return_data.error = nil
     return {
         success = true,
-        error = _error,
+        message = _error and { message  = _error },
+        async = false,
         data = return_data,
         type = read_data.type
     }
@@ -1128,14 +1129,16 @@ function M.read(uri, opts, callback)
             type = netman_options.api.READ_TYPE.FILE,
             success = true
         }
-        logger.info(string.format("Found cached file %s for uri %s", cached_file, uri))
+        logger.infof("Found cached file %s for uri %s", cached_file, uri)
         logger.trace('Short circuiting provider reach out')
         return _data
     end
     is_connected = M.has_connection_to_uri_host(uri, provider, cache)
     if callback and provider.read_a then
+        logger.infof("Attempting asynchronous read of %s", uri)
         return M.internal._read_async(uri, provider, cache, is_connected, callback, opts.force)
     else
+        logger.infof("Attempting synchronous read of %s", uri)
         return M.internal._read_sync(uri, provider, cache, is_connected, opts.force)
     end
 end
