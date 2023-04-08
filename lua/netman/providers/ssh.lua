@@ -1862,10 +1862,7 @@ function M.internal.read_file(uri, host, callback)
     local _saved_callback = callback
     if callback then
         callback = function(data)
-            _saved_callback({
-                type = api_flags.READ_TYPE.FILE,
-                data = process_handle(data)
-            })
+            _saved_callback(process_handle(data), true)
         end
     end
     local opts = {

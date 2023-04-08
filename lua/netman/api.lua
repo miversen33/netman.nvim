@@ -888,6 +888,11 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
         elseif data.type == netman_options.api.READ_TYPE.FILE then
             -- Handle "file" style data
             return_data = M.internal.sanitize_file_data(data.data)
+            if not return_data then
+                local message = string.format("Provider %s did not return valid return data for %s", provider.name, uri)
+                logger.warn(message, { return_data = data.data })
+                return
+            end
             if not return_data.error and return_data.local_path then
                 logger.tracef("Caching %s to local file %s", uri, return_data.local_path)
                 M._providers.file_cache[uri] = return_data.local_path
