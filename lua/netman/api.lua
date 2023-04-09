@@ -218,21 +218,30 @@ end
 --- @return table
 function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
-    for _, data in pairs(read_data) do
+    for _, orig_data in pairs(read_data) do
+        if type(orig_data) ~= 'table' then
+            logger.warn("Invalid data found in explore data", {key = _, value = orig_data})
+            goto continue
+        end
+        local data = utils.deep_copy(orig_data)
         for key, value in pairs(data) do
             if netman_options.explorer.FIELDS[key] == nil then
-                logger.info("Removing " .. key .. " from directory data as it " ..
-                    "does not conform with netman.options.explorer.FIELDS...")
+                logger.infof("Removing %s from directory data as it " ..
+                    "does not conform with netman.options.explorer.FIELDS...", key)
                 data[key] = nil
             elseif key == netman_options.explorer.FIELDS.METADATA then
                 for _metadata_flag, _ in pairs(value) do
                     if netman_options.explorer.METADATA[_metadata_flag] == nil then
-                        logger.warn("Removing metadata flag " .. _metadata_flag .. " from items metadata as it " ..
+                        logger.warnf("Removing metadata flag " .. _metadata_flag .. " from items metadata as it " ..
                             "does not conform with netman.options.explorer.METADATA...")
                         value[_metadata_flag] = nil
                     end
                 end
             end
+        end
+        if not next(data) then
+            logger.warn("Nothing to validate in data, skipping to next item")
+            goto continue
         end
         local acceptable_output = true
         for _, field in ipairs(netman_options.explorer.FIELDS) do
@@ -244,6 +253,7 @@ function M.internal.sanitize_explore_data(read_data)
         if acceptable_output then
             table.insert(sanitized_data, data)
         end
+        ::continue::
     end
     return sanitized_data
 end
@@ -962,21 +972,20 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
     end
     logger.infof("Reaching out to %s to read %s", provider.name, uri)
     local read_data = provider.read(uri, cache)
+    logger.trace(string.format("Received Output from read of %s", uri), read_data)
     if not read_data then
         logger.warnf("Provider %s did not return read data for %s. I'm gonna get angry!", provider.name, uri)
         return {
-            error = {
+            message = {
                 message = 'Nil Read Data'
             },
             success = false
         }
     end
     if not read_data.success then
-        logger.warnf(string.format("Provider %s reported a failure in the read of %s", provider.name, uri), {response = read_data})
+        logger.warn(string.format("Provider %s reported a failure in the read of %s", provider.name, uri), {response = read_data})
         return {
-            error = {
-                message = read_data
-            },
+            message = read_data.message,
             success = false
         }
     end
@@ -991,12 +1000,22 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
     if not read_data.data then
         logger.warnf("No data passed back with read of %s ????", uri)
         return {
-            success = false
+            success = false,
+            message = { message = string.format("Unable to read %s. Check :Nmlogs for details", uri)}
         }
     end
     local return_data = nil
     if read_data.type == netman_options.api.READ_TYPE.EXPLORE then
         return_data = M.internal.sanitize_explore_data(read_data.data)
+        if not return_data or #return_data == 0 then
+            logger.warn("It looks like all provided data on read was sanitized. The provider most likely returned bad data. Provided Data -> ", read_data.data)
+            return {
+                success = false,
+                message = {
+                    message = string.format("Received invalid data on read of %s", uri)
+                }
+            }
+        end
     elseif read_data.type == netman_options.api.READ_TYPE.FILE then
         return_data = M.internal.sanitize_file_data(read_data.data)
     else
@@ -1005,7 +1024,7 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
     local _error = return_data.error
     return_data.error = nil
     return {
-        success = true,
+        success = _error and false or true,
         message = _error and { message  = _error },
         async = false,
         data = return_data,
