@@ -895,7 +895,23 @@ M.internal.generate_node_children = function(state, node, opts, callback)
         end
         renderer.redraw(state)
     end
+    local cancelled = false
     local children = { type = nil, data = {}}
+    local handle_error = function(err)
+        cancelled = true
+        logger.error(string.format("Received failure on read of %s", uri), err)
+        if err.message then
+            logger.warnn(err.message)
+        end
+        node.extra.refresh = nil
+        if node.type == 'netman_host' then
+            node.extra.state = UI_STATE_MAP.ERROR
+        end
+        vim.defer_fn(function()
+            renderer.redraw(state)
+        end, 1)
+        return nil
+    end
     local reconcile_children = function()
         logger.tracef("Reconciling Children of %s", uri)
         if not opts.quiet then
@@ -972,7 +988,13 @@ M.internal.generate_node_children = function(state, node, opts, callback)
     local cb = function(data, complete)
         -- Idk we should do something with this
         -- We should really figure out how to handle errors???
+        if cancelled then return end
         if data then
+            if data.message then
+                -- Something happened!
+                handle_error(data)
+                return
+            end
             children.type = data.type
             if data.data then
                 if type(data.data) == 'table' then
@@ -997,19 +1019,7 @@ M.internal.generate_node_children = function(state, node, opts, callback)
     if not output.async then
         logger.infof("Netman did not perform read of %s asynchronously as requested", uri)
         if not output.success then
-            logger.error(string.format("Received failure on read of %s", uri), {output})
-            logger.debug(node)
-            if output.message then
-                logger.warnn(output.message.message)
-            end
-            node.extra.refresh = nil
-            if node.type == 'netman_host' then
-                node.extra.state = UI_STATE_MAP.ERROR
-            end
-            vim.defer_fn(function()
-                renderer.redraw(state)
-            end, 1)
-            return nil
+            return handle_error(output.message)
         end
         -- Feed the sync data through the async callback
         cb(output, true)
