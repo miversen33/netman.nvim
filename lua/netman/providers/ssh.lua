@@ -1015,7 +1015,7 @@ function SSH:_get_user_home(user)
     end
     if output.exit_code ~= 0 then
         -- Logger the exit code, and still attempt to read the output, we might be able to establish what we need
-        logger.warn("Received Non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
+        logger.warn("Received non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
     end
     local success, details = pcall(JSON.decode, JSON, output.stdout)
     if success ~= true then
@@ -1293,6 +1293,7 @@ end
 ---     local host = SSH:new('someuser@somehost')
 ---     print(vim.inspect(host:stat('/tmp')))
 function SSH:stat(locations, target_flags, opts)
+    local remote_locations = {}
     --TODO: (Mike) Consider caching this for a short amount of time????
     opts = opts or {}
     -- Coerce into a table for iteration
@@ -1302,7 +1303,17 @@ function SSH:stat(locations, target_flags, opts)
         logger.trace(output)
         local callback = opts.finish_callback
         if output.exit_code ~= 0 then
+            local r_locations = table.concat(remote_locations, ', ')
             local _error = "Received non-0 exit code while trying to stat"
+            if r_locations:len() > 0 then
+                _error = _error .. ' ' .. r_locations
+            end
+            if
+                output.stderr:match('No route to host')
+                or output.stderr:match('Could not resolve hostname')
+            then
+                _error = string.format("Unable to connect to ssh host %s", self.host)
+            end
             logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code, stdout = output.stdout})
             return_details = { error = _error, success = false}
             if callback then callback(return_details) end
@@ -1333,7 +1344,10 @@ function SSH:stat(locations, target_flags, opts)
     end
     local __ = {}
     for _, location in ipairs(locations) do
-        if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
+        if location.__type and location.__type == 'netman_uri' then
+            table.insert(remote_locations, location:to_string('remote'))
+            location = location:to_string()
+        end
         table.insert(__, location)
         table.insert(stat_command, location)
     end
