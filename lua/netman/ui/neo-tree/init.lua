@@ -898,10 +898,6 @@ M.internal.generate_node_children = function(state, node, opts, callback)
     local children = { type = nil, data = {}}
     local reconcile_children = function()
         logger.tracef("Reconciling Children of %s", uri)
-        if #children.data == 0 then
-            -- No children provided, nothing to do
-            return
-        end
         if not opts.quiet then
             node.extra.refresh = nil
             if node.type == 'netman_host' then
@@ -910,14 +906,16 @@ M.internal.generate_node_children = function(state, node, opts, callback)
             end
         end
         if children.type == 'EXPLORE' then
-            logger.tracef("Formatting Tree of Children")
+            logger.trace("Formatting Tree of Children")
             local return_children = {}
             local unsorted_children = {}
             local children_map = {}
             for _, item in ipairs(children.data) do
                 local child = M.internal.create_ui_node(item)
-                table.insert(unsorted_children, child.name)
-                children_map[child.name] = child
+                if child then
+                    table.insert(unsorted_children, child.name)
+                    children_map[child.name] = child
+                end
             end
             -- I feel like we might be able to compress these into less loops...
             if node and node.extra and node.extra.required_nodes then
@@ -977,7 +975,7 @@ M.internal.generate_node_children = function(state, node, opts, callback)
         if data then
             children.type = data.type
             if data.data then
-                if #data.data > 0 then
+                if type(data.data) == 'table' then
                     for _, item in ipairs(data.data) do
                         table.insert(children.data, item)
                     end
@@ -1107,6 +1105,10 @@ M.navigate = function(state, opts)
                 local uri = path_details.uri
                 path_children[uri] = {}
                 pending_paths[uri] = 1
+                -- Because this may not be async like we want, we will _have_
+                -- to prep the paths first and loop again to process :(
+            end
+            for uri, _ in pairs(pending_paths) do
                 M.internal.generate_node_children(state, node, {uri = uri, quiet = true}, function(children) cb(uri, children) end)
             end
         else
