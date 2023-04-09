@@ -919,6 +919,14 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
             return
         end
         if not response.handle then
+            if response.success == false then
+                local message = response.message or {
+                    message = string.format("Provider %s reported failure while trying to read %s", provider.name, uri)
+                }
+                logger.warn(string.format("Received failure while trying to read %s from %s. Error: ", uri, provider.name), message.message)
+                opts.callback(message, true, true)
+                return
+            end
             logger.errorf("Provider %s did not return a handle on asynchronous read of %s. Disabling async for this provider in the future...", provider.name, uri)
             provider.read_a = nil
             -- Check to see if we received synchronous output
@@ -1007,7 +1015,7 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
     local return_data = nil
     if read_data.type == netman_options.api.READ_TYPE.EXPLORE then
         return_data = M.internal.sanitize_explore_data(read_data.data)
-        if not return_data or #return_data == 0 then
+        if not return_data or (#return_data == 0 and next(read_data.data)) then
             logger.warn("It looks like all provided data on read was sanitized. The provider most likely returned bad data. Provided Data -> ", read_data.data)
             return {
                 success = false,
