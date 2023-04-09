@@ -10,6 +10,7 @@ local defaults = require("netman.ui.neo-tree.defaults")
 local input = require("neo-tree.ui.inputs")
 local api = require("netman.api")
 local CACHE_FACTORY = require("netman.tools.cache")
+local UI_STATE_MAP = require("netman.tools.options").ui.STATES
 
 -- TODO: Let this be configurable via neo-tree
 local CACHE_TIMEOUT = CACHE_FACTORY.FOREVER
@@ -798,6 +799,7 @@ M.internal.create_ui_node = function(data)
 end
 
 M.internal.generate_providers = function(callback)
+    logger.trace("Fetching Netman Providers")
     local providers = {}
     for _, provider_path in ipairs(api.providers.get_providers()) do
         local status, provider = pcall(require, provider_path)
@@ -834,6 +836,7 @@ M.internal.generate_providers = function(callback)
 end
 
 M.internal.generate_provider_children = function(provider, callback)
+    logger.tracef("Fetching %s hosts", provider)
     local hosts = {}
     for _, host in ipairs(api.providers.get_hosts(provider)) do
         local host_details = api.providers.get_host_details(provider, host)
@@ -882,16 +885,32 @@ M.internal.generate_node_children = function(state, node, opts, callback)
     else
         node = state.tree:get_node(uri)
     end
+    logger.tracef("Fetching Children of %s", uri)
     if not opts.quiet then
-        node.extra.refresh = true
+        if node.type == 'netman_host' then
+            node.extra.prev_state = node.extra.state
+            node.extra.state = UI_STATE_MAP.REFRESHING
+        else
+            node.extra.refresh = true
+        end
         renderer.redraw(state)
     end
     local children = { type = nil, data = {}}
     local reconcile_children = function()
+        logger.tracef("Reconciling Children of %s", uri)
+        if #children.data == 0 then
+            -- No children provided, nothing to do
+            return
+        end
         if not opts.quiet then
             node.extra.refresh = nil
+            if node.type == 'netman_host' then
+                node.extra.state = node.extra.prev_state
+                node.extra.prev_state = nil
+            end
         end
         if children.type == 'EXPLORE' then
+            logger.tracef("Formatting Tree of Children")
             local return_children = {}
             local unsorted_children = {}
             local children_map = {}
@@ -931,6 +950,7 @@ M.internal.generate_node_children = function(state, node, opts, callback)
                 return return_children
             end
         else
+            logger.trace("Child is a file, opening now")
             local event_handler_id = "netman_dummy_file_event"
             local dummy_file_open_handler = {
                 event = "file_opened",
@@ -967,15 +987,32 @@ M.internal.generate_node_children = function(state, node, opts, callback)
             end
         end
         if complete then
+            logger.debugf("Received complete flag after read of %s", uri)
             reconcile_children()
         end
     end
     local output = api.read(uri, nil, cb)
     if not output then
-        logger.info(string.format("%s did not return anything on read", uri))
+        logger.infof("%s did not return anything on read", uri)
         return nil
     end
     if not output.async then
+        logger.infof("Netman did not perform read of %s asynchronously as requested", uri)
+        if not output.success then
+            logger.error(string.format("Received failure on read of %s", uri), {output})
+            logger.debug(node)
+            if output.message then
+                logger.warnn(output.message.message)
+            end
+            node.extra.refresh = nil
+            if node.type == 'netman_host' then
+                node.extra.state = UI_STATE_MAP.ERROR
+            end
+            vim.defer_fn(function()
+                renderer.redraw(state)
+            end, 1)
+            return nil
+        end
         -- Feed the sync data through the async callback
         cb(output, true)
     end
@@ -1116,14 +1153,11 @@ M.navigate = function(state, opts)
         end
     end
     if node.id == M.constants.ROOT_IDS.NETMAN_PROVIDERS then
-        logger.trace("Fetching Netman Providers")
         M.internal.generate_providers(function(children) process_children(node, children) end)
     elseif node.type == M.constants.TYPES.NETMAN_PROVIDER then
         -- They selected a provider node, we need to populate it
-        logger.tracef("Fetching %s hosts", node.extra.provider)
         M.internal.generate_provider_children(node.extra.provider, function(children) process_children(node, children) end)
     else
-        logger.tracef("Fetching Children of %s", node.extra.uri)
         -- They selected a node provided by a provider, get its data
         M.internal.generate_node_children(state, node, {}, function(children) process_children(node, children, true) end)
     end
