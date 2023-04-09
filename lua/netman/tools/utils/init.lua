@@ -10,9 +10,10 @@ local M = {
     logs_dir = '',
     pid = nil,
     session_id = nil,
-    deprecation_date = nil,
     os_sep = compat.sep,
     os = compat.os
+    deep_copy = nil,
+    deprecation_date = nil
 }
 
 local function create_dirs()
@@ -220,6 +221,22 @@ end
 
 function M.branch_deprecated()
     M.get_system_logger().warnnf("This branch of Netman has been deprecated. It will be removed on the end of %s. Please consider moving back to Main or to one of the other dev branches.", M.deprecation_date)
+end
+
+function M.deep_copy(in_table)
+    -- Yoinked from https://stackoverflow.com/a/640645/2104990
+    local orig_type = type(in_table)
+    local copy
+    if orig_type == 'table' then
+        copy = {}
+        for orig_key, orig_value in next, in_table, nil do
+            copy[M.deep_copy(orig_key)] = M.deep_copy(orig_value)
+        end
+        setmetatable(copy, M.deep_copy(getmetatable(in_table)))
+    else -- number, string, boolean, etc
+        copy = in_table
+    end
+    return copy
 end
 
 if not M._inited then
