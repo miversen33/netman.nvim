@@ -92,6 +92,7 @@ local _provider_required_attributes = {
 --- be laughed at and ridiculed
 function M.internal.wrap_shell_handle(handle)
     local return_handle = {
+        async    = true,
         read     = nil,
         write    = nil,
         stop     = nil,
@@ -892,29 +893,10 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
         end
         protected_callback({data = return_data, type = data.type}, complete)
     end
-    local handle = nil
-    local read_from_handle = function(pipe)
-        return handle and handle.read(pipe)
-    end
-
-    local write_to_handle = function(data)
-        return handle and handle.write(data)
-    end
-
-    local stop_handle = function(_force)
-        dun = true
-        return handle and handle.stop(_force)
-    end
-
-    local return_handle = {
-        async = true,
-        read  = read_from_handle,
-        write = write_to_handle,
-        stop  = stop_handle
-    }
+    local return_handle = M.internal.wrap_shell_handle()
 
     local do_provider_read = function()
-        if dun then
+        if return_handle._stopped then
             -- Figure out what we are returning?
             logger.tracef("Read process for %s was stopped externally. Escaping read", uri)
             opts.callback(nil, true)
@@ -942,14 +924,14 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
             opts.callback(response, true)
             return
         end
-        handle = response.handle
+        return_handle._handle = response.handle
     end
 
     if not is_connected and provider.connect_host_a then
         logger.infof("Attempting provider %s connect to %s", provider.name, uri)
         -- connect to the uri, return a valid return and chain off the
         -- proper exit
-        handle = provider.connect_host_a(
+        local handle = provider.connect_host_a(
             uri,
             cache,
             function(success)
@@ -959,6 +941,11 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
                 do_provider_read()
             end
         )
+        if not handle then
+            logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing async connect host", provider.name)
+            provider.connect_host_a = nil
+        end
+        return_handle = M.internal.wrap_shell_handle(handle)
     else
         do_provider_read()
     end
