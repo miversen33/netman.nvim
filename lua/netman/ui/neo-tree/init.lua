@@ -901,6 +901,20 @@ M.internal.generate_node_children = function(state, node, opts, callback)
     local handle_error = function(err)
         cancelled = true
         logger.error(string.format("Received failure on read of %s", uri), err)
+        if err.process then
+            -- The call is requesting _something_ from the end user. Get it and pass it back
+            local proc_callback = function(answer)
+                local recall = err.process(answer)
+                if recall then
+                    node.extra.state = node.extra.prev_state
+                    node.extra.prev_state = nil
+                    node.extra.refersh = nil
+                    return M.internal.generate_node_children(state, node, opts, callback)
+                end
+            end
+            input.input(err.message, err.default or '', proc_callback)
+            return
+        end
         if err.message then
             logger.warnn(err.message)
         end
