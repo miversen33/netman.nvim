@@ -874,6 +874,7 @@ M.internal.generate_provider_children = function(provider, callback)
 end
 
 M.internal.generate_node_children = function(state, node, opts, callback)
+    -- If the node is a host, we should get the state of the host to display it?
     opts = opts or {}
     local uri = opts.uri
     assert(state, "No state provided!")
@@ -884,6 +885,13 @@ M.internal.generate_node_children = function(state, node, opts, callback)
         uri = node.extra.uri
     else
         node = state.tree:get_node(uri)
+    end
+    if node and node.type == 'netman_host' and node.extra.host and node.extra.provider then
+        logger.debugf("Checking the current state of node %s", node.extra.provider)
+        local _state = api.providers.get_host_details(node.extra.provider, node.extra.host)
+        if _state.STATE ~= node.extra.state then
+            node.extra.state = _state.STATE
+        end
     end
     logger.tracef("Fetching Children of %s", uri)
     if not opts.quiet then
