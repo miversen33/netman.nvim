@@ -16,6 +16,7 @@ local CACHE_TIMEOUT = CACHE_FACTORY.FOREVER
 
 local M = {
     name = "remote",
+    display_name = '🌐 Remote',
     display_name = "🌐 Remote",
     default_config = defaults,
     -- Enum vars
