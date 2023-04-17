@@ -87,6 +87,7 @@ local function clear_orphans(include_self)
     if include_self then
         logger.tracef("Cleaning up after ourself too! Pid: %s", M.pid)
     end
+    logger.trace("Found the following children to clean up", children)
     -- Integer to string comparisons don't work here
     local our_pid = string.format("%s", M.pid)
     for _, child_id in ipairs(children) do
@@ -162,16 +163,39 @@ end
 
 function M.is_process_alive(pid)
     local command_flags = require("netman.tools.shell").CONSTANTS.FLAGS
-    local command = {'kill', '-0', pid}
-
+    local command = {}
+    local check_output = nil
+    if M.os == 'windows' then
+        command = {'wmic', 'process', 'where', string.format("ProcessID = %s", pid), 'get', 'processid'}
+        check_output = function(output)
+            local stdout = output.stdout
+            local stderr = output.stderr
+            local has_error = stderr and stderr:len() > 0
+            if
+                (stderr and stderr:len() > 0)
+                or not stdout
+                or stdout:match('No Instance') then
+                return false
+            end
+            return true
+        end
+    else
+        command = {'kill', '-0', pid}
+        check_output = function(output)
+            local stdout = output.stdout
+            local stderr = output.stderr
+            if stderr ~= '' or stdout ~= '' then
+                return false
+            end
+            return true
+        end
+    end
+    
     local command_options = {}
     command_options[command_flags.STDOUT_JOIN] = ''
     command_options[command_flags.STDERR_JOIN] = ''
     local command_output = require("netman.tools.shell"):new(command, command_options):run()
-    if command_output.stderr ~= '' or command_output.stdout ~= '' then
-        return false
-    end
-    return true
+    return check_output(command_output)
 end
 
 function M.get_real_path(path)
