@@ -5,6 +5,7 @@
 ## WIP
 
 # Table of Contents
+- [New Users Go Here](https://github.com/miversen33/netman.nvim/wiki/User-Guide)
 - [TLDR](#tldr)
 - [Goals](#goals)
 - [Dependencies](#dependencies)
