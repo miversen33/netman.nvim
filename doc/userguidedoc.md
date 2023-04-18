@@ -20,10 +20,10 @@ require "netman"
 ```
 ### Vim Plug
 ```vim
--- Add this near the top of your vim plug configuration
+" Add this near the top of your vim plug configuration
 Plug 'miversen33/netman.nvim'
--- Note, you do not need this if you plan on using Netman with any of the
--- supported UI Tools such as Neo-tree
+" Note, you do not need this if you plan on using Netman with any of the
+" supported UI Tools such as Neo-tree
 lua require "netman"
 ```
 ### Lazy
