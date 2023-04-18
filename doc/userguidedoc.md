@@ -84,6 +84,10 @@ And selecting a host will reveal its remote system
 Netman auto populates its providers, and the providers auto populate what they can read. This means that any providers installed will "automagically" work if they can. If they work, they will "automagically" provide access to your remote systems.  
 Out of the box, Netman comes with `ssh` and `docker` providers. You can quickly check what providers are available by running the `:Nmlogs` command. This outputs (among the system logs) a section at the top of the buffer that states the active providers, as well as reasons for any inactive providers.
 
+Here is what you will see (roughly) with `:Nmlogs`. Note, if you are submitting an issue, please provide the full output of `:Nmlogs`  
+![image](https://user-images.githubusercontent.com/2640668/232781757-45ab8386-cd1f-4f10-8bfa-261b78b9e28b.png)
+
+
 ### SSH Provider
 The SSH provider will read your [user's ssh configuration](https://linux.die.net/man/5/ssh_config) to establish what hosts it can connect to.  
 **This is only important if you wish to use a UI tool (such as [Neo-tree](#neo-tree)). It does not have an impact on the various vim commands.**  
