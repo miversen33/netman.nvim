@@ -82,7 +82,8 @@ And selecting a host will reveal its remote system
 
 This guide will **not** explain all the details on how to use Neo-tree, feel free to head over the the [neo-tree repository](https://github.com/nvim-neo-tree/neo-tree.nvim) for
 those details.  
-**NOTE: If you are unsure what to do when you have the Neo-tree window open, you can press the `?` button and it will display a list of available commands for you.**
+**NOTE: If you are unsure what to do when you have the Neo-tree window open, you can press the `?` button and it will display a list of available commands for you.**  
+![image](https://user-images.githubusercontent.com/2640668/232783345-0bf09619-cd1a-4305-ad74-c71fabedc93e.png)
 
 ## Gotchas
 Netman auto populates its providers, and the providers auto populate what they can read. This means that any providers installed will "automagically" work if they can. If they work, they will "automagically" provide access to your remote systems.  
