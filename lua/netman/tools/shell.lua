@@ -533,6 +533,7 @@ function Shell:run(timeout)
         -- Something horrific happened. Exit immediately
         self:_stderr_callback(nil, "MISSING JOB HANDLE")
         self:close()
+        self._running = false
         goto do_return
     end
     self.handle.pid = self._pid
@@ -543,6 +544,7 @@ function Shell:run(timeout)
         self._timeout_timer:start(timeout, 0, function()
             self:_stderr_callback(nil, "JOB TIMEOUT")
             self:close()
+            self._running = false
         end)
     end
     ::do_return::
@@ -666,8 +668,8 @@ function Shell:dump_self_to_table()
         stderr = self.stderr,
         exit_code = self.exit_code,
         signal = self.signal,
-        elapsed_time = self._end_time - self._start_time,
-        elapsed_time_ml = (self._end_time - self._start_time) / 1000000
+        elapsed_time = self._end_time and self._end_time - self._start_time or 0,
+        elapsed_time_ml = self._end_time and (self._end_time - self._start_time) / 1000000 or 0
     }
 end
 
