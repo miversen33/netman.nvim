@@ -10,7 +10,7 @@ If so, you've come to the right place! Below is a simple, no-frills step-by-step
 
 ## Installation
 ### Packer
-```vim
+```lua
 -- Add this to your packer plugin setup section
 use 'miversen33/netman.nvim'
 -- Add the require somewhere after your plugins have been added by packer. Note,
@@ -19,7 +19,7 @@ use 'miversen33/netman.nvim'
 require "netman"
 ```
 ### Vim Plug
-```lua
+```vim
 -- Add this near the top of your vim plug configuration
 Plug 'miversen33/netman.nvim'
 -- Note, you do not need this if you plan on using Netman with any of the
