@@ -80,6 +80,10 @@ Selecting a provider will reveal its hosts
 And selecting a host will reveal its remote system  
 ![image](https://user-images.githubusercontent.com/2640668/232777086-3060229f-3319-4814-9ddc-4c8d965a6023.png)
 
+This guide will **not** explain all the details on how to use Neo-tree, feel free to head over the the [neo-tree repository](https://github.com/nvim-neo-tree/neo-tree.nvim) for
+those details.  
+**NOTE: If you are unsure what to do when you have the Neo-tree window open, you can press the `?` button and it will display a list of available commands for you.**
+
 ## Gotchas
 Netman auto populates its providers, and the providers auto populate what they can read. This means that any providers installed will "automagically" work if they can. If they work, they will "automagically" provide access to your remote systems.  
 Out of the box, Netman comes with `ssh` and `docker` providers. You can quickly check what providers are available by running the `:Nmlogs` command. This outputs (among the system logs) a section at the top of the buffer that states the active providers, as well as reasons for any inactive providers.
