@@ -112,6 +112,9 @@ function M.init()
     end
 end
 
+-- This exists solely so lazy can "properly" import this
+function M.setup() end
+
 -- Some helper objects attached to the M object that is returned on
 -- require('netman') so you can chain things on setup
 M.api = api
