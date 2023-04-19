@@ -15,6 +15,9 @@ M.open = function(state, callback)
     do_callback(callback)
 end
 
+-- TODO: Actually implement whatever this is...?
+M.open_with_window_picker = M.open
+
 -- TODO:
 M.add_directory = function(state, callback)
     ui.add_node(state, {force_dir=true})
