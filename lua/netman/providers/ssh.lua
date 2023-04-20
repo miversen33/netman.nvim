@@ -2060,6 +2060,125 @@ function M.search(uri, cache, param, opts)
     return M.internal.find(uri, host, opts)
 end
 
+function M.write_a(uri, cache, data, callback)
+    local host = nil
+    if uri.__type and uri.__type == 'netman_uri' then
+        uri = uri.uri
+    end
+    local validation = M.internal.validate(uri, cache)
+    if validation.error then return validation end
+    uri = validation.uri
+    host = validation.host
+    local complete_func = function()
+        callback({success = true, data = {uri = uri}}, true)
+    end
+
+    local error_func = function(message)
+        message = message or "Unknown error encountered during async write"
+        callback({success = false, message = { message = message}})
+    end
+
+    local stat_func = function(call_chain)
+        logger.debugf("Checking to see if %s was created", uri:to_string('remote'))
+        local cb = function(response)
+            if not response then
+                logger.warn(string.format("Unable to locate newly created %s", uri:to_string('remote')), response)
+                return error_func(string.format("Unable to stat newly directory %s", uri:to_string('remote')))
+            end
+            local _, resolved_uri = next(response)
+            if not _ then
+                logger.warn(string.format("Stat returned nothing for %s", uri:to_string('remote')), response)
+                return error_func(string.format("Unable to stat newly created %s", uri:to_string('remote')))
+            end
+            uri = resolved_uri
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+                return
+            end
+        end
+        local handle = host:stat(uri, nil, { async = true, finish_callback = cb})
+        callback({handle = handle})
+        return handle
+    end
+
+    local push_data_func = function(call_chain)
+        -- I wonder if we can push this into a luv work thread?
+        data = data or {}
+        data = table.concat(data, '')
+        local local_file = string.format("%s%s", local_files, uri.unique_name)
+        logger.debugf("Saving data to local file %s", local_file)
+        local fh = io.open(local_file, 'w+')
+        assert(fh, string.format("Unable to open local file %s for %s", local_file, uri:to_string('remote')))
+        assert(fh:write(data), string.format("Unable to write to local file %s for %s", local_file, uri:to_string('remote')))
+        assert(fh:flush(), string.format('Unable to save local file %s for %s', local_file, uri:to_string('remote')))
+        assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
+
+        local cb = function(response)
+            if not response.success then
+                logger.warn(string.format("Received error while trying to upload data to %s", uri:to_string('remote')), response)
+                return error_func(response.error)
+            end
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+            end
+        end
+        local write_opts = {
+            finish_callback = cb,
+            async = true
+        }
+        local handle = host:put(local_file, uri, write_opts)
+        callback({handle = handle})
+        return handle
+    end
+
+    local touch_func = function(call_chain)
+        logger.debugf("Creating file %s", uri:to_string('remote'))
+        local cb = function(response)
+            if not response.success then
+                logger.warn(string.format("Received error while trying to create %s", uri:to_string('remote')), response)
+                return error_func(response.error)
+            end
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+                return
+            end
+        end
+        local handle = host:touch(uri, {async = true, finish_callback = cb})
+        callback({handle = handle})
+        return handle
+    end
+
+    local mkdir_func = function(call_chain)
+        logger.debugf("Creating directory %s", uri:to_string('remote'))
+        local cb = function(response)
+            if not response.success then
+                logger.warn(string.format("Received error while trying to create %s", uri:to_string('remote')), response)
+                return error_func(response.error)
+            end
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+                return
+            end
+        end
+        local handle = host:mkdir(uri, { async = true, finish_callback = cb})
+        callback({handle = handle})
+        return handle
+    end
+    -- As a first pass POC, this _works_ but it feels icky
+    if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
+        -- Using the observed type based on the string name
+        -- as it might not exist and thus we can't stat to
+        -- figure out what it is...
+        return mkdir_func({stat_func, complete_func})
+    else
+        return touch_func({stat_func, push_data_func, complete_func})
+    end
+end
+
 function M.write(uri, cache, data, opts)
     opts = opts or {}
     local host = nil
