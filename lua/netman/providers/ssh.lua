@@ -2190,12 +2190,12 @@ function M.write(uri, cache, data, opts)
             }
         end
         local _ = host:stat(uri)
-        if not _ then
+        if not _ or not _.success then
             return {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string()) }
+                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string('remote')) }
             }
         end
-        local _, _stat = next(_)
+        local _stat = _.data
         return {
             success = true, uri = _stat.URI
         }
@@ -2225,16 +2225,15 @@ function M.write(uri, cache, data, opts)
             }
             return
         end
-        local ___ = host:stat(uri)
-        local _, stat = next(___)
-        if not _ then
+        local _ = host:stat(uri)
+        if not _ or not _.success then
             return_details = {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string()) }
+                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string('remote')) }
             }
         else
             return_details = {
                 success = true,
-                uri = stat.URI
+                uri = _.data.URI
             }
         end
         -- Provide a way to return this inside this callback if the user reqeusts it
@@ -2298,7 +2297,7 @@ function M.get_metadata(uri, cache)
     if stat.success then
         local _ = nil
         _, stat = next(stat.data)
-        if not stat then return string.format("Unable to get stat details for %s", uri:to_string()) end
+        if not stat then return string.format("Unable to get stat details for %s", uri:to_string('remote')) end
         return stat
     end
     return stat.error
