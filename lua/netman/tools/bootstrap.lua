@@ -52,6 +52,27 @@ for key, _ in pairs(package.loaded) do
     preloaded_packages[key] = 1
 end
 
+local _gprint = _G.print
+local clean_string = function(...)
+    local args = { n = select("#", ...), ...}
+    local formatted_args = {}
+    for i=1, args.n do
+        local item = select(i, ...)
+        if not item then item = 'nil' end
+        local t_item = type(item)
+        if t_item == 'table' or t_item == 'function' or t_item == 'userdata' then
+            item = inspect(item)
+        else
+            item = string.format("%s", item)
+        end
+        table.insert(formatted_args, item)
+    end
+    return table.concat(formatted_args, ' ')
+end
+_G.print = function(...)
+    _gprint(clean_string(...))
+end
+
 local print = function(...)
     -- quick way to allow for "hushing" the output
     if not _G._QUIET then
