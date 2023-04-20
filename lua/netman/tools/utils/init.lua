@@ -197,6 +197,13 @@ function M.branch_deprecated()
     M.get_system_logger().warnnf("This branch of Netman has been deprecated. It will be removed on the end of %s. Please consider moving back to Main or to one of the other dev branches.", M.deprecation_date)
 end
 
+-- Nifty little function to get the current callstack
+function M.get_current_callstack(callstack_offset)
+    callstack_offset = callstack_offset or 2
+    local callstack = debug.traceback("", callstack_offset)
+    return callstack
+end
+
 function M.deep_copy(in_table)
     -- Yoinked from https://stackoverflow.com/a/640645/2104990
     local orig_type = type(in_table)
