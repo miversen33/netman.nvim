@@ -801,6 +801,7 @@ end
 ---     host:mkdir('/tmp/testdir1')
 function SSH:mkdir(locations, opts)
     opts = opts or {}
+    local return_data = nil
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     -- It may be worth having this do something like
     -- test -d location || mkdir -p location
@@ -813,13 +814,26 @@ function SSH:mkdir(locations, opts)
         table.insert(__, location)
     end
     locations = __
-    local output = self:run_command(mkdir_command, { no_shell = true })
-    if output.exit_code ~= 0 and not opts.ignore_errors then
-        local _error = string.format("Unable to make %s", table.concat(locations, ' '))
-        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
-        return { success = false, error = _error }
+    local finish_callback = function(output)
+        logger.trace(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to make %s", table.concat(locations, ' '))
+            logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+            return_data = { success = false, error = _error }
+            if callback then callback(return_data) end
+            return
+        end
+        return_data = { success = true }
+        if callback then callback(return_data) end
     end
-    return { success = true }
+    local output = self:run_command(mkdir_command, {
+        no_shell = true,
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    })
+    if opts.async then return output end
+    return return_data
 end
 
 --- @param locations table
@@ -1791,6 +1805,7 @@ function M.internal.validate(uri, cache)
 end
 
 function M.internal.read_directory(uri, host, callback)
+    logger.tracef("Reading %s as directory", uri:to_string("remote"))
     local find_cmd = 'stat -L -c \\|MODE=%f,BLOCKS=\\>%b,BLKSIZE=\\>%B,MTIME_SEC=\\>%X,USER=%U,GROUP=%G,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%s,TYPE=%F,NAME=%n\\|'
 
     local partial_output = {}
@@ -1829,11 +1844,16 @@ function M.internal.read_directory(uri, host, callback)
         end
     end
     local exit_callback = function()
+        logger.debugf("Completed read of directory %s", uri:to_string('remote'))
         if #partial_output > 0 then
+            logger.trace("Partial output still left to be processed after completion. Processing now...")
             -- Force cleanup of any data left
             stdout_callback(table.concat(partial_output, ''), true)
         end
-        if callback then callback(nil, true) end
+        if callback then
+            logger.trace("Sending complete signal to callback")
+            callback(nil, true)
+        end
     end
     local async = callback and true or false
     local opts = {
@@ -1855,6 +1875,7 @@ function M.internal.read_directory(uri, host, callback)
 end
 
 function M.internal.read_file(uri, host, callback)
+    logger.tracef("Reading %s as file", uri:to_string('remote'))
     local process_handle = function(handle)
         if handle.success then
             return {
@@ -1904,11 +1925,12 @@ function M.read_a(uri, cache, callback)
     uri = validation.uri
     host = validation.host
     -- This should really be asynchronous
+    logger.debugf("Checking type of %s to determine how to read it", uri:to_string('remote'))
     local stat = host:stat(uri, { M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE})
     if not stat.success then
         return {
             success = false,
-            error = {
+            message = {
                 message = stat.error
             }
         }
@@ -1918,8 +1940,8 @@ function M.read_a(uri, cache, callback)
     if not stat then
         return {
             success = false,
-            error = {
-                message = string.format("Unable to find stat results for %s", uri:to_string())
+            message = {
+                message = string.format("Unable to find stat results for %s", uri:to_string('remote'))
             }
         }
     end
@@ -1956,21 +1978,38 @@ function M.read(uri, cache)
         if _type == api_flags.READ_TYPE.FILE then
             -- The data we get back will be a bit different
             -- if we are handling an async file pull vs a directory stream
-            return_cache = data
+            return_cache = data.data
             complete = true
         else
-            table.insert(return_cache, data)
+            if data and data.data then
+                -- Guard rails for if we get nil data back
+                return_cache[data.data.URI] = data.data
+            end
         end
         if complete then read_return = return_cache end
     end
     local _ = M.read_a(uri, cache, callback)
+    if not _ or not _.handle then
+        -- Something happened, we didn't receive anything useful!
+        if _.error and _.error.message then
+            local message = _.error.message
+            logger.warn(string.format("Received error while trying to read %s: Error ", uri), message)
+            return {
+                success = false,
+                message = {
+                    message = message
+                }
+            }
+        end
+    end
     _type = _.type
     local handle = _.handle
+    local timeout = 5000
     local kill_timer = vim.loop.new_timer()
     -- This should probably be configurable
-    kill_timer:start(5000, 0, function()
+    logger.tracef("Setting terminator for %s seconds from now", timeout / 1000)
+    kill_timer:start(timeout, 0, function()
         dead = true
-        logger.debug({handle = handle})
         logger.warn(string.format("Read Handle took too long. Killing pid %s", handle.pid))
         handle.stop()
     end)
