@@ -792,7 +792,10 @@ end
 ---         A true/false on if we successfully created the directory
 ---     - error: string | Optional
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
----         it will not be returned. Ye be warned
+---     - async: boolean
+---         If provided, tells stat to run asynchronously. This affects the output of this function as we now will return a handle to the job instead of the data
+---     - finish_callback: function
+---         If provided, we will call this function with the output of mkdir. Note, we do _not_ stream the results.
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:mkdir('/tmp/testdir1')
@@ -1081,7 +1084,7 @@ function SSH:put(file, location, opts)
         -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
         -- if we get an error. Thus, error == gud
         if status == true then
-            local _, _stat = next(___)
+            local _stat = ___.data
             if _stat.TYPE ~= 'directory' then
                 logger.warn(_error)
                 file_name = location:to_string()
@@ -1264,7 +1267,7 @@ end
 ---     - NOTE: You will _always_ get `NAME` back, even if you explicitly tell us not to return
 ---     it. We use it to order the stat entries on return, so deal with it
 --- @param opts table | Optional
----     Defualt: {}
+---     Default: {}
 ---     - If provided, the following key/value pairs are acceptable
 ---         - async: boolean
 ---             - If provided, tells stat to run asynchronously. This affects the output of this function
