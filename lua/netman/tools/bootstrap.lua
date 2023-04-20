@@ -25,9 +25,11 @@ local status, json = pcall(require, "JSON")
 if status == nil or status == false then
     error("Unable to run bootstrapper without json. Please install json", 2)
 end
+local base_dir = luv.os_homedir() .. '/.local/share/nvim'
 local known_paths = {
-    luv.os_homedir() .. "/.local/share/nvim/site/pack/packer/start/netman.nvim/lua/",
-    luv.os_homedir() .. "/.local/share/nvim/site/pack/plugins/opt/netman.nvim/lua/"
+    luv.os_homedir() .. '/git/netman.nvim/lua/',
+    base_dir .. '/pack/packer/start/netman.nvim/lua/',
+    base_dir .. '/pack/plugins/opt/netman.nvim/lua/',
 }
 local netman_path = nil
 for _, path in ipairs(known_paths) do
