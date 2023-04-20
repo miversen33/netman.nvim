@@ -229,6 +229,7 @@ function Shell.new_async_handler(type, handler_opts)
             handler_opts:send(data)
         end
         handle.stop = function(force)
+            handle.is_active = false
             -- It looks like plenary jobs don't have a force option. Omitting for now
             -- Also the function expects a code and signal.
             local signal = force and 9 or 15
