@@ -849,7 +849,6 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
         end
     end
     local opts = {}
-    local dun = false
     opts.force = force
     local protected_callback = function(data, complete)
         local success, error = pcall(output_callback, data, complete)
@@ -857,12 +856,19 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
             logger.warn("Async output processing experienced a failure!", error)
         end
     end
+    local return_handle = M.internal.wrap_shell_handle()
     opts.callback = function(data, complete, _force)
         -- Short circuit in case we are killed while still processing
-        if dun then return end
-
+        if return_handle._stopped then return end
         -- If _force is provided, we will return whatever was
         -- provided to us. This is useful internally only.
+        -- Check to see if data has a handle attribute. If it does
+        -- replace our existing handle reference with that one
+        if data and data.handle then
+            logger.debug("Received new handle reference from provider during async read. Updating our handle pointer")
+            return_handle._handle = data.handle
+            return
+        end
         if _force then
             protected_callback(data, complete)
             return
@@ -903,7 +909,6 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
         end
         protected_callback({data = return_data, type = data.type}, complete)
     end
-    local return_handle = M.internal.wrap_shell_handle()
 
     local do_provider_read = function()
         if return_handle._stopped then
