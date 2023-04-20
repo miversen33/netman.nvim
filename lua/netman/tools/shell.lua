@@ -150,6 +150,10 @@ Shell.CONSTANTS = {
 ---         - This is the job id that is provided via :h jobstart
 ---
 --- @return table
+---     - is_active boolean
+---         - A bolean to indicate if the process handle is active.
+---         - This will be true by default, so if it is false,
+---         - you can assume that the process has ended for _some reason_
 ---     - pid integer
 ---         - The current process pid
 ---     - read function
@@ -182,6 +186,7 @@ Shell.CONSTANTS = {
 function Shell.new_async_handler(type, handler_opts)
     -- We could probably break this into it separate functions but 🤷
     local handle = {
+        is_active = true,
         pid = nil,
         read = nil,
         write = nil,
@@ -230,6 +235,7 @@ function Shell.new_async_handler(type, handler_opts)
             handler_opts:shutdown(-1, signal)
         end
         handler_opts:add_exit_callback(function(code, signal)
+            handle.is_active = false
             handle.exit_code = code
             handle.exit_signal = signal
             handle.__dun = true
@@ -252,6 +258,7 @@ function Shell.new_async_handler(type, handler_opts)
         end
         assert(handler_opts.add_exit_callback, "No add exit_callback provided with async handle!")
         handler_opts.add_exit_callback(function(exit_info)
+            handle.is_active = false
             handle.exit_code = exit_info.exit_code
             handle.exit_signal = exit_info.signal
             handle.__dun = true
@@ -260,6 +267,7 @@ function Shell.new_async_handler(type, handler_opts)
             end
         end)
         handle.add_exit_callback = function(callback)
+            handle.is_active = false
             if handle.__dun then
                 callback(handle.exit_code, handle.exit_signal)
                 return
