@@ -746,6 +746,10 @@ end
 --- @param opts table | Optional
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
+---     - async: boolean
+---         If provided, tells touch to run asynchronously. This affects the output of this function as we now will return a handle to the job instead of tahe data
+---     - finish_callback: function
+---         If provided, we will call this function with the output of touch. Note, we do _not_ stream the results. Highly recommended if you also provide `opts.async`
 ---     - ignore_errors: boolean
 ---         - If provided, we will not complain one bit when things explode :)
 --- @return table
@@ -758,8 +762,16 @@ end
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:touch('/tmp/testfile.txt')
+---     -- Or async
+---     host:touch('/tmp/testfile.txt', {
+---         async = true,
+---         finish_callback = function(output)
+---             print(output)
+---         end
+---     })
 function SSH:touch(locations, opts)
     opts = opts or {}
+    local return_data = nil
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     local touch_command = { "touch" }
     local __ = {}
@@ -769,13 +781,25 @@ function SSH:touch(locations, opts)
         table.insert(__, location)
     end
     locations = __
-    local output = self:run_command(touch_command, { no_shell = true })
-    if output.exit_code ~= 0 and not opts.ignore_errors then
-        local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
-        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
-        return { success = false, error = _error }
+    local finish_callback = function(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
+            logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+            return_data = { success = false, error = _error }
+            if callback then callback(return_data) end
+            return
+        end
+        return_data = { success = true }
+        if callback then callback(return_data) end
     end
-    return { success = true }
+    local output = self:run_command(touch_command, {
+        no_shell = true,
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    })
+    if opts.async then return output end
+    return return_data
 end
 
 --- Creates a directory in the host
@@ -784,6 +808,10 @@ end
 --- @param opts table | Optional
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
+---     - async: boolean
+---         If provided, tells stat to run asynchronously. This affects the output of this function as we now will return a handle to the job instead of the data
+---     - finish_callback: function
+---         If provided, we will call this function with the output of mkdir. Note, we do _not_ stream the results.
 ---     - ignore_errors: boolean
 ---         - If provided, we will not complain one bit when things explode :)
 --- @return table
@@ -792,13 +820,16 @@ end
 ---         A true/false on if we successfully created the directory
 ---     - error: string | Optional
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
----     - async: boolean
----         If provided, tells stat to run asynchronously. This affects the output of this function as we now will return a handle to the job instead of the data
----     - finish_callback: function
----         If provided, we will call this function with the output of mkdir. Note, we do _not_ stream the results.
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:mkdir('/tmp/testdir1')
+---     -- Or async
+---     host:mkdir('/tmp/testdir1', {
+---         async = true,
+---         finish_callback = function(output)
+---             print(output)
+---         end
+---     })
 function SSH:mkdir(locations, opts)
     opts = opts or {}
     local return_data = nil
@@ -2064,6 +2095,7 @@ function M.write_a(uri, cache, data, callback)
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
+    logger.debug("Attempting write to", uri)
     host = validation.host
     local complete_func = function()
         callback({success = true, data = {uri = uri}}, true)
@@ -2075,18 +2107,15 @@ function M.write_a(uri, cache, data, callback)
     end
 
     local stat_func = function(call_chain)
-        logger.debugf("Checking to see if %s was created", uri:to_string('remote'))
         local cb = function(response)
-            if not response then
-                logger.warn(string.format("Unable to locate newly created %s", uri:to_string('remote')), response)
+            logger.debug("Stat Response", response)
+            if not response or not response.success or not response.data then
+                local _error = response.error and response.error or string.format("Unable to locate newly created %s", uri:to_string('remote'))
+                logger.warn(_error, response)
                 return error_func(string.format("Unable to stat newly directory %s", uri:to_string('remote')))
             end
-            local _, resolved_uri = next(response)
-            if not _ then
-                logger.warn(string.format("Stat returned nothing for %s", uri:to_string('remote')), response)
-                return error_func(string.format("Unable to stat newly created %s", uri:to_string('remote')))
-            end
-            uri = resolved_uri
+            local _, response_data = next(response.data)
+            uri = URI:new(response_data.URI, cache)
             if call_chain and #call_chain > 0 then
                 local next_call = table.remove(call_chain, 1)
                 next_call(call_chain)
@@ -2165,6 +2194,8 @@ function M.write_a(uri, cache, data, callback)
         return handle
     end
     -- As a first pass POC, this _works_ but it feels icky
+    -- Since this is all callback based async stuff, there
+    -- probably isn't a better way to handle this :(
     if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
         -- Using the observed type based on the string name
         -- as it might not exist and thus we can't stat to
@@ -2177,78 +2208,32 @@ end
 
 function M.write(uri, cache, data, opts)
     opts = opts or {}
-    local host = nil
-    local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
-    uri = validation.uri
-    host = validation.host
-    if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
-        local _ = host:mkdir(uri)
-        if not _.success then
-            return {
-                success = false, error = { message = _.error }
-            }
+    local handle = nil
+    local dead = false
+    local write_result = nil
+    local cb = function(response)
+        logger.debug("Response", response)
+        if response.success ~= nil then
+            write_result = response
         end
-        local _ = host:stat(uri)
-        if not _ or not _.success then
-            return {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string('remote')) }
-            }
-        end
-        local _stat = _.data
-        return {
-            success = true, uri = _stat.URI
-        }
+        if response.handle then handle = response.handle end
     end
-    -- Lets make sure the file exists?
-    local _ = host:touch(uri)
-    if not _.success then
-        return { success = false, error = { message = _.error or string.format("Unable to create %s", uri) } }
+    handle = M.write_a(uri, cache, data, cb)
+    -- TODO: Make this configurable??????
+    local timeout = 10000
+    logger.tracef("Setting terminator for %s seconds from now", timeout / 1000)
+    local kill_timer = vim.loop.new_timer()
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Read Handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not write_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
     end
-    data = data or {}
-    data = table.concat(data, '')
-    local local_file = string.format("%s%s", local_files, uri.unique_name)
-    local fh = io.open(local_file, 'w+')
-    assert(fh, string.format("Unable to open local file %s for %s", local_file, uri:to_string('remote')))
-    assert(fh:write(data), string.format("Unable to write to local file %s for %s", local_file, uri:to_string('remote')))
-    assert(fh:flush(), string.format('Unable to save local file %s for %s', local_file, uri:to_string('remote')))
-    assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
-    local return_details = nil
-    local finish_callback = function(status)
-        return_details = status
-        if status.error then
-            return_details = {
-                success = false,
-                error = {
-                    message = status.error
-                }
-            }
-            return
-        end
-        local _ = host:stat(uri)
-        if not _ or not _.success then
-            return_details = {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string('remote')) }
-            }
-        else
-            return_details = {
-                success = true,
-                uri = _.data.URI
-            }
-        end
-        -- Provide a way to return this inside this callback if the user reqeusts it
-        -- return return_details
-    end
-    local write_opts = {
-        finish_callback = finish_callback,
-        async = opts.async or false
-    }
-    -- WARN: This should fail on async as we immediately check to see if the put was successful or not....
-    local _ = host:put(local_file, uri, write_opts)
-    if not _.success then
-        return_details = { uri = return_details.uri or nil, success = false, error = { message = _.error } }
-    end
-    return return_details
+    kill_timer:stop()
+    return write_result or { success = false, message = { message = "Unknown error occured during write"}}
 end
 
 function M.delete(uri, cache)
