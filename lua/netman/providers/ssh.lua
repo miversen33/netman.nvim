@@ -2276,20 +2276,46 @@ function M.close_connection(uri, cache)
     
 end
 
-function M.get_metadata(uri, cache)
+function M.get_metadata_a(uri, cache, flags, callback)
     local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    local stat = host:stat(uri)
-    if stat.success then
-        local _ = nil
-        _, stat = next(stat.data)
-        if not stat then return string.format("Unable to get stat details for %s", uri:to_string('remote')) end
-        return stat
+    local cb = function(response)
+        if not response or not response.success or not response.data then
+            local _error = string.format("Unable to get metadata for %s", uri:to_string('remote'))
+            logger.warnn(_error)
+            logger.error(response)
+            callback({success = false, message = { message = _error }})
+            return
+        end
+        local _, stat = next(response.data)
+        callback({ success = true, data = stat })
     end
-    return stat.error
+    return host:stat(uri, flags, { async = true, finish_callback = cb})
+end
+
+function M.get_metadata(uri, cache, flags)
+    local stat_result = nil
+    local dead = false
+    local timeout = 2000
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        stat_result = response
+    end
+    local handle = M.get_metadata_a(uri, cache, flags, cb)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Stat handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not stat_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return stat_result or { success = false, message = { message = "Unknown error occured during stat"}}
 end
 
 function M.update_metadata(uri, cache, updates)
