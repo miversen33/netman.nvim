@@ -66,20 +66,26 @@ function M.read(...)
     end
 end
 
-function M.write(uri)
+function M.write(uri, callback)
     uri = uri or vim.fn.expand('%')
     if uri == nil then
         logger.errorn("Write Incomplete! Unable to parse uri for buffer!")
         return
     end
     local buffer_index = vim.fn.bufnr(uri)
-    local status = api.write(buffer_index, uri)
-    if not status.success then
-        logger.errorn(status.error.message)
-        logger.error(status)
-        return
+    local cb = function(status)
+        if not status.success then
+            logger.errorn(status.message.message)
+            logger.error(status)
+            if callback then callback({ success = false}) end
+            return
+        end
+        vim.defer_fn(function()
+            vim.api.nvim_command('sil! set nomodified')
+        end, 1)
+        if callback then callback({ success = true}) end
     end
-    vim.api.nvim_command('sil! set nomodified')
+    api.write(buffer_index, uri, nil, cb)
 end
 
 function M.delete(uri)
