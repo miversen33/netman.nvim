@@ -41,7 +41,7 @@ function M.read(...)
                     )
                     return
                 else
-                    logger.errorn(string.format("Netman Error: %s", data.error.message))
+                    logger.warnn(string.format("Netman Error: %s", data.error.message))
                     logger.infon("See netman logs for more details. :h Nmlogs")
                 end
             end
@@ -75,7 +75,7 @@ function M.write(uri, callback)
     local buffer_index = vim.fn.bufnr(uri)
     local cb = function(status)
         if not status.success then
-            logger.errorn(status.message.message)
+            logger.warnn(status.message.message)
             logger.error(status)
             if callback then callback({ success = false}) end
             return
