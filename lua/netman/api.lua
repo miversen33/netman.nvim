@@ -1286,7 +1286,10 @@ function M.internal._write_sync(uri, provider, cache, is_connected, lines)
     if not response.success then
         logger.warn(string.format("Provider %s indicated a failure while trying to write to %s", provider.name, uri), response)
     end
-    return response
+    return {
+        success = response.success,
+        async = false
+    }
 end
 
 function M.write(buffer_index, uri, options, callback)
