@@ -759,7 +759,7 @@ end
 ---     Failure to connect to the provider for this check,
 ---     or a false response from the provider will both return
 ---     false on this call
-function M.has_connection_to_uri_host(uri, provider, cache)
+function M.internal.has_connection_to_uri_host(uri, provider, cache)
     local orig_uri = uri
     if not provider or not cache then
         uri, provider, cache = M.internal.validate_uri(uri)
@@ -837,6 +837,7 @@ end
 ---         --    }
 ---     }
 function M.internal._read_async(uri, provider, cache, is_connected, output_callback, force)
+    logger.infof("Attempting asynchronous read of %s", uri)
     local required_async_commands = {'read_a'}
     if not provider then
         logger.errorf("No provider provided for %s", uri)
@@ -976,6 +977,7 @@ function M.internal._read_async(uri, provider, cache, is_connected, output_callb
 end
 
 function M.internal._read_sync(uri, provider, cache, is_connected, force)
+    logger.infof("Attempting synchronous read of %s", uri)
     assert(provider, "No provider provided to read")
     if not is_connected and provider.connect then
         local connected = provider.connect(uri)
@@ -1151,7 +1153,7 @@ function M.read(uri, opts, callback)
     if not uri or not provider then
         return {
             success = false,
-            error = string.format("Unable to read %s or unable to find provider for it", orig_uri)
+            message = string.format("Unable to read %s or unable to find provider for it", orig_uri)
         }
     end
     opts = opts or {}
@@ -1172,12 +1174,10 @@ function M.read(uri, opts, callback)
         logger.trace('Short circuiting provider reach out')
         return _data
     end
-    is_connected = M.has_connection_to_uri_host(uri, provider, cache)
+    is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
     if callback and provider.read_a then
-        logger.infof("Attempting asynchronous read of %s", uri)
         return M.internal._read_async(uri, provider, cache, is_connected, callback, opts.force)
     else
-        logger.infof("Attempting synchronous read of %s", uri)
         return M.internal._read_sync(uri, provider, cache, is_connected, opts.force)
     end
 end
@@ -1214,7 +1214,6 @@ function M.internal._write_async(uri, provider, cache, is_connected, lines, outp
         end
         -- There is alot less bloat here as writes are pretty simple
         protected_callback(data, complete)
-        return
     end
     local do_provider_write = function()
         if return_handle._stopped then
@@ -1312,7 +1311,7 @@ function M.write(buffer_index, uri, options, callback)
             end
         end
     end
-    local is_connected = M.has_connection_to_uri_host(uri, provider, cache)
+    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
     if callback and provider.write_a then
         -- Asynchronous provider write
         logger.infof("Attempting asynchronous write to %s", uri)
@@ -1557,12 +1556,96 @@ function M.delete(uri)
     M._providers.file_cache[uri] = nil
 end
 
-function M.get_metadata(uri, metadata_keys)
+function M.internal._get_metadata_async(uri, provider, cache, is_connected, metadata_keys, force, callback)
+    local return_handle = nil
+    logger.infof("Attempting asynchronous get metadata of %s", uri)
+    assert(provider, "No provider provided to get_metadata")
+    logger.infof("Reaching out to %s to get metadata for %s", provider.name, uri)
+    local cb = function(response)
+        if not response or not response.success or not response.data then
+            local _err = response.message and response.message.message or "Unknown error occured during get metadata"
+            callback({success = false, message = { message = _err }})
+            return
+        end
+        local metadata = {}
+        for _, key in ipairs(metadata_keys) do
+            metadata[key] = response.data[key] or nil
+        end
+        callback({ success = true, data = metadata, async = true })
+    end
+    local function do_provider_get_metadata()
+        return_handle = provider.get_metadata_a(uri, cache, metadata_keys, cb)
+    end
+    if not is_connected and provider.connect_a then
+        local handle = provider.connect_host_a(
+            uri,
+            cache,
+            function(success)
+                if not success then
+                    logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+                end
+                do_provider_get_metadata()
+            end
+        )
+        if not handle then
+            logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing async connect host", provider.name)
+            provider.connect_host_a = nil
+        end
+        return_handle = M.internal.wrap_shell_handle(handle)
+    else
+        do_provider_get_metadata()
+    end
+    return return_handle
+end
+
+function M.internal._get_metadata_sync(uri, provider, cache, is_connected, metadata_keys, force)
+    logger.infof("Attempting synchronous get metadata of %s", uri)
+    logger.trace("Metadata Keys", metadata_keys)
+    assert(provider, "No provider provided to get_metadata")
+    if not is_connected and provider.connect then
+        local connected = provider.connect(uri)
+        if not connected then
+            logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+        end
+    end
+    logger.infof("Reaching out to %s to get metadata for %s", provider.name, uri)
+    local provider_metadata = provider.get_metadata(uri, cache, metadata_keys) or {}
+    logger.debug("Response", provider_metadata)
+    if not provider_metadata.success then
+        return {
+            success = false,
+            async = false,
+            message = {
+                message =
+                    provider_metadata.message and provider_metadata.message.message
+                    or string.format("Provider reported error occured while getting metadata for %s", uri)
+            }
+        }
+    end
+    local metadata = {}
+    for _, key in ipairs(metadata_keys) do
+        metadata[key] = provider_metadata.data[key] or nil
+    end
+    return {
+        success = true,
+        data = metadata,
+        async = false
+    }
+end
+
+function M.get_metadata(uri, metadata_keys, options, callback)
+    options = options or {}
+    local orig_uri = uri
+    metadata_keys = metadata_keys or {}
     local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
-    if not uri then return nil end
-    if not metadata_keys then
-        metadata_keys = {}
+    uri, provider, cache, _ = M.internal.validate_uri(uri)
+    if not uri or not provider then
+        return {
+            success = false,
+            message = string.format("Unable to get metadata for %s or unable to find provider for it", orig_uri)
+        }
+    end
+    if #metadata_keys == 0 then
         for key, _ in pairs(netman_options.explorer.STANDARD_METADATA_FLAGS) do
             table.insert(metadata_keys, key)
         end
@@ -1578,12 +1661,13 @@ function M.get_metadata(uri, metadata_keys)
             table.insert(sanitized_metadata_keys, key)
         end
     end
-    local provider_metadata = provider.get_metadata(uri, cache, sanitized_metadata_keys) or {}
-    local metadata = {}
-    for _, key in ipairs(sanitized_metadata_keys) do
-        metadata[key] = provider_metadata[key] or nil
+    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
+    if callback and provider.get_metadata_a then
+        return M.internal._get_metadata_async(uri, provider, cache, is_connected, metadata_keys, options.force, callback)
+    else
+        return M.internal._get_metadata_sync(uri, provider, cache, is_connected, metadata_keys, options.force)
     end
-    return metadata
+
 end
 
 -- TODO: (Mike): Do a thing with this?
