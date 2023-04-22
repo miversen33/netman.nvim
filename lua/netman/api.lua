@@ -1549,14 +1549,90 @@ function M.search(uri, param, opts)
     return data
 end
 
-function M.delete(uri)
+function M.internal._delete_async(uri, provider, cache, is_connected, callback)
+    local return_handle = nil
+    logger.infof("Attempting asynchronous delete of %s", uri)
+    assert(provider, "No provider provided to delete")
+    logger.infof("Reaching out to %s to delete %s", provider.name, uri)
+    local cb = function(response)
+        if not response or not response.success then
+            local _err = response.message and response.message.message or "Unknown error occured during delete"
+            callback({success = false, message = { message = _err }})
+            return
+        end
+        callback({ success = true })
+    end
+    local function do_provider_delete()
+        return_handle = provider.delete_a(uri, cache, cb)
+    end
+    if not is_connected and provider.connect_host_a then
+        local handle = provider.connect_host_a(
+            uri,
+            cache,
+            function(success)
+                if not success then
+                    logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+                end
+                do_provider_delete()
+            end
+        )
+        if not handle then
+            logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing async connect host", provider.name)
+            provider.connect_host_a = nil
+        end
+        return_handle = M.internal.wrap_shell_handle(handle)
+    else
+        do_provider_delete()
+    end
+    return return_handle
+end
+
+function M.internal._delete_sync(uri, provider, cache, is_connected)
+    logger.infof("Attempting synchronous delete of %s", uri)
+    assert(provider, "No provider provided to get_metadata")
+    if not is_connected and provider.connect then
+        local connected = provider.connect(uri, cache)
+        if not connected then
+            logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+        end
+    end
+    logger.infof("Reaching out to %s delete %s", provider.name, uri)
+    local response = provider.delete(uri, cache)
+    if not response.success then
+        local _error =
+            response.message and response.message.message
+            or string.format("Provider reported error while trying to delete %s", uri)
+        return {
+            success = false,
+            async = false,
+            message = { message = _error }
+        }
+    end
+    return {
+        success = true,
+        async = false
+    }
+end
+
+function M.delete(uri, callback)
+    local orig_uri = uri
     local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
-    if not uri or not provider then return nil end
-    logger.info(string.format("Reaching out to %s to delete %s", provider.name, uri))
-    -- Do this asynchronously
-    provider.delete(uri, cache)
+    uri, provider, cache, _ = M.internal.validate_uri(uri)
+    if not uri or not provider then
+        return {
+            success = false,
+            message = string.format("Unable to get metadata for %s or unable to find provider for it", orig_uri)
+        }
+    end
+    -- Even if we are unsuccessful, we should at least delete the local
+    -- cached version
     M._providers.file_cache[uri] = nil
+    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
+    if callback and provider.delete_a then
+        return M.internal._delete_async(uri, provider, cache, is_connected, callback)
+    else
+        return M.internal._delete_sync(uri, provider, cache, is_connected)
+    end
 end
 
 function M.internal._get_metadata_async(uri, provider, cache, is_connected, metadata_keys, force, callback)
