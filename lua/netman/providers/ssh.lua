@@ -1380,12 +1380,17 @@ function SSH:stat(locations, target_flags, opts)
             if r_locations:len() > 0 then
                 _error = _error .. ' ' .. r_locations
             end
+            local suberror = nil
             if
                 output.stderr:match('No route to host')
                 or output.stderr:match('Could not resolve hostname')
             then
-                _error = string.format("Unable to connect to ssh host %s", self.host)
+                suberror = string.format("Unable to connect to ssh host %s", self.host)
             end
+            if output.stderr:match('No such file or directory') then
+                suberror = "No such file or directory"
+            end
+            if suberror then _error = string.format("%s: %s", _error, suberror) end
             logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code, stdout = output.stdout})
             return_details = { error = _error, success = false}
             if callback then callback(return_details) end
