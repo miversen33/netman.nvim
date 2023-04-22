@@ -980,7 +980,7 @@ function M.internal._read_sync(uri, provider, cache, is_connected, force)
     logger.infof("Attempting synchronous read of %s", uri)
     assert(provider, "No provider provided to read")
     if not is_connected and provider.connect then
-        local connected = provider.connect(uri)
+        local connected = provider.connect(uri, cache)
         if not connected then
             logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
         end
@@ -1277,7 +1277,7 @@ function M.internal._write_sync(uri, provider, cache, is_connected, lines)
     end
     if not is_connected and provider.connect then
         logger.infof("Attempting provider %s connect to host of %s", provider.name)
-        if not provider.connect(uri) then
+        if not provider.connect(uri, cache) then
             logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
         end
     end
@@ -1682,7 +1682,7 @@ function M.internal._get_metadata_sync(uri, provider, cache, is_connected, metad
     logger.trace("Metadata Keys", metadata_keys)
     assert(provider, "No provider provided to get_metadata")
     if not is_connected and provider.connect then
-        local connected = provider.connect(uri)
+        local connected = provider.connect(uri, cache)
         if not connected then
             logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
         end
