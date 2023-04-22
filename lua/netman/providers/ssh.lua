@@ -880,6 +880,12 @@ end
 ---         - If provided, we will try to force the removal of the targets
 ---     - ignore_errors: boolean
 ---         - If provided, we will not complain one bit when things explode :)
+---     - async: boolean
+---         - If provided, we will run the rm command asynchronously. You will get a shell handle back instead of the
+---         - usual response.
+---     - finish_callback: function
+---         - If provided, we will call this with the output of the removal instead. Note, it is recommended to use
+---         - this with opts.async or you will not get any response from the job!
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
@@ -895,8 +901,14 @@ end
 ---     -- You can also also provide the `ignore_errors` flag if you don't care if this
 ---     -- works or not
 ---     host:rm('/tmp/somedir', {ignore_errors=true})
+---     -- You can also do the removal asynchronously
+---     host:rm('/tmp/somdir', {
+---         async = true,
+---         finish_callback = function(output) print("RM Output", vim.inspect(output) end)
+---     })
 function SSH:rm(locations, opts)
     opts = opts or {}
+    local return_data = nil
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     local rm_command = { 'rm', '-r' }
     if opts.force then table.insert(rm_command, '-f') end
@@ -916,13 +928,25 @@ function SSH:rm(locations, opts)
         table.insert(__, location:to_string())
     end
     locations = __
-    local output = self:run_command(rm_command, { no_shell = true })
-    if output.exit_code ~= 0 and not opts.ignore_errors then
-        local _error = string.format("Unable to remove %s", table.concat(locations, ' '))
-        logger.error(_error, { exit_code = output.exit_code, error = output.stderr })
-        return { success = false, error = _error }
+    local finish_callback = function(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to delete %s", table.concat(locations, ' '))
+            logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+            return_data = { success = false, error = _error }
+            if callback then callback(return_data) end
+            return
+        end
+        return_data = { success = true }
+        if callback then callback(return_data) end
     end
-    return { success = true }
+    local output = self:run_command(rm_command, {
+        no_shell = true,
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    })
+    if opts.async then return output end
+    return return_data
 end
 
 --- Runs find within the host
