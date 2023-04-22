@@ -2329,7 +2329,7 @@ function M.delete(uri, cache)
 end
 
 function M.connect_host(uri, cache)
-    -- Just run connect_a and block until complete
+    -- Just run connect__host_a and block until complete
     local connected = false
     local callback = function(success) connected = success end
     shell.join(M.connect_host_a(uri, cache, callback))
