@@ -88,12 +88,25 @@ function M.write(uri, callback)
     api.write(buffer_index, uri, nil, cb)
 end
 
-function M.delete(uri)
+function M.delete(uri, callback)
     if uri == nil then
         logger.warnn("No uri provided to delete!")
         return
     end
-    api.delete(uri)
+    local cb = function(status)
+        if not status.success then
+            logger.warnn(status.message.message)
+            logger.error(status)
+            if callback then callback({success = false}) end
+            return
+        end
+        if callback then
+            callback({success = true})
+        else
+            logger.infonf("Successfully deleted %s", uri)
+        end
+    end
+    api.delete(uri, cb)
 end
 
 function M.init()

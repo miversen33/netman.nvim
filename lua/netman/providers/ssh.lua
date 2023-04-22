@@ -2245,7 +2245,6 @@ function M.write(uri, cache, data, opts)
     local dead = false
     local write_result = nil
     local cb = function(response)
-        logger.debug("Response", response)
         if response.success ~= nil then
             write_result = response
         end
@@ -2269,13 +2268,68 @@ function M.write(uri, cache, data, opts)
     return write_result or { success = false, message = { message = "Unknown error occured during write"}}
 end
 
-function M.delete(uri, cache)
+function M.delete_a(uri, cache, callback)
     local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    return host:rm(uri, { force = true })
+    local handle = nil
+
+    local rm = function(response)
+        if not response or not response.success then
+            local _error =
+                response and response.error
+                or "Unknown error occured during removal"
+            callback({success = false, message = { message = _error }})
+            return
+        end
+        callback({success = true})
+    end
+
+    local handle_stat = function(response)
+        local successful_removal = not response or (response.error and response.error:match('No such file or directory') and true)
+        if successful_removal then
+            callback({success = true})
+            return
+        end
+        if response.error then
+            -- Something bad happened!
+            callback({success = false, message = { message = response.error or "Unknown error occured during check for location to remove"}})
+            return
+        end
+        handle = host:rm(uri, { async = true, finish_callback = rm })
+        callback({handle = handle})
+    end
+
+    handle = host:stat(uri, nil, { async = true, finish_callback = handle_stat})
+    return handle
+end
+
+function M.delete(uri, cache)
+    local delete_result = nil
+    local dead = false
+    local timeout = 2000
+    local handle = nil
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        if response.success ~= nil then
+            delete_result = response
+        end
+        if response.handle then handle = response.handle end
+    end
+    handle = M.delete_a(uri, cache, cb)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Delete handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not delete_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return delete_result or { success = false, message = { message = "Unknown error occured during removal"}}
 end
 
 function M.connect_host(uri, cache)
