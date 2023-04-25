@@ -1382,10 +1382,10 @@ function M.internal.group_uris(uris)
 end
 
 --- @see api.copy as this basically just does that (with the clean up option provided)
-function M.move(uris, target_uri, opts)
+function M.move(uris, target_uri, opts, callback)
     opts = opts or {}
     opts.cleanup = true
-    return M.copy(uris, target_uri, opts)
+    return M.copy(uris, target_uri, opts, callback)
 end
 
 --- @param uris table | string
@@ -1404,7 +1404,429 @@ end
 ---         success: boolean,
 ---         error: { message = "Error that occurred during rename "} -- (Optional)
 ---     }
-function M.copy(uris, target_uri, opts)
+
+function M.internal.copy_async(target_uri, grouped_uris, target_provider, target_cache, callback, command)
+    -- Some more verification that we _can_ do this asynchronously, otherwise
+    -- we need to return whatever M.internal.copy_sync does
+    logger.info(string.format("Attempting to perform %s to %s", command, target_uri))
+    local temp_dir = require("netman.tools.utils").tmp_dir
+    local dead = false
+    local archives = {}
+    local failed_providers = {}
+    local connect_handles = {}
+    local pull_handles = {}
+    local extract_handle = nil
+
+    local function cleanup()
+        if #archives > 0 then
+            for _, archive in ipairs(archives) do
+                local success, err = pcall(vim.loop.fs_unlink, archive.path)
+                if not success then
+                    logger.warn(string.format("Unable to remove %s. Error: %s", archive.path, err))
+                end
+            end
+        end
+    end
+
+    local function do_error(message, details)
+        dead = true
+        cleanup()
+        local m = message and { message = message } or nil
+        if m then
+            logger.warn(message, details)
+        end
+        callback({success = false, message = m})
+    end
+
+    local function extract()
+        -- If there is a connect_handle we should probably wait until its nil????
+        if dead then return end
+        local function extract_callback()
+            if dead then return do_error() end
+            cleanup()
+            callback({success = true})
+        end
+        extract_handle = target_provider.archive.put_a(
+            target_uri,
+            target_cache,
+            archives,
+            function(response)
+                if dead then return do_error() end
+                if not response or not response.success then
+                    local message =
+                        response and response.message and response.message.message
+                        or string.format("Unknown error occured during" ..
+                            " extract of %s", target_uri)
+                    do_error(message, { uri = target_uri, archives = archives, response = response })
+                    return
+                end
+                extract_callback()
+            end
+        )
+    end
+
+    local function do_pull()
+        logger.warn("Dumping Callstack\n", utils.get_current_callstack())
+        if dead then return end
+        local function pull_callback(provider)
+            pull_handles[provider] = nil
+            if dead or next(pull_handles) then return end
+            extract()
+        end
+        -- For some reason this is calling back to `connect_host_a_callback` after completion...
+        local available_compression_schemes = target_provider.archive.schemes(target_uri, target_cache)
+
+        for provider, data in pairs(grouped_uris) do
+            logger.tracef("Reaching out to %s to get archive for %s", provider.name, table.concat(data.uris, ', '))
+            -- TODO: Check if provider is target and attempt internal move/copy???
+            pull_handles[provider] = provider.archive.get_a(
+                data.uris,
+                data.cache,
+                temp_dir,
+                available_compression_schemes,
+                function(response)
+                    if dead then return do_error() end
+                    if not response or not response.success then
+                        local message =
+                            response and response.message and response.message.message
+                            or string.format("Unknown error occured during" ..
+                            " pull of %s", table.concat(data.uris, ', '))
+                        do_error(message, { uris = data.uris, response = response })
+                        return
+                    end
+                    if not response.data then
+                        local message =
+                            response.message and response.message.message
+                            or string.format("Provider %s did not return "
+                            .. "a valid archive package back!", provider.name)
+                        do_error(message, { uris = data.uris, provider = provider, response = response})
+                        return
+                    end
+                    -- TODO: Validate the archive?
+                    table.insert(archives, response.data)
+                    pull_callback(provider)
+                end
+            )
+        end
+    end
+
+    local function do_precheck()
+        local failed = false
+        -- Little bit of preparing the table
+        connect_handles[target_uri] = true
+        for _, data in pairs(grouped_uris) do
+            for _, uri in ipairs(data.uris) do
+                connect_handles[uri] = true
+            end
+        end
+        local function connect_host_a_callback(uri)
+            connect_handles[uri] = nil
+            -- Still connections processing
+            if dead or next(connect_handles) then return end
+            logger.debug("Connection Checking Complete. Moving on to archive step")
+            do_pull()
+        end
+        for provider, data in pairs(grouped_uris) do
+            if provider.connect_host and not provider.connect_host_a then
+                -- Cannot complete asynchronously!
+                table.insert(failed_providers, provider.name)
+                failed = true
+            elseif provider.connect_host_a then
+                for _, uri in ipairs(data.uris) do
+                    if failed then break end
+                    -- If we have a "dead", we should immediately stop
+                    logger.tracef("Reaching out to %s to ensure host connection for %s", provider.name, uri)
+                    connect_handles[uri] = provider.connect_host_a(
+                        uri,
+                        data.cache,
+                        function(success)
+                            if dead then return do_error() end
+                            if not success then
+                                logger.warnf("Provider %s did not indicate success on connect to host %s", provider.name, uri)
+                            end
+                            connect_host_a_callback(uri)
+                        end
+                    )
+                end
+            end
+        end
+        if target_provider.connect_host and not target_provider.connect_host_a then
+            table.insert(failed_providers, target_provider.name)
+            failed = true
+            connect_host_a_callback(target_uri)
+        elseif not failed then
+            connect_handles[target_uri] = target_provider.connect_host_a(
+            target_uri,
+            target_cache,
+            function(success)
+                if dead then return do_error() end
+                if not success then
+                    logger.warnf("Provider %s did not inidicate success on connect to host of %s", target_provider.name, target_uri)
+                end
+                connect_host_a_callback(target_uri)
+            end
+            )
+        end
+        if #failed_providers > 0 or failed then
+            logger.warnf("Unable to complete %s asynchronously, the following providers are missing `connect_host_a` function", command, table.concat(failed_providers, ', '))
+            dead = true
+            return {
+                success = false,
+                async = false
+            }
+        end
+        failed_providers = {}
+    end
+    do_precheck()
+    return {
+        async = true,
+        stop = function(force)
+            dead = true
+            if #connect_handles > 0 then
+                for _, handle in pairs(connect_handles) do
+                    handle.stop(force)
+                end
+            end
+            if #pull_handles > 0 then
+                for _, handle in pairs(pull_handles) do
+                    handle.stop(force)
+                end
+            end
+            if extract_handle then
+                extract_handle.stop(force)
+            end
+            cleanup()
+        end
+    }
+end
+
+function M.internal.copy_sync(target_uri, grouped_uris, target_provider, target_cache, command)
+    local temp_dir = require("netman.tools.utils").tmp_dir
+    -- verify we got the right stuff
+    -- Check if the grouped_uris are connected
+    local checked_target = false
+    for provider, data in pairs(grouped_uris) do
+        if provider == target_provider then checked_target = true end
+        if provider.connect_host then
+            for _, uri in ipairs(data.uris) do
+                if not provider.connect_host(uri, data.cache) then
+                    logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+                end
+            end
+        end
+    end
+    if not checked_target and target_provider.connect_host then
+        if not target_provider.connect_host(target_uri, target_cache) then
+            logger.warnf("Provider %s did not inidicate success on connect to host of %s", target_provider.name, target_uri)
+        end
+    end
+    if grouped_uris[target_provider] then
+        if target_provider[command] then
+            local data = grouped_uris[target_provider]
+            logger.info(string.format("Attempting to %s uris (%s) internally in provider %s", command, table.concat(data.uris, ', '), target_provider.name))
+            local command_status = target_provider[command](data.uris, target_uri, target_cache)
+            if command_status.success then
+                grouped_uris[target_provider] = nil
+            end
+        else
+            logger.warnf("%s does not support internal %s. Attempting to force", target_provider.name, command)
+        end
+    end
+    if not next(grouped_uris) then
+        -- Nothing left to do
+        return { success = true, async = false }
+    end
+    local available_compression_schemes = target_provider.archive.schemes(target_uri, target_cache)
+    if available_compression_schemes.error then
+        local message = string.format("Received failure while looking for archive scheme formats on %s", target_provider.name)
+        logger.warn(message, available_compression_schemes, { target_uri = target_uri, grouped_uris = grouped_uris, target_provider = target_provider, command = command})
+        return {
+            success = false,
+            async = false,
+            message = { message = message }
+        }
+    end
+    -- WORK
+    local archives = {}
+    local failure = nil
+
+    local cleanup = function()
+        for _, archive in ipairs(archives) do
+            local success = pcall(vim.loop.fs_unlink, archive.path)
+            if not success then
+                logger.warn(string.format("Unable to remove %s", archive.path), {archive = archive})
+            end
+        end
+    end
+
+    for provider, data in pairs(grouped_uris) do
+        local archive_data = provider.archive.get(data.uris, data.cache, temp_dir, available_compression_schemes)
+        if not archive_data or not archive_data.success then
+            local message = archive_data and archive_data.message or "Unknown error occured during archival of source uris"
+            logger.warn(message)
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data then
+            local message = archive_data.message or string.format("Provider did not return archival of %s", table.concat(data.uris))
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data.name then
+            local message = archive_data.message or string.format("Provider returned invalid archival of %s. Archive missing name", table.concat(data.uris))
+            return {
+                success = false,
+                async = true,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data.path then
+            local message = archive_data.message or string.format("Provider returned invalid archival of %s. Archive missing path", table.concat(data.uris))
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data.compression then
+            local message = archive_data.message or string.format("Provider returned invalid archival of %s. Archive missing compression scheme", table.concat(data.uris))
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        table.insert(archives, { path = archive_data.data.path, name = archive_data.data.name, compression = archive_data.data.compression } )
+        if command == 'move' then
+            for _, uri in ipairs(data.uris) do
+                local status = provider.delete(uri, data.cache)
+                if not status or not status.success then
+                    local message = status and status.message or string.format("Provider (%s) reported error while cleaning %s", provider.name, uri)
+                    logger.warn(message, { uri = uri, provider = provider, response = status})
+                    failure = {
+                        success = false,
+                        async = false,
+                        message = { message = message }
+                    }
+                end
+            end
+        end
+    end
+
+    if failure then
+        cleanup()
+        return failure
+    end
+
+    local result = target_provider.archive.put(target_uri, target_cache, archives)
+    if not result or not result.success then
+        local message = result and result.message or string.format("Unable to put archived data on target provider %s", target_provider.name)
+        logger.warn(message, { uri = target_uri, provider = target_provider, archives = archives })
+        cleanup()
+        return {
+            success = false,
+            async = false,
+            message = { message = message }
+        }
+    end
+    cleanup()
+    return {
+        success = true,
+        async = false
+    }
+end
+
+--- @param uris table | string
+---     The uris to copy. This can be a table of strings or a single string
+--- @param target_uri string
+---     The uri to copy the uris to
+--- @param opts table | Optional
+---     Default: {}
+---     Any options for the copy function. Valid options 
+---         - cleanup
+---             - If provided, we will tell the originating provider to delete the origin uri after copy
+---             has been completed
+--- @return table
+---     Returns a table with the following information
+---     {
+---         success: boolean,
+---         error: { message = "Error that occurred during rename "} -- (Optional)
+---     }
+function M.copy(uris, target_uri, opts, callback)
+    opts = opts or {}
+    local async = callback and true or false
+    local command = opts.cleanup and 'move' or 'copy'
+    -- \/==========================PREWORK==========================\/
+    if type(uris) == 'string' then uris = { uris } end
+    local _, target_provider, target_cache = M.internal.validate_uri(target_uri)
+    if not target_provider then
+        local _error = string.format("Unable to locate provider for %s", target_uri)
+        logger.error(_error, {uris = uris, target_uri = target_uri, opts = opts, command = command})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    if not target_provider.archive or not target_provider.archive.put then
+         local _error = string.format("Target provider %s did not implement archive.put, unable to push archives for mass copy/move", target_provider.name)
+        logger.error(_error, { uris = uris, target_uri = target_uri, target_provider = target_provider, opts = opts, command = command})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    -- If the target provider does not have put_a then we cannot run async, even if the user requested it to be
+    if not target_provider.archive.put_a then async = false end
+    local grouped_uris = M.internal.group_uris(uris)
+    if not grouped_uris then
+        local _error = string.format("Unable to preprocess uris")
+        logger.error(_error, { uris = uris, target_uri = target_uri, opts = opts, command = command})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    local failed_providers = {}
+    for provider, _ in pairs(grouped_uris) do
+        if not provider.archive or not provider.archive.get then
+            table.insert(failed_providers, provider.name)
+        end
+        -- If one of the source providers does not have a get_a function then we cannot run async, even if the user requested it to be
+        if not provider.archive.get_a then
+            async = false
+        end
+    end
+    if #failed_providers > 0 then
+        local _error = string.format("Provider(s) %s did not implement archive.get, unable to pull archives for mass copy/move", table.concat(failed_providers))
+        logger.error(_error, { uris = uris, target_uri = target_uri, groups = grouped_uris, opts = opts})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    -- /\==========================PREWORK==========================/\
+    -- \/=========================POSTWORK==========================\/
+    if async then
+        local result = M.internal.copy_async(target_uri, grouped_uris, target_provider, target_cache, callback, command)
+        -- If the result doesn't say its async, thats because it failed additional
+        -- async checks.
+        if not result or not result.async then
+            return M.internal.copy_sync(target_uri, grouped_uris, target_provider, target_cache, command)
+        else
+            return result
+        end
+    else
+        return M.internal.copy_sync(target_uri, grouped_uris, target_provider, target_cache, command)
+    end
+end
+--- @deprecated
+function M._copy(uris, target_uri, opts)
     opts = opts or {}
     if type(uris) == 'string' then uris = { uris } end
     local grouped_uris = M.internal.group_uris(uris)
@@ -1482,7 +1904,7 @@ function M.copy(uris, target_uri, opts)
             -- TODO: Consider a way to let the archival resume on failure if the user wishes...?
             return archive_data
         end
-        local status = target_provider.archive.put(target_uri, target_cache, archive_data.archive_path, archive_data.scheme)
+        local status = target_provider.archive.put(target_uri, target_cache, archive_data.archive_path, archive_data.compression)
         if status.error then
             local message = string.format("Received error from %s while trying to upload archive", target_provider.name)
             logger.warnn(message)
