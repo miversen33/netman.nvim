@@ -280,7 +280,7 @@ function SSH:_get_archive_availability_details()
         end
     end
     extract_commands['tar.gz'] = function(location, archive)
-        local pre_format_command = "tar -oC %s -xzf %s"
+        local pre_format_command = "tar -C %s -oxzf %s"
         return string.format(pre_format_command, location:to_string(), archive)
     end
     archive_commands['tar'] = archive_commands['tar.gz']
@@ -472,9 +472,10 @@ function SSH:archive(locations, archive_dir, compatible_scheme_list, provider_ca
         [command_flags.STDOUT_FILE_OVERWRITE] = true,
         [command_flags.EXIT_CALLBACK] = finish_callback,
         -- Turning off stdout pipe as STDOUT is being dumped to a file
-        [command_flags.STDOUT_PIPE_LIMIT] = 0
+        [command_flags.STDOUT_PIPE_LIMIT] = 0,
+        [command_flags.ASYNC] = opts.async and true or false,
+        [command_flags.STDOUT_FILE] = string.format("%s/%s", archive_dir, archive_name)
     }
-    if opts.async then command_options[command_flags.ASYNC] = true end
     -- TODO
     -- if opts.remote_dump then
     --     -- This probably doesn't work
@@ -482,7 +483,6 @@ function SSH:archive(locations, archive_dir, compatible_scheme_list, provider_ca
     --         archive_name)
     --     archive_path = string.format("ssh://%s///%s/%s", self.host, archive_dir, archive_name)
     -- else
-    command_options[command_flags.STDOUT_FILE] = string.format("%s/%s", archive_dir, archive_name)
     -- end
     local run_details = self:run_command(compress_command, command_options)
     if not opts.async then return return_details else return run_details end
@@ -495,8 +495,6 @@ end
 ---     The location to extract to
 --- @param scheme string
 ---     The scheme the archive is compressed with
---- @param provider_cache table
----     The cache that netman.api provided you
 --- @param opts table | Optional
 ---     Default: {}
 ---     A list of options to be used when extracting. Available key/values are
@@ -505,8 +503,6 @@ end
 ---             that finish_callback is used with this
 ---         - ignore_errors: boolean
 ---             If provided, we will not output any errors we get
----         - remote_dump: boolean
----             Indicates that the archive is already on the host
 ---         - cleanup: boolean
 ---             Indicates that we need to delete the archive after successful extraction
 ---         - finish_callback: function
@@ -526,8 +522,8 @@ end
 ---     -- Additionally, it assumes that `/tmp/some.tar.gz` exists on the local machine
 ---     local host = SSH:new('user@host')
 ---     host:extract('/tmp/some.tar.gz', '/tmp/', 'tar.gz', cache)
----     -- TODO: Add an example of how to do an extract with a Pipe...
-function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
+-- -     -- TODO: Add an example of how to do an extract with a Pipe...
+function SSH:extract(archive, target_dir, scheme, opts)
     opts = opts or {}
     local return_details = {}
     local run_details = {}
@@ -551,18 +547,6 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
     end
     assert(target_dir.__type and target_dir.__type == 'netman_uri',
         string.format("%s is not a valid netman uri", target_dir))
-    -- If the archive isn't remote, we will want to craft a different command to extract it.
-    local extract_command = nil
-    local cleanup = nil
-    local mkdir_status = self:mkdir(target_dir, { force = true })
-    if not mkdir_status or not mkdir_status.success then
-        return_details = { success = false, error = mkdir_status.error or SSH.CONSTANTS.MKDIR_UNKNOWN_ERROR }
-        if opts.finish_callback then
-            opts.finish_callback(return_details)
-            return
-        end
-        return return_details
-    end
     local finish_callback = function(command_output)
         logger.trace(command_output)
         if command_output.exit_code ~= 0 then
@@ -571,7 +555,10 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
         end
-        if cleanup then cleanup() end
+        if opts.cleanup then
+            ---@diagnostic disable-next-line: param-type-mismatch, missing-parameter
+            self:rm(archive)
+        end
         return_details = { success = true }
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
@@ -582,55 +569,11 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
         [command_flags.STDOUT_PIPE_LIMIT] = 0,
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
-    if not opts.remote_dump then
-        -- There is no way for us to do this command "asynchronously" as we have to perform the commands in sync
-        opts.async = false
-        -- This is going to cat the contents of the archive into docker in an
-        -- "interactive" session, which will pipe into the provided command.
-        local fh = io.open(archive, 'r+b')
-        if not fh then
-            local _error = string.format("Unable to read %s", archive)
-            if not opts.ignore_errors then logger.warn(_error) end
-            return { error = _error, success = false }
-        end
-        extract_command = {}
-        for _, _command in ipairs(self.console_command) do
-            table.insert(extract_command, _command)
-        end
-        table.insert(extract_command, '/bin/sh')
-        table.insert(extract_command, '-c')
-        table.insert(extract_command, string.format("'%s'", extraction_function(target_dir, '-')))
-        if opts.cleanup then
-            cleanup = function()
-                vim.loop.fs_unlink(archive)
-            end
-        end
-        local command = shell:new(extract_command, command_options)
-        command:run()
-        local stream = nil
-        while true do
-            -- NOTE:
-            -- We will probably want to tweak this a bit to get better
-            -- performance. Also keep in mind that we will eventually
-            -- allow passing in PIPES to read straight through from
-            -- STDOUT from on provider into STDIN in another provider
-            stream = fh:read(SSH.CONSTANTS.IO_BYTE_LIMIT)
-            if not stream then break end
-            command:write(stream)
-        end
-        fh:close()
-        command:close()
-    else
-        extract_command = extraction_function(target_dir, archive)
-        if opts.cleanup then
-            cleanup = function()
-                ---@diagnostic disable-next-line: param-type-mismatch, missing-parameter
-                self:rm(archive, provider_cache)
-            end
-        end
-        run_details = self:run_command(extract_command, command_options)
+    local handle = self:run_command(extraction_function(target_dir, archive), command_options)
+    if not opts.async then
+        return handle
     end
-    if not opts.async then return return_details else return run_details end
+    return run_details
 end
 
 --- Copies location(s) to another location in the ssh
@@ -1134,7 +1077,7 @@ end
 function SSH:put(file, location, opts)
     opts = opts or {}
     local return_details = {}
-    assert(vim.loop.fs_stat(file), string.format("Unable to location %s", file))
+    assert(vim.loop.fs_stat(file), string.format("Unable to locate %s", file))
     if type(location) == 'string' then
         if not location:match(SSH.CONSTANTS.SSH_PROTO_GLOB) then
             -- A little bit of uri coalescing
@@ -2451,31 +2394,219 @@ function M.move(uris, target_uri, cache)
     return host:mv(validated_uris, target_uri)
 end
 
-function M.archive.get(uris, cache, archive_dump_dir, available_compression_schemes)
-    if type(uris) ~= 'table' or #uris == 0 then uris = { uris } end
+function M.archive.get_a(uris, cache, archive_dump_dir, available_compression_scheme, callback)
+    assert(uris, string.format("No uris provided to retrieve"))
+    logger.info(string.format("Asynchronously retreiving archive of %s and storing it in %s", table.concat(uris, ', '), archive_dump_dir))
     local host = nil
     local __ = {}
     for _, uri in ipairs(uris) do
         local validation = M.internal.validate(uri, cache)
         if validation.error then return validation end
         assert(host == nil or validation.host == host,
-            string.format("Host mismatch for archive! %s != %s", host, validation.host))
+            string.format("Host mismatch for archive! %s != %s", host, validation.host)
+        )
         table.insert(__, validation.uri)
-
         host = validation.host
     end
-    uris = __
-    return host:archive(uris, archive_dump_dir, available_compression_schemes, cache)
+    local _cb = function(response)
+        if not response or not response.success then
+            local message = response and response.message
+                or "Unknown erorr received during archive request"
+            logger.warn(message, response)
+            callback({
+                success = false,
+                message = { message = message }
+            })
+            return
+        end
+        callback({
+            success = true,
+            data = {
+                path = response.archive_path,
+                name = response.archive_name,
+                compression = response.scheme
+            }
+        })
+    end
+    logger.trace("Reaching out to host archive function")
+    return host:archive(uris, archive_dump_dir, available_compression_scheme, cache, { async = true, finish_callback = _cb})
 end
 
-function M.archive.put(uri, cache, archive, compression_scheme)
-    assert(archive, string.format("Invalid Archive provided for upload to %s", uri))
+function M.archive.get(uris, cache, archive_dump_dir, available_compression_schemes)
+    logger.info(string.format("Retrieving archive of %s and storing it in %s", table.concat(uris, ', '), archive_dump_dir))
+    local get_result = nil
+    local dead = false
+    local timeout = 10000
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        get_result = response
+    end
+    local handle = M.archive.get_a(uris, cache, archive_dump_dir, available_compression_schemes, cb)
+    logger.tracef("Starting Terminator for %s milliseconds", timeout)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Get handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not get_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return get_result or { success = false, message = { message = "Unknown error occured during get"}}
+end
+
+function M.archive.put_a(uri, cache, archives, callback)
+    assert(archives, string.format("No archives provided to upload to %s", uri))
+    if #archives == 0 then archives = { archives } end
+    local _err = string.format("Invalid archive provided to upload to %s", uri)
+    for _, archive in ipairs(archives) do
+        logger.trace("Validating Archive", archive)
+        assert(type(archive) == 'table', _err)
+        assert(archive.path, _err .. ": Missing Path attribute")
+        assert(archive.compression, _err .. ": Missing Compression attribute")
+        assert(archive.name, _err .. ": Missing Name attribute")
+    end
     local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    return host:extract(archive, uri, compression_scheme, cache)
+    local dead = false
+
+    local mkdir_handle = nil
+    local put_handles = {}
+    local extract_handles = {}
+    local extract_callback = function(archive)
+        extract_handles[archive] = nil
+        logger.trace(string.format("Processing Extraction Output of %s", archive), extract_handles)
+        -- Still extractions being processed or something dead
+        if dead or next(extract_handles) then return end
+        if callback then callback({success = true}) end
+    end
+
+    local extraction_function = function()
+        -- We don't have the name of the put file to extract 🙃
+        logger.info("Extracting remote archives")
+        for _, archive in ipairs(archives) do
+            extract_handles[archive.path] = host:extract(
+                string.format("%s/%s", uri:to_string('local'), archive.name),
+                uri,
+                archive.compression,
+                {
+                    async = true,
+                    cleanup = true,
+                    finish_callback = function(response)
+                        if not response or not response.success then
+                            local _error = response and response.error or "Unknown error occured during archive extraction"
+                            logger.warn(_error, response)
+                            if callback then
+                                callback({success = false, message = { message = _error}})
+                            end
+                            return
+                        end
+                        extract_callback(archive.path)
+                    end
+                }
+            )
+        end
+    end
+
+    local put_callback = function(archive)
+        put_handles[archive] = nil
+        -- Still puts being processed or something dead
+        if dead or next(put_handles) then return end
+        extraction_function()
+    end
+
+    local put_function = function()
+        logger.info("Pushing archive(s) up to remote", archives)
+        for _, archive in ipairs(archives) do
+            logger.trace("Pushing Archive up to remote", {archive = archive})
+            put_handles[archive.path] = host:put(
+                archive.path,
+                uri,
+                {
+                    new_file_name = archive.name,
+                    async = true,
+                    finish_callback = function(response)
+                        if not response or not response.success then
+                            -- Complain about failure and quit
+                            local _error = response and response.error or "Unknown error occured during archive upload"
+                            logger.warn(_error, response)
+                            if callback then
+                                callback({success = false, message = { message = _error}})
+                            end
+                            return
+                        end
+                        put_callback(archive.path)
+                    end
+                }
+            )
+        end
+    end
+
+    local mkdir_function = function()
+        logger.debugf("Ensuring %s exists", uri:to_string('remote'))
+        host:mkdir(
+            uri,
+            {
+                async = true,
+                finish_callback = function(response)
+                    if not response or not response.success then
+                        local _error = response and response.error or "Unknown error occured while creating remote directory"
+                        logger.warn(_error, response)
+                        if callback then
+                            callback({success = false, message = { message = _error}})
+                        end
+                        return
+                    end
+                    mkdir_handle = nil
+                    put_function()
+                end
+            }
+        )
+    end
+
+    mkdir_function()
+    return {
+        stop = function(force)
+            logger.warnf("Stopping all put activity! Force=%s", force or false)
+            dead = true
+            if mkdir_handle then mkdir_handle.stop(force) end
+            for _, handle in pairs(put_handles) do
+                handle.stop(force)
+            end
+            for _, handle in pairs(extract_handles) do
+                handle.stop(force)
+            end
+        end
+    }
+end
+
+function M.archive.put(uri, cache, archives)
+    local put_result = nil
+    local dead = false
+    local timeout = 10000
+    local handle = nil
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        if response.success ~= nil then
+            put_result = response
+        end
+    end
+    handle = M.archive.put_a(uri, cache, archives, cb)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Put handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not put_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return put_result or { success = false, message = { message = "Unknown error occured during put"}}
 end
 
 function M.archive.schemes(uri, cache)
