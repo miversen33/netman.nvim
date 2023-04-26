@@ -107,7 +107,7 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
         - `message`: string
             - The message to relay to the user
         - `retry`: boolean|function (optional)
-            - If provided, this will either be a boolean of a function. If its a boolean, it indicates that you should try calling whatever
+            - If provided, this will either be a boolean or a function. If its a boolean, it indicates that you should try calling whatever
             you called before again. If its a function, it expects the user input from the message to be provided to it so it can continue
             processing whatever it was doing.
 
