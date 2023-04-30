@@ -65,52 +65,6 @@ Most communication with the api will revolve around "uris". A [`uri`](#uri) is t
 
 The process of interfacing with the [`api`](#api) is outlined more in the [Developer Guide](https://github.com/miversen33/netman.nvim/wiki/Developer-Guide)
 
-## process_handle
-- Version Added: 1.02
-- Returns: table
-- Notes  
-    A process handle is a table that is returned by the API whenever a successful async operation has began with the provider. These handles are always returned in place of the "expected" output of a function. The handle contains the following key/value pairs
-    - `async`: boolean
-        - A boolean to indicate if the process is indeed asynchronous. This handle will always have this set to `true`, though
-        this value will also be returned by anything within the api where async is an option (and set to false accordingly).
-        - If this is true, you can assume that   
-            a) The requested process is indeed running asynchronously  
-            b) That you received an `process_handle`
-    - `read`: function(pipe)
-        - A function that will attempt to read from the process's underlying stdout/stderr pipe
-        - Note: this will be talking to the underlying [`netman.shell.async_handler`](https://github.com/miversen33/netman.nvim/tree/main/lua/netman/tools/utils#L93-L186) directly
-        - `pipe` (optional)
-            - A string that should be either `STDOUT` or `STDERR` to indicate which pipe you wish to read from
-        - Returns: table
-            - Returns a table of strings (may be empty if there is no output)
-    - `write`: function(data)
-        - A function that will attempt to write to the process's underlying stdin pipe
-        - Note: this will be talking to the underlying [`netman.shell.async_handler`](https://github.com/miversen33/netman.nvim/tree/main/lua/netman/tools/utils#L93-L186) directly
-        - `data` string
-            - A string of what you wish to write to stdin
-        - Returns: table
-            - Returns a table of strings (may be empty if there is no output)
-    - `stop`: function(force)
-        - A function that will attempt to stop to the underlying process
-        - Note: this will be talking to the underlying [`netman.shell.async_handler`](https://github.com/miversen33/netman.nvim/tree/main/lua/netman/tools/utils#L93-L186) directly
-        - `force` boolean
-            - A boolean to indicate if you wish for the process to be uncleanly (forced) killed  
-
-    If an async handle is returned, the callback will be called whenever the API receives information to provide to it. The parameter for these calls will be as follows. You may notice that all attributes are optional. This means that a callback can get any combination of these, however callback will _never_ be called with nothing. There will always be one or more of the below attributes in the parameter passed to it.
-    - `success`: boolean (optional)
-        - A boolean to indicate if the process completed successfully or not
-        - *This will be called when the process is complete and only when the process is complete*
-    - `data`: table (optional)
-        - A table containing data that matches the "return data" that you expected from the function you called. 
-    - `message`: table (optional)
-        - A table that can be provided to indicate there is some message to relay to the end user. It can have the following keys
-        - `message`: string
-            - The message to relay to the user
-        - `retry`: boolean|function (optional)
-            - If provided, this will either be a boolean or a function. If its a boolean, it indicates that you should try calling whatever
-            you called before again. If its a function, it expects the user input from the message to be provided to it so it can continue
-            processing whatever it was doing.
-
 ## init()
 - Version Added: 0.1
 - Updated      : 1.01
@@ -166,10 +120,9 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
     - `callback`
         - Type: function (optional)
         - Details: A function to call during the processing of `read`. Any data that would be returned will instead be streamed 
-        - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change your output 
-        to a [netman.api.process_handle](#process_handle) (unless async fails. Detailed in the [netman.api.process_handle](#process_handle))
+        - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change the return value to a process_handle. Detailed in the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example)
 - Returns
-    - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
+    - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use read asynchronously.
     - [`read`](#readuri-opts) returns a table that will have the following key/value pairs (some
       are optional)
         - success: boolean
@@ -242,8 +195,7 @@ Notes
 - `callback`
   - Type: function (optional)
   - Details: A function to call during the processing of `delete`. 
-  - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change your output 
-        to a [netman.api.process_handle](#process_handle) (unless async fails. Detailed in the [netman.api.process_handle](#process_handle))
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use delete asynchronously.
 - Returns: nil
 - Throws
     - "Unable to delete: " error
@@ -269,8 +221,7 @@ Notes
 - `callback`
   - Type: function (optional)
   - Details: A function to call during the processing of `write`. 
-  - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change your output 
-        to a [netman.api.process_handle](#process_handle) (unless async fails. Detailed in the [netman.api.process_handle](#process_handle))
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use write asynchronously.
 - Returns: Table
     - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
   - A table that contains the following key/value pairs
@@ -295,8 +246,7 @@ Notes
 - `callback`
   - Type: function (optional)
   - Details: A function to call during the processing of `rename`. 
-  - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change your output 
-        to a [netman.api.process_handle](#process_handle) (unless async fails. Detailed in the [netman.api.process_handle](#process_handle))
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use rename asynchronously.
 Returns: Table
     - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
     Returns a table that contains the following key/value pairs
@@ -324,8 +274,7 @@ Notes
 - `callback`
   - Type: function (optional)
   - Details: A function to call during the processing of `copy`. 
-  - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change your output 
-        to a [netman.api.process_handle](#process_handle) (unless async fails. Detailed in the [netman.api.process_handle](#process_handle))
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use copy asynchronously.
 - `opts`
     - Type: table
     - Details: A table of options that can be provided to the provider.
@@ -365,8 +314,7 @@ See [`copy`](#copyuris-target_uri-cache---table) as this definition is the exact
 - `callback`
   - Type: function (optional)
   - Details: A function to call during the processing of `get_metadata`. 
-  - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change your output 
-        to a [netman.api.process_handle](#process_handle) (unless async fails. Detailed in the [netman.api.process_handle](#process_handle))
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use get_metadata asynchronously.
 - Returns
     - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
     - `key`, `value` pairs table where the key is each item in `metadata_keys` and the `value` is what was returned by the provider
