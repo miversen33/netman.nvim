@@ -11,7 +11,7 @@ local M = {
     pid = nil,
     session_id = nil,
     os_sep = compat.sep,
-    os = compat.os
+    os = compat.os,
     deep_copy = nil,
     deprecation_date = nil
 }
