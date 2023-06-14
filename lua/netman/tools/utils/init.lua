@@ -3,24 +3,27 @@ local compat = require("netman.tools.compat")
 local M = {
     _inited = false,
     cache_dir = '',
-    tmp_dir = '/tmp/netman/',
+    tmp_dir = nil,
     files_dir = '',
     data_dir = '',
     socket_dir = '',
     logs_dir = '',
     pid = nil,
     session_id = nil,
-    deprecation_date = nil
+    deprecation_date = nil,
+    os_sep = compat.sep,
+    os = compat.os
 }
 
 local function create_dirs()
    -- TODO: Probably should figure out how to do this without need vim.fn
-    M.cache_dir = vim.fn.stdpath('cache') .. '/netman/'
-    M._remote_cache = M.cache_dir .. 'remote_files/'
-    M.files_dir = M._remote_cache .. M.pid .. '/'
-    M.data_dir  = vim.fn.stdpath('data')  .. '/netman/'
-    M.socket_dir = M.tmp_dir
-    M.logs_dir = M.data_dir .. 'logs'
+    M.cache_dir = string.format("%s%snetman%s", vim.fn.stdpath('cache'), M.os_sep, M.os_sep)
+    M._remote_cache = M.cache_dir .. 'remote_files' .. M.os_sep
+    M.files_dir = M._remote_cache .. M.pid .. M.os_sep
+    M.data_dir  = string.format("%s%snetman%s", vim.fn.stdpath('data'), M.os_sep, M.os_sep)
+    M.tmp_dir = M.cache_dir .. "tmp" .. M.os_sep
+    M.socket_dir = M.tmp_dir .. M.os_sep
+    M.logs_dir = M.data_dir .. 'logs' .. M.os_sep
     -- Iterate over each directory and ensure it exists
     for _, path in ipairs({M.cache_dir, M._remote_cache, M.files_dir, M.data_dir, M.tmp_dir, M.socket_dir, M.logs_dir}) do
         compat.mkdir(path, 'p')
@@ -84,6 +87,7 @@ local function clear_orphans(include_self)
     if include_self then
         logger.tracef("Cleaning up after ourself too! Pid: %s", M.pid)
     end
+    logger.trace("Found the following children to clean up", children)
     -- Integer to string comparisons don't work here
     local our_pid = string.format("%s", M.pid)
     for _, child_id in ipairs(children) do
@@ -118,6 +122,7 @@ local function setup()
     -- Seeding the random module for strings
     math.randomseed(os.time())
     M.pid = compat.uv.getpid()
+    create_dirs()
     if load_self() then
         -- cache file exists, read it in to get the location of stuff
         -- otherwise, hopefully vim.fn exists...
@@ -125,7 +130,6 @@ local function setup()
         return
     end
     M.session_id = M.generate_string(15)
-    create_dirs()
     serialize_self()
     -- This can probably be done asynchronously
     clear_orphans()
@@ -159,26 +163,48 @@ end
 
 function M.is_process_alive(pid)
     local command_flags = require("netman.tools.shell").CONSTANTS.FLAGS
-    local command = {'kill', '-0', pid}
-
+    local command = {}
+    local check_output = nil
+    if M.os == 'windows' then
+        command = {'wmic', 'process', 'where', string.format("ProcessID = %s", pid), 'get', 'processid'}
+        check_output = function(output)
+            local stdout = output.stdout
+            local stderr = output.stderr
+            local has_error = stderr and stderr:len() > 0
+            if
+                (stderr and stderr:len() > 0)
+                or not stdout
+                or stdout:match('No Instance') then
+                return false
+            end
+            return true
+        end
+    else
+        command = {'kill', '-0', pid}
+        check_output = function(output)
+            local stdout = output.stdout
+            local stderr = output.stderr
+            if stderr ~= '' or stdout ~= '' then
+                return false
+            end
+            return true
+        end
+    end
+    
     local command_options = {}
     command_options[command_flags.STDOUT_JOIN] = ''
     command_options[command_flags.STDERR_JOIN] = ''
     local command_output = require("netman.tools.shell"):new(command, command_options):run()
-    if command_output.stderr ~= '' or command_output.stdout ~= '' then
-        return false
-    end
-    return true
+    return check_output(command_output)
 end
 
 function M.get_real_path(path)
-    local logger = M.get_system_logger()
     if not path then return '' end
     -- Should make this OS agnostic
     local _path = {}
-    for node in path:gmatch('[^/]+') do
+    for node in path:gmatch(string.format('[^%s]+', M.os_sep)) do
         if node == '~' then
-            node = '$HOME'
+            node = compat.uv.os_homedir()
         end
         -- Stripping off leading `$`
         if node:match('^%$') then

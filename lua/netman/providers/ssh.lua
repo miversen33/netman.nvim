@@ -6,6 +6,7 @@ local string_generator = require("netman.tools.utils").generate_string
 local shell = require("netman.tools.shell")
 local command_flags = shell.CONSTANTS.FLAGS
 local local_files = require("netman.tools.utils").files_dir
+local utils = require("netman.tools.utils")
 
 local logger = require("netman.tools.utils").get_provider_logger()
 
@@ -137,23 +138,26 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh._put_command, _ssh._auth_details.key)
     end
 
-    table.insert(_ssh.console_command, '-o')
-    table.insert(_ssh.console_command, 'ControlMaster=auto')
-    table.insert(_ssh._put_command, '-o')
-    table.insert(_ssh._put_command, 'ControlMaster=auto')
+    if utils.os ~= 'windows' then
+        -- Sorry Windows users, windows doesn't support ssh multiplexing :(
+        table.insert(_ssh.console_command, '-o')
+        table.insert(_ssh.console_command, 'ControlMaster=auto')
+        table.insert(_ssh._put_command, '-o')
+        table.insert(_ssh._put_command, 'ControlMaster=auto')
 
-    table.insert(_ssh.console_command, '-o')
-    table.insert(_ssh.console_command,
-        string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
-    table.insert(_ssh._put_command, '-o')
-    table.insert(_ssh._put_command,
-        string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        table.insert(_ssh.console_command, '-o')
+        table.insert(_ssh.console_command,
+            string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        table.insert(_ssh._put_command, '-o')
+        table.insert(_ssh._put_command,
+            string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
 
-    table.insert(_ssh.console_command, '-o')
-    table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
-    table.insert(_ssh._put_command, '-o')
-    table.insert(_ssh._put_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
-
+        table.insert(_ssh.console_command, '-o')
+        table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
+        table.insert(_ssh._put_command, '-o')
+        table.insert(_ssh._put_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
+    end
+    
     if _ssh._auth_details.user:len() > 0 then
         local _ = string.format('%s@%s', _ssh._auth_details.user, _ssh._auth_details.host)
         table.insert(_ssh.console_command, _)
