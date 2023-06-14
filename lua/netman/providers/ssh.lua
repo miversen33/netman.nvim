@@ -58,8 +58,8 @@ local SSH = {
             URI = 'URI'
         },
         SSH_CONNECTION_TIMEOUT = 10,
-        SSH_PROTO_GLOB = '^([sfthcp]+)://',
         SSH_SOCKET_FILE_NAME = '%C', -- Much more compressed way to represent the "same" connection details
+        SSH_PROTO_GLOB = '^([sfthcp]+)://',
         MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
     },
     internal = {
