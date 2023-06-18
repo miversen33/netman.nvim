@@ -101,16 +101,19 @@ function M.internal.wrap_shell_handle(handle)
     }
 
     function return_handle.read(pipe)
-        return return_handle._handle and return_handle._handle.read(pipe)
+        if return_handle._stopped or not return_handle._handle then return {} end
+        return return_handle._handle.read(pipe)
     end
 
     function return_handle.write(data)
-        return return_handle._handle and return_handle._handle.write(data)
+        if return_handle._stopped or not return_handle._handle then return end
+        return return_handle._handle.write(data)
     end
 
     function return_handle.stop(force)
+        if return_handle._stopped or not return_handle._handle then return end
         return_handle._stopped = true
-        return return_handle._handle and return_handle._handle.stop(force)
+        return return_handle._handle.stop(force)
     end
 
     return return_handle
