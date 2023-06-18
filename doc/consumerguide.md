@@ -7,6 +7,12 @@ If you're trying to figure out how to use netman for your own plugin, this is th
 - [How to request information from a URI](#requesting-information-from-a-uri)
   - [TLDR](#short-example)
   - [In Depth Details](#long-example)
+- [How to update the data behind that URI](#updating-data-for-a-uri)
+  - [TLDR](#short-update-example)
+  - [In Depth Details](#long-update-example)
+- [How to delete the data behind that URI](#updating-data-for-a-uri)
+  - [TLDR](#short-update-example)
+  - [In Depth Details](#long-update-example)
 - [How to move/copy your URI to a different URI]
 - [How to get the metadata for that URI]
 - How to modify the metadata for that URI - Coming Soon
@@ -29,6 +35,7 @@ local netman_api = require("netman.api")
 print(inspect(netman_api.read("ssh://a-really-cool-host///etc/nginx/nginx.conf")))
 ```
 
+<!-- Tag Stream or File -->
 In this case, we (as the reader) can safely assume that the output of this URI is likely to be either a `STREAM` or a `FILE`. These terms are documented more [in the api.read technical document](https://github.com/miversen33/netman.nvim/wiki/API-Documentation#readuri-opts). This means we _should_ see output matching in the following format
 
 ```lua
@@ -326,6 +333,82 @@ If `retry` is indicated, it will be either `true`, `false`, or a `function`.
 #### Return the Read Data
 
 As this is running asynchronously, there is nothing for us to return data wise. The return of `api.read` in this case is the [aforementioned handle](#asynchronous-example).
+
+# Updating Data for a URI
+
+Another very important thing a consumer will want to do is "update" a URI. That is, to update the contents of whatever is behind the URI. As an example, a user may want to add some new lines to a configuration located at `ssh://a-really-cool-host///etc/nginx/nginx.conf`. A consumer's job then is to tell Netman that you want to save new information in place of whatever is currently stored at that endpoint. This is done via the `api.write`, and `api.delete` functions within Netman's [api](https://github.com/miversen33/netman.nvim/wiki/API-Documentation#api)
+
+## Short Update Example
+
+Below is a small snippet to show you how to **synchronously** write to this URI
+
+```lua
+-- Defining a couple module imports
+local inspect = vim and vim.inspect and require("inspect")
+local netman_api = require("netman.api")
+print(inspect(netman_api.write('ssh://a-really-cool-host///etc/nginx/nginx.conf', {"new lines to overwrite config with"})))
+```
+
+```lua
+{
+  success = true
+}
+```
+
+## Short Update Return Explanation
+
+- success = true
+  - The write was completed successfully
+
+Congratulations! We have successfully updated the above nginx config using Netman's api and the core `ssh` provider. Remember, this is a synchronous write! So Neovim will lock up while the writing to the URI. This may be fine for small writes over a fast network, but typically you will find that you want this be ran in the background.
+
+## Async Updating
+
+Just like with [async reading](#async-reading), you can easily specify you want the provider to run its update (`write`/`delete`) asynchronously by simply adding a callback as an additional parameter. This changes the above call from
+
+```lua
+api.write('ssh://a-really-cool-host///etc/nginx/nginx.conf', {"new lines to overwrite config with"})
+```
+
+to
+
+```lua
+api.write(
+  'ssh://a-really-cool-host///etc/nginx/nginx.conf', 
+  {"new lines to overwrite config with"},
+  {},
+  function(data)
+    print(inspect(data))
+  end
+)
+```
+
+The `ASP` model is detailed more in [`API ASP Validation`](#api-asp-validation) and thus we won't go into it in depth here. Just remember, any asynchronous functionality in Netman's API will follow the `ASP` model. This includes `api.write` and `api.delete`.
+
+## Long Update Example
+
+[The above](#short-update-example) is a "short and sweet" explanation of how to quickly write to the resource behind a URI in Netman. Below will be more details on how this write command works, the steps the API walks through, and any events fired during the write process. The same general principals can be applied to `api.delete` and thus we will only be covering `write` here.
+
+### Synchronous Update Example
+
+```lua
+local inspect = vim and vim.inspect or require("inspect")
+local netman_api = require("netman.api")
+local uri = "ssh://a-really-cool-host///etc/nginx/nginx.conf"
+
+print(inspect(netman_api.write('ssh://a-really-cool-host///etc/nginx/nginx.conf', {"new lines to overwrite config with"})))
+
+-- Printed Response
+--  {
+--    success = true,
+-- }
+```
+
+To break this down, the `api.write`/`api.delete` function performs the following actions
+
+- [API Request Validation](#api-request-validation)
+- Call the provider's respective function (`write`/`delete`)
+- Return either a success table or async handle to the consumer, depending on the aforementioned `ASP validation` results.
 
 # API Request Validation
 
