@@ -85,7 +85,8 @@ function M.write(uri, callback)
         end, 1)
         if callback then callback({ success = true}) end
     end
-    api.write(buffer_index, uri, nil, cb)
+    local data = {type = 'buffer', index = buffer_index}
+    api.write(uri, data, nil, cb)
 end
 
 function M.delete(uri, callback)

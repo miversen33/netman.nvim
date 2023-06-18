@@ -69,7 +69,7 @@ M._providers = {
 
 M._explorers = {}
 
-M.version = 1.01
+M.version = 1.02
 
 local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
 local protocol_from_path_glob = '^([%w%-.]+)://'
@@ -1295,7 +1295,8 @@ function M.internal._write_sync(uri, provider, cache, is_connected, lines)
     }
 end
 
-function M.write(buffer_index, uri, options, callback)
+function M.write(uri, data, options, callback)
+    data = data or {}
     options = options or {}
     local provider, cache, lines = nil, nil, {}
     uri, provider, cache = M.internal.validate_uri(uri)
@@ -1308,14 +1309,16 @@ function M.write(buffer_index, uri, options, callback)
         }
     end
     logger.infof("Reaching out to %s to write %s", provider.name, uri)
-    if buffer_index then
-        lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
+    if data.type == 'buffer' then
+        lines = vim.api.nvim_buf_get_lines(data.index, 0, -1, false)
         -- Consider making this an iterator instead
         for index, line in ipairs(lines) do
             if not line:match('[\n\r]$') then
                 lines[index] = line .. '\n'
             end
         end
+    elseif data.type == 'content' then
+        lines = data.data
     end
     local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
     if callback and provider.write_a then
@@ -1338,7 +1341,7 @@ end
 ---     Returns a table with the following information
 ---     {
 ---         success: boolean,
----         error: { message = "Error that occurred during rename "} -- (Optional)
+---         message: { message = "Error that occurred during rename "} -- (Optional)
 ---     }
 function M.rename(old_uri, new_uri)
     local old_provider, new_provider, new_cache
