@@ -12,7 +12,6 @@ If you're trying to figure out how to use netman for your own plugin, this is th
 - How to modify the metadata for that URI - Coming Soon
 - [How to get the available providers within Netman]
 - [How to get the hosts available on each provider within Netman]
-- [Async In Depth]
 
 # Requesting Information from a URI
 
@@ -327,3 +326,44 @@ If `retry` is indicated, it will be either `true`, `false`, or a `function`.
 #### Return the Read Data
 
 As this is running asynchronously, there is nothing for us to return data wise. The return of `api.read` in this case is the [aforementioned handle](#asynchronous-example).
+
+# API Request Validation
+
+When a request is made to the API, it will perform the following steps to ensure the request is able to be processed.
+
+## Get the provider and cache for the URI
+
+The API will parse the URI and establish which provider (and associated cache) the URI belongs to. The parsing is done by a simple lua glob that pulls any word characters from the front of the URI until `://` is found. This glob `'^([%w%-.]+)://'` is what is used to determine the protocol of a provider. Once the protocol is found, the API will try to find a match with any of the registered providers.
+
+If a match cannot be found then you can expect a failure response on _any_ API command provided.
+
+## API ASP Validation
+
+After the provider has been established, the `ASP` validation is performed. `ASP` is short for `Ask, Say, Prove` and is the methodology that is followed by the API to ensure as safe an experience with provider asynchronous communication as possible. The following are the `ASP` steps broken out.
+
+  First, The API will check to see if the call is being requested as **asynchronous**. This is the `Ask` step in ASP.
+    A consumer must provider a callback parameter to the respective api function.
+  Next the provider needs to say it can perform the action asynchronously.
+    The provider must announce it supports the requested asynchronous function. **This is not something the consumer needs to be concerned about and is strictly listed here for clarity into the Async validation process within Netman's API**
+  The provider needs to prove it perform the requested asynchronous action.
+    The provider must return a valid asynchronous handle. Again, not something the consumer needs to worry about, but a provider failing to do this will render it unable to be used asynchronously by the API.
+
+This ask, say, prove (ASP) model is used to ensure as consistent an experience with asynchronous interaction as possible. If the consumer fails to ask for something to be ran asynchronously, it will not run asynchronously. If the provider fails to say it can run asynchronously, it will not run asynchronously. And finally, if the provider said it could but failed to prove it, then the api will remove its asynchronous capabilities for that function, preventing future bad behavior.
+
+Running requests asynchronously can be quite beneficial (and generally gives a performance increase on more painful operations within a provider). The biggest thing to remember is that even if you ask for the api to run something asynchronously, it may not be able to complete that for one reason or another. The data will still follow the async flow however. So you will still get a handle back, though the handle will not be interactable (as the handles under it will be completed and removed by the time you get it). Your data will be provided through the provided callback synchronously as opposed to asynchronously (in the event that we cannot run asynchronously). Etc.
+
+## API Async Return
+
+When calling a function asynchronously in Netman, Netman's API will actually mutate the return signature of said function. A function that is called asynchronously within Netman will always return with the same structure, regardless of what its _synchronous_ counterpart would return.
+
+```lua
+{
+  read = function(pipe: string) -> table,
+  write = function(data: table|string) -> nil,
+  stop = function(force: boolean) -> nil
+}
+```
+
+This structure will allow a consumer to interact with the underlying asynchronous process/processes without having to establish _which_ current process you need to deal with. All these functions are safe to call at any time in the life of the request.
+
+A note, a consumer _likely_ won't need to use `read` often as most of the time their callback should be passed any data they need to read. However, `read` _can_ be used to potentially view the underlying STDOUT/STDERR pipe if a developer is trying to troubleshoot something within their request process.
