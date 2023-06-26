@@ -3,6 +3,7 @@
 
 -- TODO: Ensure that we cant interact with search node unless its actively displayed....
 local logger = require("netman.ui").get_logger()
+local ui = require("netman.ui")
 local renderer = require("neo-tree.ui.renderer")
 local events = require("neo-tree.events")
 local neo_tree_utils = require("neo-tree.utils")
@@ -800,33 +801,23 @@ M.internal.create_ui_node = function(data)
 end
 
 M.internal.generate_providers = function(callback)
-    logger.trace("Fetching Netman Providers")
+    logger.tracef("Generating Providers")
+    local raw_providers = ui.get_providers()
     local providers = {}
-    for _, provider_path in ipairs(api.providers.get_providers()) do
-        local status, provider = pcall(require, provider_path)
-        if not status or not provider.ui then
-            -- Failed to import the provider for some reason
-            -- or the provider is not UI ready
-            if not provider.ui then
-                logger.info(string.format("%s is not ui ready, it is missing the ui attribute", provider_path))
-            end
-            goto continue
-        end
+    for provider_name, provider_details in pairs(raw_providers) do
         table.insert(providers, {
-            -- Provider's (in this context) are unique as they are 
-            -- import paths from netman.api
-            id = provider_path,
-            name = provider.name,
+            id = provider_details.path,
+            name = provider_name,
             type = M.constants.TYPES.NETMAN_PROVIDER,
             children = {},
             extra = {
+                hosts = provider_details.hosts,
                 expandable = true,
-                icon = provider.ui.icon or "",
-                highlight = provider.ui.highlight or "",
-                provider = provider_path,
+                icon = provider_details.ui.icon,
+                highlight = provider_details.ui.highlight,
+                provider = provider_details.path
             }
         })
-        ::continue::
     end
     table.sort(providers, M.internal.sorter.ascending)
     if callback and type(callback) == 'function' then
