@@ -46,7 +46,7 @@ M.icon = function(config, node, state)
     if not entry then
         return _icon
     end
-    if node.refresh then
+    if entry.refresh then
         _icon.text = M.internal.refresh_icon
     elseif node.type == 'netman_host' then
         -- Use this as a place to have the OS icon?
