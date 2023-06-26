@@ -1189,7 +1189,7 @@ M.navigate = function(state, opts)
         M.internal.generate_providers(function(children) process_children(node, children) end)
     elseif node.type == M.constants.TYPES.NETMAN_PROVIDER then
         -- They selected a provider node, we need to populate it
-        M.internal.generate_provider_children(node.extra.provider, function(children) process_children(node, children) end)
+        M.internal.generate_provider_children(node, function(children) process_children(node, children) end)
     else
         -- They selected a node provided by a provider, get its data
         M.internal.generate_node_children(state, node, {}, function(children) process_children(node, children, true) end)
