@@ -827,37 +827,44 @@ M.internal.generate_providers = function(callback)
     end
 end
 
-M.internal.generate_provider_children = function(provider, callback)
-    logger.tracef("Fetching %s hosts", provider)
-    local hosts = {}
-    for _, host in ipairs(api.providers.get_hosts(provider)) do
-        local host_details = api.providers.get_host_details(provider, host)
-        if not host_details then
-            logger.warn(string.format("%s did not return any details for %s", provider, host))
-            goto continue
+M.internal.generate_provider_children = function(node, callback)
+    logger.tracef("Fetching %s hosts", node.extra.provider)
+    if not node.extra.hosts then
+        logger.errorf("Something catastrophic has happened and our host fetching function for %s is missing!", node.extra.provider)
+        if callback then
+            callback({})
+        else
+            return {}
         end
-        table.insert(hosts, {
-            id = host_details.URI,
-            name = host_details.NAME,
-            type = "netman_host",
-            children = {},
-            extra = {
-                expandable = true,
-                state = host_details.STATE,
-                last_access = host_details.LAST_ACCESSED,
-                provider = provider,
-                host = host,
-                accessed = false,
-                uri = host_details.URI,
-                searchable = true,
-                required_nodes = {},
-                hidden_children = {},
-                entrypoint = host_details.ENTRYPOINT
-            }
-        })
-        ::continue::
     end
-    table.sort(hosts, M.internal.sorter.ascending)
+    local hosts = {}
+    local host_details_callback = function(raw_hosts)
+        for host, raw_host_details in pairs(raw_hosts) do
+            local host_details = raw_host_details()
+            logger.trace(string.format("Fetching %s details", host), host_details)
+            table.insert(hosts, {
+                id = host_details.uri,
+                name = host_details.name,
+                type = "netman_host",
+                children = {},
+                extra = {
+                    expandable = true,
+                    state = host_details.state,
+                    last_access = host_details.last_access,
+                    provider = node.extra.provider,
+                    host = host,
+                    accessed = false,
+                    uri = host_details.uri,
+                    searchable = true,
+                    required_nodes = {},
+                    hidden_children = {},
+                    entrypoint = host_details.entrypoint
+                }
+            })
+        end
+        table.sort(hosts, M.internal.sorter.ascending)
+    end
+    node.extra.hosts(host_details_callback)
     if callback and type(callback) == 'function' then
         callback(hosts)
     else
