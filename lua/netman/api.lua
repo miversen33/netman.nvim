@@ -1878,7 +1878,7 @@ function M.search(uri, param, opts)
 end
 
 function M.internal._delete_async(uri, provider, cache, is_connected, callback)
-    local return_handle = nil
+    local return_handle = M.internal.wrap_shell_handle()
     logger.infof("Attempting asynchronous delete of %s", uri)
     assert(provider, "No provider provided to delete")
     logger.infof("Reaching out to %s to delete %s", provider.name, uri)
@@ -1964,7 +1964,8 @@ function M.delete(uri, callback)
 end
 
 function M.internal._get_metadata_async(uri, provider, cache, is_connected, metadata_keys, force, callback)
-    local return_handle = nil
+    -- TODO: We should be using cache for this if we can.
+    local return_handle = M.internal.wrap_shell_handle()
     logger.infof("Attempting asynchronous get metadata of %s", uri)
     assert(provider, "No provider provided to get_metadata")
     logger.infof("Reaching out to %s to get metadata for %s", provider.name, uri)
