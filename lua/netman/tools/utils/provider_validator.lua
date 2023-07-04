@@ -96,13 +96,12 @@ function M.validate(provider)
         local wrapped_parent = wrapped_provider
         local subattr = nil
         for _ in attr:gmatch('([^.]+)') do
+            if subattr and not wrapped_provider[subattr] then
+                wrapped_provider[subattr] = {}
+                wrapped_provider = wrapped_provider[subattr]
+            end
             subattr = _
             parent = parent[subattr]
-            if type(parent) == 'table' then
-                wrapped_parent[subattr] = {}
-            else
-                wrapped_parent[subattr] = parent
-            end
             if not parent then
                 if metadata.required then
                     failed = true
