@@ -4,6 +4,7 @@ local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
 local logger = require("netman.tools.utils").get_system_logger()
 local rand_string = require("netman.tools.utils").generate_string
+local validator = require("netman.tools.utils.provider_validator").validate
 local compat = require("netman.tools.compat")
 
 local M = {}
@@ -2156,18 +2157,11 @@ function M.load_provider(provider_path)
         return
     end
     logger.info("Validating Provider: " .. provider_path)
-    local missing_attrs = nil
-    for _, required_attr in ipairs(_provider_required_attributes) do
-        if not provider[required_attr] then
-            if missing_attrs then
-                missing_attrs = missing_attrs .. ', ' .. required_attr
-            else
-                missing_attrs = required_attr
-            end
-        end
-    end
+    local validation_details = validator(provider)
+    logger.trace("Validated Provider -> ", validation_details.provider)
+    local missing_attrs = table.concat(validation_details.missing_attrs, ', ')
     logger.info("Validation finished")
-    if missing_attrs then
+    if #validation_details.missing_attrs > 0 then
         logger.error("Failed to initialize provider: " ..
             provider_path .. ". Missing the following required attributes (" .. missing_attrs .. ")")
         M._providers.uninitialized[provider_path] = {
@@ -2178,6 +2172,7 @@ function M.load_provider(provider_path)
         }
         return
     end
+    provider = validation_details.provider
     logger.trace("Initializing " .. provider_path .. ":" .. provider.version)
     M._providers.path_to_provider[provider_path] = { provider = provider,
         cache = cache_generator:new(cache_generator.MINUTE) }
