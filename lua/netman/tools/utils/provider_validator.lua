@@ -6,6 +6,9 @@ local _mock_provider = {
         required = true,
         type = 'string'
     },
+    init = {
+        type = 'function'
+    },
     protocol_patterns = {
         required = true,
         type = 'table'

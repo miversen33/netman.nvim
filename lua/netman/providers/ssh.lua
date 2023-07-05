@@ -1774,14 +1774,16 @@ function M.ui.get_host_details(config, host, provider_cache)
 end
 
 function M.internal.prepare_config(config)
+    logger.trace("Ensuring Provided SSH configuration has valid keys in it")
     if not config:get('hosts') then
         config:set('hosts', {})
         config:save()
     end
 end
 
-function M.internal.parse_user_sshconfig(config)
-    local config_location = string.format("%s/.ssh/config", vim.loop.os_homedir())
+function M.internal.parse_user_sshconfig(config, ssh_config)
+    local config_location = ssh_config or string.format("%s/.ssh/config", vim.loop.os_homedir())
+    logger.infof("Parsing ssh configuration %s", config_location)
     local _config = io.open(config_location, 'r')
     if not _config then
         logger.warn(string.format("Unable to open user ssh config: %s", config_location))
