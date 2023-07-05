@@ -220,6 +220,7 @@ M.new = function(opts)
             stack_info.short_src, stack_info.name, stack_info.currentline
         )
         if type(message) == 'table' then message = vim.inspect(message, {newline = '\n'}) end
+        if type(message) == 'function' then message = '<function>' end
         local log_parts = { message }
         if _opts.details then
             for _, detail in ipairs(_opts.details) do
