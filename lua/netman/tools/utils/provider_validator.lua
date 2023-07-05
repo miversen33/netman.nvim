@@ -96,9 +96,9 @@ function M.validate(provider)
         local wrapped_parent = wrapped_provider
         local subattr = nil
         for _ in attr:gmatch('([^.]+)') do
-            if subattr and not wrapped_provider[subattr] then
-                wrapped_provider[subattr] = {}
-                wrapped_provider = wrapped_provider[subattr]
+            if subattr and not wrapped_parent[subattr] then
+                wrapped_parent[subattr] = {}
+                wrapped_parent = wrapped_parent[subattr]
             end
             subattr = _
             parent = parent[subattr]
