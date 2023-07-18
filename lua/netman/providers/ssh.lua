@@ -1844,7 +1844,7 @@ function M.internal.read_directory(uri, host, callback)
                     METADATA = metadata
                 }
                 if callback then
-                    callback({type = api_flags.READ_TYPE.EXPLORE, data = obj})
+                    callback({type = api_flags.READ_TYPE.EXPLORE, data = {obj}})
                 else
                     table.insert(children, obj)
                 end
