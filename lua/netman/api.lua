@@ -544,7 +544,7 @@ end
 --- a `netman_provider_host_connect` event
 --- @param uri: string
 ---     The string URI to connect to
---- @param callback: function | Optional
+--- @param callback: function | nil
 ---     If provided, indicates that the connection event
 ---     should be asynchronous if possible.
 ---     NOTE: Even if it is impossible to asynchronously execute
@@ -556,10 +556,10 @@ end
 ---     {
 ---         message: string,
 ---         -- Whatever the message is,
----         process: function | Optional,
+---         process: function | nil,
 ---         -- If this is provided, call this function with whatever
 ---         -- response the user provides to the message that was provided
----         is_error: boolean | Optional
+---         is_error: boolean | nil
 ---         -- If provided, indicates that the message is an error
 ---     }
 ---     
@@ -650,7 +650,7 @@ end
 --- a `netman_provider_host_disconnect` event
 --- @param uri: string
 ---     The string URI to disconnect from
---- @param callback: function | Optional
+--- @param callback: function | nil
 ---     If provided, indicates that the disconnection event
 ---     should be asynchronous if possible.
 ---     NOTE: Even if it is impossible to asynchronously execute
@@ -662,10 +662,10 @@ end
 ---     {
 ---         message: string,
 ---         -- Whatever the message is,
----         process: function | Optional,
+---         process: function | nil,
 ---         -- If this is provided, call this function with whatever
 ---         -- response the user provides to the message that was provided
----         is_error: boolean | Optional
+---         is_error: boolean | nil
 ---         -- If provided, indicates that the message is an error
 ---     }
 ---     
@@ -961,13 +961,13 @@ end
 --- out to the underlying provider for repeat requests.
 --- @param uri string
 ---     The string representation of the remote resource URI
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     Options to provide to the provider. Valid options include
 ---     - force: boolean
 ---         If provided, indicates that we should invalidate any cached
 ---         instances of the URI before pull
---- @param callback function | Optional
+--- @param callback function | nil
 ---     Default: nil
 ---     If provided, we will attempt to treate the read request as asynchronous.
 ---     NOTE: this affects the return value!
@@ -1026,13 +1026,13 @@ end
 ---         data: table,
 ---         -- See `type` for details on how this table will be formatted,
 ---         -- based on the type of data returned by the provider
----         message: table | Optional,
+---         message: table | nil,
 ---         -- An optional table that may be returned by the provider.
 ---         -- If this table exists, it will be in the following format
 ---         -- {
 ---         --     message: string,
 ---         --     -- The message to relay to the consumer
----         --     process: function | Optional,
+---         --     process: function | nil,
 ---         --     -- If provided, indicates that the provider expects
 ---         --     -- the message to be an input prompt of some kind.
 ---         --     -- Call process with the result of the prompt so the
@@ -1043,12 +1043,12 @@ end
 ---         --     --     -- Indicates if you should recall the original function
 ---         --     --     -- call again. IE, if true, call api.read again
 ---         --     --     -- with the original params
----         --     --     message: string | Optional
+---         --     --     message: string | nil
 ---         --     --     -- The message printed during the retry. Usually
 ---         --     --     -- this indicates a complete failure of the call and
 ---         --     --     -- retry logic altogether
 ---         --     -- }
----         --     default: string | Optional,
+---         --     default: string | nil,
 ---         --     -- If provided, indicates the default value to put
 ---         --     -- in for whatever the prompt is that was provided with
 ---         --     -- the message key
@@ -1357,7 +1357,7 @@ end
 ---     The uris to copy. This can be a table of strings or a single string
 --- @param target_uri string
 ---     The uri to copy the uris to
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     Any options for the copy function. Valid options 
 ---         - cleanup
@@ -1711,7 +1711,7 @@ end
 ---     The uris to copy. This can be a table of strings or a single string
 --- @param target_uri string
 ---     The uri to copy the uris to
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     Any options for the copy function. Valid options 
 ---         - cleanup
@@ -1796,7 +1796,7 @@ end
 --- this might just return nil.
 --- @param uri string
 --- @param param string
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {
 ---         search = 'filename',
 ---         case_sensitive = false
@@ -2211,7 +2211,7 @@ function M.reload_provider(provider_path)
 end
 
 --- Loads up the netman logger into a buffer.
---- @param output_path string | Optional
+--- @param output_path string | nil
 ---     Default: $HOME/random_string.logger
 ---     If provided, this will be the file to write to. Note, this will write over whatever the file that is provided.
 ---     Note, you can provide "memory" to generate this as an in memory logger dump only
@@ -2360,7 +2360,7 @@ end
 -- Emits the event, and will also call any functions that might care about it
 -- @param event string
 --     A valid netman event
--- @param source string | Optional
+-- @param source string | nil
 --    Default: nil
 --    If provided, this will be the URI source of the event.
 -- @example
