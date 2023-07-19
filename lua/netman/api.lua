@@ -1146,122 +1146,6 @@ function M.read(uri, opts, callback)
     else
         return return_data
     end
-    -- is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
-    -- if callback and provider.read_a then
-    --     return M.internal._read_async(uri, provider, cache, is_connected, callback, opts.force)
-    -- else
-    --     return M.internal._read_sync(uri, provider, cache, is_connected, opts.force)
-    -- end
-end
-
-function M.internal._write_async(uri, provider, cache, is_connected, lines, output_callback)
-    local required_async_commands = {'write_a'}
-    if not provider then
-        logger.errorf("No provider provided for %s", uri)
-        return false
-    end
-    for _, cmd in ipairs(required_async_commands) do
-        if not provider[cmd] then
-            logger.errorf("Provider %s is missing async command %s", provider.name, cmd)
-            return false
-        end
-    end
-    local opts = {}
-    local protected_callback = function(data, complete)
-        local success, error = pcall(output_callback, data, complete)
-        if not success then
-            logger.warn("Async output processing experienced a failure!", error)
-        end
-    end
-    local return_handle = M.internal.wrap_shell_handle()
-    opts.callback = function(data, complete)
-        -- Short circuit in case we are killed while still processing
-        if return_handle._stopped then return end
-        -- Check to see if data has a handle attribute. If it does
-        -- replace our existing handle reference with that one
-        if data and data.handle then
-            logger.debug("Received new handle reference from provider during async write. Updating our handle pointer")
-            return_handle._handle = data.handle
-            return
-        end
-        -- There is alot less bloat here as writes are pretty simple
-        protected_callback(data, complete)
-    end
-    local do_provider_write = function()
-        if return_handle._stopped then
-            logger.tracef("Write process for %s was stopped externally. Escaping write", uri)
-            opts.callback(nil, true)
-        end
-        logger.tracef("Executing asynchronous write of data to %s with %s", uri, provider.name)
-        local response = provider.write_a(uri, cache, lines, opts.callback)
-        if not response then
-            logger.errorf("Provider %s did not return anything for async write of %s... I hope you fall in an elderberry bush", provider.name, uri)
-            return
-        end
-        if not response.handle then
-            if response.success == false then
-                local message = response.message or {
-                    message = string.format("Provider %s reported failure while trying to write to %s", provider.name, uri)
-                }
-                logger.warn(string.format("Received failure while trying to write to %s with provider %s", uri, provider.name), message.message)
-                opts.callback(message, true)
-                return
-            end
-            logger.errorf("Provider %s did not return a handle on asynchronous write of %s. Disabling async write for this provider in the future...", provider.name, uri)
-            provider.write_a = nil
-            if not response.success then
-                logger.warnf("Provider %s synchronously failed during async write of %s. Shit makes no sense to me...", provider.name, uri)
-                opts.callback(response, true)
-                return
-            end
-            opts.callback(true, true)
-            return
-        end
-        return_handle._handle = response.handle
-    end
-    if not is_connected and provider.connect_host_a then
-        logger.infof("Attempting provider %s connect to host of %s", provider.name, uri)
-        local handle = provider.connect_host_a(
-            uri,
-            cache,
-            function(success)
-                if not success then
-                    logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
-                end
-                do_provider_write()
-            end
-        )
-        if not handle then
-            logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing async connect host", provider.name)
-            provider.connect_host_a = nil
-        end
-        return_handle = M.internal.wrap_shell_handle(handle)
-    else
-        do_provider_write()
-    end
-    return return_handle
-end
-
-function M.internal._write_sync(uri, provider, cache, is_connected, lines)
-    if not provider then
-        logger.errorf("No provider provided for writing to %s", uri)
-        return { success = false }
-    end
-    if not is_connected and provider.connect then
-        logger.infof("Attempting provider %s connect to host of %s", provider.name)
-        if not provider.connect(uri, cache) then
-            logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
-        end
-    end
-    logger.infof("Reaching out to %s to write to %s", provider.name, uri)
-    local response = provider.write(uri, cache, lines)
-    if not response.success then
-        logger.warn(string.format("Provider %s indicated a failure while trying to write to %s", provider.name, uri), response)
-    end
-    return {
-        success = response.success,
-        async = false
-    }
 end
 
 function M.write(uri, data, options, callback)
@@ -1278,6 +1162,7 @@ function M.write(uri, data, options, callback)
         }
     end
     logger.infof("Reaching out to %s to write %s", provider.name, uri)
+    -- Deprecated, we should instead require the data to be passed in as content only
     if data.type == 'buffer' then
         lines = vim.api.nvim_buf_get_lines(data.index, 0, -1, false)
         -- Consider making this an iterator instead
@@ -1289,14 +1174,55 @@ function M.write(uri, data, options, callback)
     elseif data.type == 'content' then
         lines = data.data
     end
-    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
-    if callback and provider.write_a then
-        -- Asynchronous provider write
-        logger.infof("Attempting asynchronous write to %s", uri)
-        return M.internal._write_async(uri, provider, cache, is_connected, lines, callback)
+    local return_handle = M.internal.wrap_shell_handle()
+    local return_data = nil
+    local protected_callback = function(_data, complete)
+        if not callback then return end
+        -- There is nothing to process, leave us alone
+        if _data == nil and complete == nil then return end
+        local success, _error = pcall(callback, _data, complete)
+        if not success then
+            logger.warn("Write return processing experienced a failure!", _error)
+        end
+    end
+    local result_callback = function(_data, complete)
+        -- Short circuit in case we are killed while still processing
+        -- If this is a sync call (either by the consumer or ASP failure)
+        -- it is impossible for this to be set to true
+        if return_handle._stopped == true then return end
+        if _data and _data.handle then
+            logger.debug("Received new handle reference from provider during async write. Updating our handle pointer")
+            return_handle._handle = _data.handle
+            return
+        end
+        if _data and _data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, _data.message)
+        end
+        return_data = _data
+        protected_callback(return_data, complete)
+    end
+    local error_callback = function(err)
+        logger.warn(err)
+    end
+    local connection_callback = function()
+        local raw_handle = M.internal.asp(
+            provider,
+            "write",
+            "write_a",
+            {uri, cache, lines, result_callback},
+            error_callback,
+            result_callback
+        )
+        if raw_handle and raw_handle.handle then
+            return_handle._handle = raw_handle
+        end
+        protected_callback(return_data)
+    end
+    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    if callback then
+        return return_handle
     else
-        logger.infof("Attempting synchronous write to %s", uri)
-        return M.internal._write_sync(uri, provider, cache, is_connected, lines)
+        return return_data
     end
 end
 
