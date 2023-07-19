@@ -827,7 +827,7 @@ function M.internal.has_connection_to_uri_host(uri, provider, cache)
         return nil
     end
     if not provider.is_connected then
-        logger.infof("Provider %s does not report an `is_connected` function. Unable to verify connection status of %s", provider.name, uri)
+        logger.debugf("Provider %s does not report an `is_connected` function. Unable to verify connection status of %s", provider.name, uri)
         return false
     end
     logger.debugf("Reaching out to %s to verify connection status of %s", provider.name, uri)
@@ -871,7 +871,7 @@ function M.internal.asp(provider, sync_function_name, async_function_name, data,
     local say = ask and provider[async_function_name] and true or false
     local prove = false
     if ask then
-        logger.tracef("Performing ASP (say) check on %s -> Is %s available? %s", provider.name, async_function_name, say)
+        logger.tracef("Performing ASP (say) check on %s -> Is `%s` available? %s", provider.name, async_function_name, say)
         func = say and async_function_name or func
     end
     logger.tracef(
@@ -884,7 +884,7 @@ function M.internal.asp(provider, sync_function_name, async_function_name, data,
     local response = provider[func](table.unpack(data))
     prove = response and response.handle and true or false
     if ask and say then
-        logger.tracef("Performing ASP (prove) check on %s -> Was a proper async handle returned? %s", provider.name, prove)
+        logger.tracef("Performing ASP (prove) check on `%s.%s` -> Was a proper async handle returned? %s", provider.name, func, prove)
         if not prove then
             logger.warnf("Provider %s did not return a proper async handle after async request. Removing %s from it for the remainder of this session", provider.name, func)
             -- Purposely using `async_function_name` as opposed to
@@ -1130,7 +1130,6 @@ function M.read(uri, opts, callback)
         if callback then callback(return_data) end
     end
     return_handle._handle = M.internal.connect_provider(provider, uri, cache,  connection_callback)
-    logger.trace("Read Operation Complete, returning data to user -> ", return_handle._handle and return_handle or return_data)
     if callback then
         return return_handle
     else
