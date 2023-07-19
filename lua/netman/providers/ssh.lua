@@ -78,11 +78,11 @@ M.internal.URI = URI
 ---     The authentication details for this SSH connection.
 ---     Valid Key Value pairs
 ---     - host: string
----     - user: string | Optional
----     - port: interger | Optional
----     - password: string | Optional (not implemented)
----     - key: string | Optional (not implemented)
----     - passphrase: string | Optional (not implemented)
+---     - user: string | nil
+---     - port: interger | nil
+---     - password: string | nil (not implemented)
+---     - key: string | nil (not implemented)
+---     - passphrase: string | nil (not implemented)
 --- @param provider_cache cache
 ---     The netman api provided cache.
 ---     If that confuses you, please see netman.api.register_provider for details
@@ -321,7 +321,7 @@ end
 --- Runs the provided command over the SSH pipe
 --- @param command string/table
 ---     Command can be either a string or table or strings
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {STDOUT_JOIN = '', STDERR_JOIN = ''}
 ---     A table of command options. @see netman.tools.shell for details. Additional key/value options
 ---     - no_shell
@@ -382,7 +382,7 @@ end
 ---     what are you even doing with your life?
 --- @param provider_cache table
 ---     The table that netman.api provides to you
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A 2D table that can contain any of the following key, value pairs
 ---     - async: boolean
@@ -406,7 +406,7 @@ end
 ---         - If opts.remote_dump is provided, archive_path will be the URI to access the archive
 ---     - success boolean
 ---         - A boolean (t/f) of if the archive succedded or not
----     - error string | Optional
+---     - error string | nil
 ---         - Any errors that need to be displayed to the user
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -499,7 +499,7 @@ end
 ---     The location to extract to
 --- @param scheme string
 ---     The scheme the archive is compressed with
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of options to be used when extracting. Available key/values are
 ---         - async: boolean
@@ -516,7 +516,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if the extraction was a success
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during extraction. May not be present
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -585,7 +585,7 @@ end
 ---     The a table of string locations to move. Can be a files or directories
 --- @param target_location string
 ---     The location to move to. Can be a file or directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how copy works
 ---     Valid Options
@@ -595,7 +595,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the copy
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during copy. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -638,7 +638,7 @@ end
 ---     The a table of string locations to move. Can be a files or directories
 --- @param target_location string
 ---     The location to move to. Can be a file or directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how mv works
 ---     Valid Options
@@ -648,7 +648,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the move
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -690,7 +690,7 @@ end
 --- Touches a file in the host
 --- @param locations table
 ---     A table of filesystem locations (as strings) touch
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - async: boolean
@@ -703,7 +703,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -752,7 +752,7 @@ end
 --- Creates a directory in the host
 --- @param locations table
 ---     A table of filesystem locations (as strings) create
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - async: boolean
@@ -765,7 +765,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 --- @example
 ---     local host = SSH:new('someuser@somehost')
@@ -816,7 +816,7 @@ end
 
 --- @param locations table
 ---     A table of netman uris to remove
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how rm does "things". Valid key/value pairs are
 ---     - force: boolean
@@ -833,7 +833,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -897,7 +897,7 @@ end
 ---     The location to find from
 --- @param search_param string
 ---     The string to search for
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
@@ -934,7 +934,7 @@ end
 ---         - By not providing this, we will default to using finds `;` option which means
 ---         that exec will execute a new "command" for every match. If you can, you should consider
 ---         setting this to true as you will see great performance increases
----     - exec: string or function | Optional
+---     - exec: string or function | nil
 ---         - If provided, will be used as the `exec` flag with find.
 ---         Note: the `string` form of this needs to be a find compliant shell string. @see man find for details
 ---         Alternatively, you can provide a function that will be called with every match that find gets. Note, this will be significantly slower
@@ -1013,7 +1013,7 @@ function SSH:grep(uri, param, opts)
 end
 
 --- Attempts to get the user's home directory
---- @param user string | Optional
+--- @param user string | nil
 ---     Default: current logged in user
 ---     The user to get the home directory for.
 --- @return uri string | nil
@@ -1056,7 +1056,7 @@ end
 ---     The string file location on the host
 --- @param location URI
 ---     The location to put the file
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table containing options to alter the effect of `put`. Valid key/value pairs are
 ---     - new_file_name: string
@@ -1160,7 +1160,7 @@ end
 ---     A netman URI of the location to download
 --- @param output_dir string
 ---     The string filesystem path to download to
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table of key/value pairs that modify how get operates. Valid key/value pairs are
 ---     - async: boolean
@@ -1277,12 +1277,12 @@ end
 --- Takes a table of filesystem locations and returns the stat of them
 --- @param locations table
 ---     - A table of filesystem locations
---- @param target_flags table | Optional
+--- @param target_flags table | nil
 ---     Default: Values from @see Container.CONSTANTS.STAT_FLAGS
 ---     - If provided, will return a table with only these keys and their respective values
 ---     - NOTE: You will _always_ get `NAME` back, even if you explicitly tell us not to return
 ---     it. We use it to order the stat entries on return, so deal with it
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     - If provided, the following key/value pairs are acceptable
 ---         - async: boolean
@@ -1477,7 +1477,7 @@ end
 ---     - write
 ---     - execute
 ---     This is the `rwx` part of the chmod command
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table that can alter how stat_mod operates. Valid Key Value Pairs are
 ---     - remove_mod: boolean
@@ -1545,7 +1545,7 @@ end
 ---     - user
 ---     - group
 ---     The value associated with each key should be the string for that key. EG { user = 'root', group = 'nogroup'}
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {}
 ---     If provided, a table that can alter how own_mod operates. Valid Key Value Paris are
 ---     - ignore_errors: boolean
