@@ -2100,8 +2100,10 @@ function M.write_a(uri, cache, data, callback)
                 return
             end
         end
-        local handle = host:stat(uri, nil, { async = true, finish_callback = cb})
-        callback({handle = handle})
+        local handle = {
+            handle = host:stat(uri, nil, { async = true, finish_callback = cb})
+        }
+        callback(handle)
         return handle
     end
 
@@ -2131,8 +2133,10 @@ function M.write_a(uri, cache, data, callback)
             finish_callback = cb,
             async = true
         }
-        local handle = host:put(local_file, uri, write_opts)
-        callback({handle = handle})
+        local handle = {
+            handle = host:put(local_file, uri, write_opts)
+        }
+        callback(handle)
         return handle
     end
 
@@ -2149,8 +2153,10 @@ function M.write_a(uri, cache, data, callback)
                 return
             end
         end
-        local handle = host:touch(uri, {async = true, finish_callback = cb})
-        callback({handle = handle})
+        local handle = {
+            handle = host:touch(uri, {async = true, finish_callback = cb})
+        }
+        callback(handle)
         return handle
     end
 
@@ -2167,8 +2173,10 @@ function M.write_a(uri, cache, data, callback)
                 return
             end
         end
-        local handle = host:mkdir(uri, { async = true, finish_callback = cb})
-        callback({handle = handle})
+        local handle = {
+            handle = host:mkdir(uri, { async = true, finish_callback = cb})
+        }
+        callback(handle)
         return handle
     end
     -- As a first pass POC, this _works_ but it feels icky
@@ -2203,7 +2211,7 @@ function M.write(uri, cache, data, opts)
     kill_timer:start(timeout, 0, function()
         dead = true
         logger.warn(string.format("Read Handle took too long. Killing pid %s", handle.pid))
-        handle.stop()
+        handle.handle.stop()
     end)
     while not write_result and not dead do
         vim.loop.run('once')
@@ -2247,7 +2255,9 @@ function M.delete_a(uri, cache, callback)
         callback({handle = handle})
     end
 
-    handle = host:stat(uri, nil, { async = true, finish_callback = handle_stat})
+    handle = {
+        handle = host:stat(uri, nil, { async = true, finish_callback = handle_stat})
+    }
     return handle
 end
 
@@ -2267,7 +2277,7 @@ function M.delete(uri, cache)
     kill_timer:start(timeout, 0, function()
         dead = true
         logger.warn(string.format("Delete handle took too long. Killing pid %s", handle.pid))
-        handle.stop()
+        handle.handle.stop()
     end)
     while not delete_result and not dead do
         vim.loop.run('once')
