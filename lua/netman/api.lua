@@ -1850,11 +1850,51 @@ function M.delete(uri, callback)
     -- Even if we are unsuccessful, we should at least delete the local
     -- cached version
     M._providers.file_cache[uri] = nil
-    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
-    if callback and provider.delete_a then
-        return M.internal._delete_async(uri, provider, cache, is_connected, callback)
+    local return_handle = M.internal.wrap_shell_handle()
+    local return_data = nil
+    local protected_callback = function(data, complete)
+        if not callback then return end
+        if data == nil and complete == nil then return end
+        local success, _error = pcall(callback, data, complete)
+        if not success then
+            logger.warn("Delete return processing experienced a failure!", _error)
+        end
+    end
+    local result_callback = function(data, complete)
+        if return_handle._stopped == true then return end
+        if data and data.handle then
+            logger.debug("Received new handle reference from provider during async delete. Updating our handle pointer")
+            return_handle._handle = data.handle
+            return
+        end
+        if data and data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, data.message)
+        end
+        return_data = data
+        protected_callback(data, complete)
+    end
+    local error_callback = function(err)
+        logger.warn(err)
+    end
+    local connection_callback = function()
+        local raw_handle = M.internal.asp(
+            provider,
+            'delete',
+            'delete_a',
+            {uri, cache, result_callback},
+            error_callback,
+            result_callback
+        )
+        if raw_handle and raw_handle.handle then
+            return_handle._handle = raw_handle
+        end
+        protected_callback(return_data)
+    end
+    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    if callback then
+        return return_handle
     else
-        return M.internal._delete_sync(uri, provider, cache, is_connected)
+        return return_data
     end
 end
 
