@@ -899,7 +899,12 @@ function M.internal.asp(provider, sync_function_name, async_function_name, data,
     end
     if not response then
         logger.errorf("Nothing was returned from call of `%s.%s`. Something bad likely happened, check out `:Nmlogs` for details", provider.name, func)
-        if error_callback then error_callback() end
+        local message = {
+            message = "No response provided"
+        }
+        if error_callback then error_callback(message) end
+        response = { success = false, message = message}
+        return response
     end
     if response.handle then
         -- Short circuit the rest of the logic as this was successfully started
