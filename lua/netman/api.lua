@@ -1089,9 +1089,11 @@ function M.read(uri, opts, callback)
     end
     local return_handle = M.internal.wrap_shell_handle()
     local return_data = nil
-    local protected_callback = function(...)
+    local protected_callback = function(data, complete)
         if not callback then return end
-        local success, _error = pcall(callback, ...)
+        -- There is nothing to do, leave us alone
+        if data == nil and complete == nil then return end
+        local success, _error = pcall(callback, data, complete)
         if not success then
             logger.warn("Read return processing experienced a failure!", _error)
         end
@@ -1113,7 +1115,12 @@ function M.read(uri, opts, callback)
             protected_callback(nil, complete)
             return
         end
-        return_data = M.internal._process_read_result(uri, provider, data)
+        if data and data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, data.message)
+            return_data = data
+        else
+            return_data = M.internal._process_read_result(uri, provider, data)
+        end
         protected_callback(return_data, complete)
     end
     local error_callback = function(err)
@@ -1127,12 +1134,11 @@ function M.read(uri, opts, callback)
             {uri, cache, result_callback},
             error_callback,
             result_callback
-
         )
         if raw_handle and raw_handle.handle then
             return_handle._handle = raw_handle
         end
-        if callback then callback(return_data) end
+        protected_callback(return_data)
     end
     return_handle._handle = M.internal.connect_provider(provider, uri, cache,  connection_callback)
     if callback then
