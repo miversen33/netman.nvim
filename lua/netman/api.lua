@@ -880,9 +880,11 @@ function M.internal.asp(provider, sync_function_name, async_function_name, data,
         func,
         ask and say and "asynchronously" or "synchronously"
     )
-    -- Running the provided function. Maybe we should do this in a pcall????
-    local response = provider[func](table.unpack(data))
-    prove = response and response.handle and true or false
+    local status, response = pcall(provider[func], table.unpack(data))
+    if not status then
+        logger.errorf("`%s.%s` threw an error -> %s", provider.name, func, response)
+    end
+    prove = status == true and response and response.handle and true or false
     if ask and say then
         logger.tracef("Performing ASP (prove) check on `%s.%s` -> Was a proper async handle returned? %s", provider.name, func, prove)
         if not prove then
