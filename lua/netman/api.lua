@@ -1061,7 +1061,7 @@ end
 ---     }
 function M.read(uri, opts, callback)
     local orig_uri = uri
-    local provider, cache, is_connected = nil, nil, nil
+    local provider, cache = nil, nil
     uri, provider, cache, _ = M.internal.validate_uri(uri)
     if not uri or not provider then
         return {
