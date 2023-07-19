@@ -1102,7 +1102,7 @@ function SSH:put(file, location, opts)
         if status == true then
             local _stat = ___.data
             if _stat.TYPE ~= 'directory' then
-                logger.warn(_error)
+                logger.info(_error)
                 file_name = location:to_string()
                 location = location:parent()
             end

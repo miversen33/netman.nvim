@@ -97,7 +97,7 @@ function Container:new(container_name, provider_cache)
         logger.trace(__)
         if __.exit_code ~= 0 then
             local _error = "Unable to verify docker is available to run"
-            logger.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
+            logger.info(_error, { exit_code = __.exit_code, stderr = __.stderr })
             return {}
         end
         if __.stdout:match('Got permission denied while trying to connect to the Docker daemon socket at') then
