@@ -959,7 +959,7 @@ function M.internal._process_read_result(uri, provider_name, data)
     else
         processed_data = data.data
     end
-    return { data = processed_data, type = data.type }
+    return { data = processed_data, type = data.type, success = data.success }
 end
 
 --- Executes remote read of uri

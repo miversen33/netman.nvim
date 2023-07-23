@@ -133,7 +133,12 @@ function M.render_command_and_clean_buffer(render_command, opts)
     } or opts
     local undo_levels = vim.api.nvim_get_option('undolevels')
     vim.api.nvim_command('keepjumps sil! 0')
-    vim.api.nvim_command('keepjumps sil! setlocal ul=-1 | ' .. render_command)
+    -- Addresses #133, basically saying "ya we don't care if the read event has an
+    -- error, deal with it and move on"
+    local _, err pcall(vim.api.nvim_command, 'keepjumps sil! setlocal ul=-1 | ' .. render_command)
+    if err then
+        logger.tracef("Encountered potential error while trying to execute %s: -> %s", render_command, err)
+    end
     -- if opts.filetype then
     --     vim.api.nvim_command(string.format('set filetype=%s', opts.filetype))
     -- end

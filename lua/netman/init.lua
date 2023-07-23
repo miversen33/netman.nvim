@@ -59,7 +59,6 @@ function M.read(...)
             -- Create a buffer
             local buffer = vim.fn.bufnr(file)
             vim.api.nvim_set_current_buf(buffer)
-            vim.api.nvim_buf_set_name(0, file)
         end
         require("netman.ui").render_command_and_clean_buffer(command)
         ::continue::
