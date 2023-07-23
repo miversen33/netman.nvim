@@ -2337,7 +2337,9 @@ function M.get_metadata_a(uri, cache, flags, callback)
         local _, stat = next(response.data)
         callback({ success = true, data = stat })
     end
-    return host:stat(uri, flags, { async = true, finish_callback = cb})
+    return {
+        handle = host:stat(uri, flags, { async = true, finish_callback = cb})
+    }
 end
 
 function M.get_metadata(uri, cache, flags)
