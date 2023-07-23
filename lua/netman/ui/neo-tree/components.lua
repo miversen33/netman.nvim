@@ -27,6 +27,7 @@ M.internal.state_map = {
     [netman_host_states.UNKNOWN] = {text=" ", highlight=""},
     [netman_host_states.AVAILABLE] = {text=" ", highlight="NeoTreeGitAdded"},
     [netman_host_states.ERROR] = {text="❗", highlight="NeoTreeGitDeleted"},
+    [netman_host_states.REFRESHING] = {text=M.internal.refresh_icon, highlight=""}
 }
 
 M.marked = function(config, node, state)
@@ -45,10 +46,11 @@ M.icon = function(config, node, state)
     if not entry then
         return _icon
     end
-    if node.type == 'netman_host' then
-        _icon.text = ' '
-    elseif node.type == 'netman_refresh' then
+    if entry.refresh then
         _icon.text = M.internal.refresh_icon
+    elseif node.type == 'netman_host' then
+        -- Use this as a place to have the OS icon?
+        _icon.text = ''
     end
     if entry.icon then
         _icon.text = string.format("%s ", entry.icon)

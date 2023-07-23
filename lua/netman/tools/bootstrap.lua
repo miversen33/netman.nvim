@@ -25,9 +25,11 @@ local status, json = pcall(require, "JSON")
 if status == nil or status == false then
     error("Unable to run bootstrapper without json. Please install json", 2)
 end
+local base_dir = luv.os_homedir() .. '/.local/share/nvim'
 local known_paths = {
-    luv.os_homedir() .. "/.local/share/nvim/site/pack/packer/start/netman.nvim/lua/",
-    luv.os_homedir() .. "/.local/share/nvim/site/pack/plugins/opt/netman.nvim/lua/"
+    luv.os_homedir() .. '/git/netman.nvim/lua/',
+    base_dir .. '/pack/packer/start/netman.nvim/lua/',
+    base_dir .. '/pack/plugins/opt/netman.nvim/lua/',
 }
 local netman_path = nil
 for _, path in ipairs(known_paths) do
@@ -48,6 +50,27 @@ preloaded_packages[self_name] = 1
 -- we dont be reloading these
 for key, _ in pairs(package.loaded) do
     preloaded_packages[key] = 1
+end
+
+local _gprint = _G.print
+local clean_string = function(...)
+    local args = { n = select("#", ...), ...}
+    local formatted_args = {}
+    for i=1, args.n do
+        local item = select(i, ...)
+        if not item then item = 'nil' end
+        local t_item = type(item)
+        if t_item == 'table' or t_item == 'function' or t_item == 'userdata' then
+            item = inspect(item)
+        else
+            item = string.format("%s", item)
+        end
+        table.insert(formatted_args, item)
+    end
+    return table.concat(formatted_args, ' ')
+end
+_G.print = function(...)
+    _gprint(clean_string(...))
 end
 
 local print = function(...)

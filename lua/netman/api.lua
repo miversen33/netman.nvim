@@ -4,6 +4,7 @@ local netman_options = require("netman.tools.options")
 local cache_generator = require("netman.tools.cache")
 local logger = require("netman.tools.utils").get_system_logger()
 local rand_string = require("netman.tools.utils").generate_string
+local validator = require("netman.tools.utils.provider_validator").validate
 local compat = require("netman.tools.compat")
 
 local M = {}
@@ -69,7 +70,7 @@ M._providers = {
 
 M._explorers = {}
 
-M.version = 1.01
+M.version = 1.02
 
 local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
 local protocol_from_path_glob = '^([%w%-.]+)://'
@@ -92,6 +93,7 @@ local _provider_required_attributes = {
 --- be laughed at and ridiculed
 function M.internal.wrap_shell_handle(handle)
     local return_handle = {
+        async    = true,
         read     = nil,
         write    = nil,
         stop     = nil,
@@ -100,16 +102,19 @@ function M.internal.wrap_shell_handle(handle)
     }
 
     function return_handle.read(pipe)
-        return return_handle._handle and return_handle._handle.read(pipe)
+        if return_handle._stopped or not return_handle._handle then return {} end
+        return return_handle._handle.read(pipe)
     end
 
     function return_handle.write(data)
-        return return_handle._handle and return_handle._handle.write(data)
+        if return_handle._stopped or not return_handle._handle then return end
+        return return_handle._handle.write(data)
     end
 
     function return_handle.stop(force)
+        if return_handle._stopped or not return_handle._handle then return end
         return_handle._stopped = true
-        return return_handle._handle and return_handle._handle.stop(force)
+        return return_handle._handle.stop(force)
     end
 
     return return_handle
@@ -217,21 +222,30 @@ end
 --- @return table
 function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
-    for _, data in pairs(read_data) do
+    for _, orig_data in pairs(read_data) do
+        if type(orig_data) ~= 'table' then
+            logger.warn("Invalid data found in explore data", {key = _, value = orig_data})
+            goto continue
+        end
+        local data = utils.deep_copy(orig_data)
         for key, value in pairs(data) do
             if netman_options.explorer.FIELDS[key] == nil then
-                logger.info("Removing " .. key .. " from directory data as it " ..
-                    "does not conform with netman.options.explorer.FIELDS...")
+                logger.infof("Removing %s from directory data as it " ..
+                    "does not conform with netman.options.explorer.FIELDS...", key)
                 data[key] = nil
             elseif key == netman_options.explorer.FIELDS.METADATA then
                 for _metadata_flag, _ in pairs(value) do
                     if netman_options.explorer.METADATA[_metadata_flag] == nil then
-                        logger.warn("Removing metadata flag " .. _metadata_flag .. " from items metadata as it " ..
+                        logger.warnf("Removing metadata flag " .. _metadata_flag .. " from items metadata as it " ..
                             "does not conform with netman.options.explorer.METADATA...")
                         value[_metadata_flag] = nil
                     end
                 end
             end
+        end
+        if not next(data) then
+            logger.warn("Nothing to validate in data, skipping to next item")
+            goto continue
         end
         local acceptable_output = true
         for _, field in ipairs(netman_options.explorer.FIELDS) do
@@ -243,6 +257,7 @@ function M.internal.sanitize_explore_data(read_data)
         if acceptable_output then
             table.insert(sanitized_data, data)
         end
+        ::continue::
     end
     return sanitized_data
 end
@@ -523,6 +538,49 @@ function M.clear_unused_configs(assume_yes)
     if not ran then print("There are currently no unused netman provider configurations") end
 end
 
+--- Attempts to execute a connection event on the underlying
+--- provider for the provided URI. Note, successful
+--- connection to the URI host (per the provider) will trigger
+--- a `netman_provider_host_connect` event
+--- @param uri: string
+---     The string URI to connect to
+--- @param callback: function | nil
+---     If provided, indicates that the connection event
+---     should be asynchronous if possible.
+---     NOTE: Even if it is impossible to asynchronously execute
+---     the connection, the response will still be provided
+---     via the callback as that is what is expected by the end user
+--- @return table | boolean
+---     If an error is encountered while trying to execute the
+---     connection event, a table will be returned with the following structure
+---     {
+---         message: string,
+---         -- Whatever the message is,
+---         process: function | nil,
+---         -- If this is provided, call this function with whatever
+---         -- response the user provides to the message that was provided
+---         is_error: boolean | nil
+---         -- If provided, indicates that the message is an error
+---     }
+---     
+---     If the requested connection event is synchronous, this will
+---     simply return the boolean (T/F) response from the provider
+---     after completing the connection request
+---     
+---     If the requested connection event was asynchronous, this will
+---     return a table that contains the following key/value pairs
+---     {
+---         read: function,
+---         -- Takes an optional string parameter that can be
+---         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
+---         -- Defaults to "STDOUT"
+---         write: function,
+---         -- Takes a string or table of data to write to the
+---         -- underlying handle
+---         stop: function
+---         -- Takes an optional boolean to indicate the stop should
+---         -- be forced
+---     }
 function M.connect_to_uri_host(uri, callback)
     local orig_uri = uri
     local provider, cache = nil, nil
@@ -586,6 +644,49 @@ function M.connect_to_uri_host(uri, callback)
     return provider.connect_host(uri, cache)
 end
 
+--- Attempts to execute a disconnection event on the underlying
+--- provider for the provided URI. Note, successful
+--- disconnection from the URI host (per the provider) will trigger
+--- a `netman_provider_host_disconnect` event
+--- @param uri: string
+---     The string URI to disconnect from
+--- @param callback: function | nil
+---     If provided, indicates that the disconnection event
+---     should be asynchronous if possible.
+---     NOTE: Even if it is impossible to asynchronously execute
+---     the disconnection, the response will still be provided
+---     via the callback as that is what is expected by the end user
+--- @return table | boolean
+---     If an error is encountered while trying to execute the
+---     disconnection event, a table will be returned with the following structure
+---     {
+---         message: string,
+---         -- Whatever the message is,
+---         process: function | nil,
+---         -- If this is provided, call this function with whatever
+---         -- response the user provides to the message that was provided
+---         is_error: boolean | nil
+---         -- If provided, indicates that the message is an error
+---     }
+---     
+---     If the requested disconnection event is synchronous, this will
+---     simply return the boolean (T/F) response from the provider
+---     after completing the disconnection request
+---     
+---     If the requested disconnection event was asynchronous, this will
+---     return a table that contains the following key/value pairs
+---     {
+---         read: function,
+---         -- Takes an optional string parameter that can be
+---         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
+---         -- Defaults to "STDOUT"
+---         write: function,
+---         -- Takes a string or table of data to write to the
+---         -- underlying handle
+---         stop: function
+---         -- Takes an optional boolean to indicate the stop should
+---         -- be forced
+---     }
 function M.disconnect_from_uri_host(uri, callback)
     local orig_uri = uri
     local provider, cache = nil, nil
@@ -648,31 +749,326 @@ function M.disconnect_from_uri_host(uri, callback)
     return provider.close_host(uri, cache)
 end
 
-function M.has_connection_to_uri_host(uri)
+--- This will attempt to establish the connection with the provider
+--- for the provided URI. If callback is provided, it will
+--- be called after the connection event finishes.
+--- @param provider table
+---     The netman provider
+--- @param uri string
+---     The string URI to have the provider connect to
+--- @param cache "netman.tools.cache"
+---     The provider cache
+--- @param callback function | nil
+---     If provided, we will call this function (with no arguments) after
+---     the connection event completes.
+---     NOTE: Completion does not mean success or fail. Just done.
+--- @return table | nil
+---     If a callback is provided and we are able to get an async handle
+---     on the connection event, we will return the handle. If no callback
+---     is provided, or if we cannot asynchronously connect to the provider,
+---     nothing is returned (but we will block until complete)
+function M.internal.connect_provider(provider, uri, cache, callback)
+    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
+    local connection_func = 'connect_host'
+    local do_async = callback and provider['connect_host_a'] and true or false
+    local connection_finished = false
+    local handle = nil
+    local connection_callback = function(success)
+        if not success then
+            logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+        end
+        connection_finished = true
+        if callback then callback() end
+    end
+    if not is_connected then
+        if provider.connect_host_a and callback then
+            connection_func = 'connect_host_a'
+            do_async = true
+        end
+        if not provider[connection_func] then
+            logger.debugf("Provider %s does not seem to implement any sort of preconnection logic", provider.name)
+            if callback then callback() end
+            return
+        end
+        logger.debugf("Reaching out to `%s.%s` to attempt preconnection", provider.name, connection_func)
+        handle = provider[connection_func](uri, cache, connection_callback)
+        if do_async and not handle then
+            logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing `%s`", provider.name, connection_func)
+            provider.connect_host_a = nil
+        end
+        if not connection_finished and callback then
+            callback()
+        end
+    end
+    return handle
+end
+
+--- Attempts to reach out to the provider
+--- to verify if the URI has a connected host
+--- @param uri: string
+---     The string URI to check
+--- @param provider: table | nil
+---     For internal use only, used to bypass uri validation
+--- @param cache: table | nil
+---     For internal use only, used to bypass uri validation
+--- @return boolean
+---     Will return True if (and only if) the provider
+---     explicitly informed us that the URI was connected.
+---     Failure to connect to the provider for this check,
+---     or a false response from the provider will both return
+---     false on this call
+function M.internal.has_connection_to_uri_host(uri, provider, cache)
     local orig_uri = uri
-    local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
+    if not provider or not cache then
+        uri, provider, cache = M.internal.validate_uri(uri)
+    end
     if not uri or not provider then
         logger.warnf("Unable to find provider for %s, cannot verify connection status", orig_uri)
         return nil
     end
     if not provider.is_connected then
-        logger.infof("Provider %s does not report an `is_connected` function. Unable to verify connection status of %s", provider.name, uri)
+        logger.debugf("Provider %s does not report an `is_connected` function. Unable to verify connection status of %s", provider.name, uri)
         return false
     end
     logger.debugf("Reaching out to %s to verify connection status of %s", provider.name, uri)
     return provider.is_connected(uri, cache)
 end
 
---- TODO: Where Doc?
-function M.read(uri, opts)
+--- This might seem a bit convoluted if you don't understand what ASP is in netman.
+--- This doc will not be used to go over that. Review `:h netman-asp` or go read the
+--- readme on the repo for details.
+--- @param provider table
+---     The netman provider
+--- @param sync_function_name string
+---     The name of the synchronous version of the function to call
+--- @param async_function_name string
+---     The name of the asynchronous version of the function to call
+--- @param data table
+---     Table wrapped data to pass to the underlying async/sync function.
+---     This table will be unpacked for the call
+--- @param error_callback function | nil
+---     The callback to call if there is any errors that occur during the processing
+---     of the request
+--- @param response_callback function | nil
+---     So this one is a bit weird. This is the function to call when there is a 
+---     response. Note, in order to properly perform the "ask" part of ASP, 
+---     set this to `nil` if you wish to run synchronously only. Basically, 
+---     just pass the consumer callback through to this. I know it seems weird. 
+---
+---     Just trust me bro.
+--- @return table | nil
+---     This function has no idea what it's returning. It is going to return 
+---     (basically) whatever it gets back from the sanitize callback, or the raw data
+---     if no sanitize function is returned. If the call passes ASP, it will 
+---     return a proper netman async handle
+---     Otherwise this will return nil
+function M.internal.asp(provider, sync_function_name, async_function_name, data, error_callback, response_callback)
+    local func = sync_function_name
+    -- Checking to see if we even are supposed to run asynchronously
+    -- Also checking if the async function exists. This is the ASK and SAY part of ASP
+    local ask = response_callback and true or false
+    logger.tracef("Performing ASP (ask) check on %s -> Was async requested? %s", provider.name, ask)
+    local say = ask and provider[async_function_name] and true or false
+    local prove = false
+    if ask then
+        logger.tracef("Performing ASP (say) check on %s -> Is `%s` available? %s", provider.name, async_function_name, say)
+        func = say and async_function_name or func
+    end
+    logger.tracef(
+        "Attempting to run `%s.%s` %s",
+        provider.name,
+        func,
+        ask and say and "asynchronously" or "synchronously"
+    )
+    local status, response = pcall(provider[func], table.unpack(data))
+    if not status then
+        logger.errorf("`%s.%s` threw an error -> %s", provider.name, func, response)
+    end
+    prove = status == true and response and response.handle and true or false
+    if ask and say then
+        logger.tracef("Performing ASP (prove) check on `%s.%s` -> Was a proper async handle returned? %s", provider.name, func, prove)
+        if not prove then
+            logger.warnf("Provider %s did not return a proper async handle after async request. Removing %s from it for the remainder of this session", provider.name, func)
+            -- Purposely using `async_function_name` as opposed to
+            -- `func` to ensure that we don't accidentally remove the sync
+            -- function
+            provider[async_function_name] = nil
+        end
+        if not response then
+            logger.warnf("`%s.%s` did not return anything useful. Calling fallback function `%s.%s`", provider.name, func, provider.name, sync_function_name)
+            response = provider[sync_function_name](table.unpack(data))
+        end
+    end
+    if not response then
+        logger.errorf("Nothing was returned from call of `%s.%s`. Something bad likely happened, check out `:Nmlogs` for details", provider.name, func)
+        local message = {
+            message = "No response provided"
+        }
+        if error_callback then error_callback(message) end
+        response = { success = false, message = message}
+        return response
+    end
+    if response.handle then
+        -- Short circuit the rest of the logic as this was successfully started
+        -- as async
+        logger.debugf("Received valid async handle from `%s.%s`, returning it now", provider.name, func)
+        return response
+    end
+    if response_callback then
+        logger.trace("Passing result data to callback", response)
+        response_callback(response, true)
+        return
+    end
+    logger.trace("No response callback provided, returning data instead", response)
+    return response
+end
+
+--- WARN: Do not rely on these functions existing
+--- WARN: Do not use these functions in your code
+--- WARN: If you put an issue in saying anything about using
+--- these functions is not working in your plugin, you will
+--- be laughed at and ridiculed
+function M.internal._process_read_result(uri, provider_name, data)
+    provider_name = provider_name or 'nil'
+    local processed_data = nil
+    if not data then
+        logger.warnf("No data provided when attempting to read %s", uri)
+        return processed_data
+    end
+
+    if not netman_options.api.READ_TYPE[data.type] then
+        logger.warnf("Unable to trust data type %s. Sent from provider %s while trying to read %s", data.type or 'nil', provider_name, uri)
+        return processed_data
+    end
+    if not data.data then
+        logger.warnf("Provider %s did not pass anything useful as response to requested read of %s", provider_name, uri)
+        return processed_data
+    end
+    if data.type == netman_options.api.READ_TYPE.EXPLORE then
+        processed_data = M.internal.sanitize_explore_data(data.data)
+    elseif data.type == netman_options.api.READ_TYPE.FILE then
+        processed_data = M.internal.sanitize_file_data(data.data)
+        if not processed_data then
+            logger.warn(string.format("Provider %s did not return valid return data for %s", provider_name, uri), { data = data.data })
+            return nil
+        end
+        if not processed_data.error and processed_data.local_path then
+            logger.tracef("Caching %s to local file %s", uri, processed_data.local_path)
+            M._providers.file_cache[uri] = processed_data.local_path
+        end
+    else
+        processed_data = data.data
+    end
+    return { data = processed_data, type = data.type }
+end
+
+--- Executes remote read of uri
+--- NOTE: Read also caches results for a short time, and will
+--- return those cached results instead of repeatedly reaching
+--- out to the underlying provider for repeat requests.
+--- @param uri string
+---     The string representation of the remote resource URI
+--- @param opts table | nil
+---     Default: {}
+---     Options to provide to the provider. Valid options include
+---     - force: boolean
+---         If provided, indicates that we should invalidate any cached
+---         instances of the URI before pull
+--- @param callback function | nil
+---     Default: nil
+---     If provided, we will attempt to treate the read request as asynchronous.
+---     NOTE: this affects the return value!
+--- @return table
+---     If the read request is asynchronous, you will recieve the following table
+---     {
+---         async: boolean,
+---         -- A boolean that should be set to true to indicate that
+---         -- the read request is asynchronously being completed
+---         read: function,
+---         -- Takes an optional string parameter that can be
+---         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
+---         -- Defaults to "STDOUT"
+---         write: function,
+---         -- Takes a string or table of data to write to the
+---         -- underlying handle
+---         stop: function
+---         -- Takes an optional boolean to indicate the stop should
+---         -- be forced
+---     }
+---     Note, the synchronous output below will be provided to the callback param
+---     as a parameter to it instead, with the exception of the following keys
+---     - async, success
+---     Its pretty obvious that the results are async as they are being streamed to
+---     you, and success is also obvious if you are receiving the output
+---     
+---     If the read request is synchronous, you will receive the following table
+---     {
+---         async: boolean,
+---         -- A boolean that should be set to false to indicate that
+---         -- the read request was synchronously completed
+---         success: boolean,
+---         -- A boolean indicating if the read was successfully completed
+---         type: string,
+---         -- A string indicating what type of result you will receive. Valid
+---         -- types are
+---         -- - "EXPLORE"
+---         --     -- Indicates a directory style set of data. This
+---         --     -- means the `data` key will be a 1 dimensional array
+---         --     -- containing a stat table for each item returned
+---         -- - "FILE"
+---         --     -- Indicates an individual file type of data. This
+---         --     -- means that there is a file located somewhere on the host
+---         --     -- machine that is the result of whatever was pulled down
+---         --     -- from the URI. `data` will be formatted in the following manner
+---         --     -- {
+---         --            local_path: string,
+---         --                -- The local path to the downloaded file
+---         --            origin_path: string,
+---         --                -- The remote path that was read for this file
+---         --     -- }
+---         -- - "STREAM"
+---         --     -- Indicates a stream of data. This means that there
+---         --     -- is no data stored locally and and such `data` will be
+---         --     -- a 1 dimensional array of "lines" of output
+---         data: table,
+---         -- See `type` for details on how this table will be formatted,
+---         -- based on the type of data returned by the provider
+---         message: table | nil,
+---         -- An optional table that may be returned by the provider.
+---         -- If this table exists, it will be in the following format
+---         -- {
+---         --     message: string,
+---         --     -- The message to relay to the consumer
+---         --     process: function | nil,
+---         --     -- If provided, indicates that the provider expects
+---         --     -- the message to be an input prompt of some kind.
+---         --     -- Call process with the result of the prompt so the
+---         --     -- provider can continue with whatever it was doing.
+---         --     -- NOTE: This will return a table with the following info
+---         --     -- {
+---         --     --     retry: boolean,
+---         --     --     -- Indicates if you should recall the original function
+---         --     --     -- call again. IE, if true, call api.read again
+---         --     --     -- with the original params
+---         --     --     message: string | nil
+---         --     --     -- The message printed during the retry. Usually
+---         --     --     -- this indicates a complete failure of the call and
+---         --     --     -- retry logic altogether
+---         --     -- }
+---         --     default: string | nil,
+---         --     -- If provided, indicates the default value to put
+---         --     -- in for whatever the prompt is that was provided with
+---         --     -- the message key
+---         -- }
+---     }
+function M.read(uri, opts, callback)
     local orig_uri = uri
     local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
+    uri, provider, cache, _ = M.internal.validate_uri(uri)
     if not uri or not provider then
         return {
             success = false,
-            error = string.format("Unable to read %s or unable to find provider for it", orig_uri)
+            message = string.format("Unable to read %s or unable to find provider for it", orig_uri)
         }
     end
     opts = opts or {}
@@ -689,91 +1085,155 @@ function M.read(uri, opts)
             type = netman_options.api.READ_TYPE.FILE,
             success = true
         }
-        logger.info(string.format("Found cached file %s for uri %s", cached_file, uri))
+        logger.infof("Found cached file %s for uri %s", cached_file, uri)
         logger.trace('Short circuiting provider reach out')
         return _data
     end
-    local read_data = provider.read(uri, cache)
-    if read_data == nil then
-        logger.info("Received no read_data. I'm gonna get angry!")
-        return {
-            error = {
-                message = "Nil Read Data"
-            },
-            success = false
-        }
-    end
-    if not read_data.success then
-        -- We failed to read data, return the error up
-        return read_data
-    end
-    local read_type = read_data.type
-    if netman_options.api.READ_TYPE[read_type] == nil then
-        logger.warn("Received invalid read type: %s. See :h netman.api.read for read type details", read_type)
-        return {
-            error = {
-                message = "Invalid Read Type"
-            },
-            success = false
-        }
-    end
-    if not read_data.data then
-        logger.warn(string.format("No data passed back with read of %s ????", uri))
-        return {
-            success = true
-        }
-    end
-    local _data = nil
-    if read_type == netman_options.api.READ_TYPE.EXPLORE then
-        _data = M.internal.sanitize_explore_data(read_data.data)
-    elseif read_type == netman_options.api.READ_TYPE.FILE then
-        _data = M.internal.sanitize_file_data(read_data.data)
-        if not _data.error and _data.local_path then
-            logger.trace(string.format("Caching %s to local file %s", uri, _data.local_path))
-            M._providers.file_cache[uri] = _data.local_path
+    local return_handle = M.internal.wrap_shell_handle()
+    local return_data = nil
+    local protected_callback = function(data, complete)
+        if not callback then return end
+        -- There is nothing to do, leave us alone
+        if data == nil and complete == nil then return end
+        local success, _error = pcall(callback, data, complete)
+        if not success then
+            logger.warn("Read return processing experienced a failure!", _error)
         end
-    elseif read_type == netman_options.api.READ_TYPE.STREAM then
-        _data = read_data.data
     end
-    local _error = _data.error
-    -- Removing error key value from data as it will be a parent level attribute
-    _data.error = nil
-    return {
-        success = true,
-        error = _error,
-        data = _data,
-        type = read_type
-    }
+    local result_callback = function(data, complete)
+        -- Short circuit in case we are killed while still processing
+        -- If this is a sync call (either by the consumer or ASP failure)
+        -- it is impossible for this to be set to true
+        if return_handle._stopped == true then return end
+        if data and data.handle then
+            logger.debug("Received new handle reference from provider durin read. Updating our handle pointer")
+            return_handle._handle = data.handle
+            return
+        end
+        if complete and not data then
+            -- There is nothing of substance passed,
+            -- but the complete flag was still provided.
+            -- Call the consumer's complete handle and return
+            protected_callback(nil, complete)
+            return
+        end
+        if data and data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, data.message)
+            return_data = data
+        else
+            return_data = M.internal._process_read_result(uri, provider, data)
+        end
+        protected_callback(return_data, complete)
+    end
+    local error_callback = function(err)
+        logger.warn(err)
+    end
+    local connection_callback = function()
+        local raw_handle = M.internal.asp(
+            provider,
+            'read',
+            'read_a',
+            {uri, cache, result_callback},
+            error_callback,
+            callback and result_callback
+        )
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
+        end
+        protected_callback(return_data)
+    end
+    return_handle._handle = M.internal.connect_provider(provider, uri, cache,  connection_callback)
+    if callback then
+        return return_handle
+    else
+        return return_data
+    end
 end
 
-function M.write(buffer_index, uri, options)
+function M.write(uri, data, options, callback)
+    data = data or {}
     options = options or {}
     local provider, cache, lines = nil, nil, {}
     uri, provider, cache = M.internal.validate_uri(uri)
-    if not uri or not provider then return {success = false, error="Unable to find matching provider, or unable to validate uri!"} end
-    logger.info(string.format("Reaching out to %s to write %s", provider.name, uri))
-    if buffer_index then
-        lines = vim.api.nvim_buf_get_lines(buffer_index, 0, -1, false)
+    if not uri or not provider then
+        return {
+            success = false,
+            message= {
+                message = "Unable to find matching provider, or unable to validate uri!"
+            }
+        }
+    end
+    logger.infof("Reaching out to %s to write %s", provider.name, uri)
+    -- Deprecated, we should instead require the data to be passed in as content only
+    if data.type == 'buffer' then
+        lines = vim.api.nvim_buf_get_lines(data.index, 0, -1, false)
         -- Consider making this an iterator instead
         for index, line in ipairs(lines) do
             if not line:match('[\n\r]$') then
                 lines[index] = line .. '\n'
             end
         end
+    elseif data.type == 'content' then
+        lines = data.data
     end
-    -- TODO: Do this asynchronously
-    local status = provider.write(uri, cache, lines, options)
-    if not status.success then
-        logger.warn(string.format("Received error from %s provider while trying to write %s", provider.name, uri), {error=status.error})
-        return status
+    local return_handle = M.internal.wrap_shell_handle()
+    local return_data = nil
+    local protected_callback = function(_data, complete)
+        if not callback then return end
+        -- There is nothing to process, leave us alone
+        if _data == nil and complete == nil then return end
+        local success, _error = pcall(callback, _data, complete)
+        if not success then
+            logger.warn("Write return processing experienced a failure!", _error)
+        end
     end
-    if not status.uri then
-        logger.trace("No URI returned on write. Setting the return URI to itself")
-        uri = uri
+    local result_callback = function(_data, complete)
+        -- Short circuit in case we are killed while still processing
+        -- If this is a sync call (either by the consumer or ASP failure)
+        -- it is impossible for this to be set to true
+        if return_handle._stopped == true then return end
+        if _data and _data.handle then
+            logger.debug("Received new handle reference from provider during async write. Updating our handle pointer")
+            return_handle._handle = _data.handle
+            return
+        end
+        if _data and _data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, _data.message)
+        end
+        return_data = _data
+        protected_callback(return_data, complete)
+    end
+    local error_callback = function(err)
+        logger.warn(err)
+    end
+    local connection_callback = function()
+        local raw_handle = M.internal.asp(
+            provider,
+            "write",
+            "write_a",
+            {uri, cache, lines, result_callback},
+            error_callback,
+            result_callback
+        )
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
+        end
+        protected_callback(return_data)
+    end
+    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    if callback then
+        return return_handle
     else
-        uri = status.uri
+        return return_data
     end
-    return {success = true, uri = uri}
 end
 
 --- Renames a URI to another URI, on the same provider
@@ -786,7 +1246,7 @@ end
 ---     Returns a table with the following information
 ---     {
 ---         success: boolean,
----         error: { message = "Error that occurred during rename "} -- (Optional)
+---         message: { message = "Error that occurred during rename "} -- (Optional)
 ---     }
 function M.rename(old_uri, new_uri)
     local old_provider, new_provider, new_cache
@@ -833,17 +1293,17 @@ function M.internal.group_uris(uris)
 end
 
 --- @see api.copy as this basically just does that (with the clean up option provided)
-function M.move(uris, target_uri, opts)
+function M.move(uris, target_uri, opts, callback)
     opts = opts or {}
     opts.cleanup = true
-    return M.copy(uris, target_uri, opts)
+    return M.copy(uris, target_uri, opts, callback)
 end
 
 --- @param uris table | string
 ---     The uris to copy. This can be a table of strings or a single string
 --- @param target_uri string
 ---     The uri to copy the uris to
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     Any options for the copy function. Valid options 
 ---         - cleanup
@@ -855,104 +1315,426 @@ end
 ---         success: boolean,
 ---         error: { message = "Error that occurred during rename "} -- (Optional)
 ---     }
-function M.copy(uris, target_uri, opts)
-    opts = opts or {}
-    if type(uris) == 'string' then uris = { uris } end
-    local grouped_uris = M.internal.group_uris(uris)
-    local _, target_provider, target_cache = M.internal.validate_uri(target_uri)
-    if not target_provider then
-        -- Something is very much not right
-        local _error = string.format("Unable to find provider for %s", target_uri)
-        logger.error(_error)
-        return {
-            error = { message = _error },
-            success = false
-        }
-    end
-    for provider, _ in pairs(grouped_uris) do
-        if not provider.archive or not provider.archive.get then
-            local _error = string.format("Provider %s did not implement archive.get", provider.name)
-            logger.error(_error)
-            return {
-                error = { message = _error },
-                success = false
-            }
-        end
-    end
-    if not target_provider.archive or not target_provider.archive.put then
-        local _error = string.format("Target provider for %s did not implement archive.put", target_uri)
-        logger.error(_error)
-        return {
-            error = { message = _error },
-            success = false
-        }
-    end
-    -- Attempting to perform the move/copy internally in the provider instead of archiving and pushing
-    if grouped_uris[target_provider] then
-        local command = 'copy'
-        if opts.cleanup then
-            command = 'move'
-        end
-        if not target_provider[command] then
-            logger.warn(string.format("%s does nto support internal %s, attempting to force", target_provider.name, command))
-            goto continue
-        end
-        local group = grouped_uris[target_provider]
-        local target_uris = group.uris
-        logger.info(string.format("Attempting to %s uris internally in provider %s", command, target_provider.name))
-        local command_status = target_provider[command](target_uris, target_uri, target_cache)
-        if command_status.success then
-            -- The provider was able to interally move the URIs on it, removing them
-            -- from the ones that need to be moved
-            grouped_uris[target_provider] = nil
-        end
-        ::continue::
-    end
-    if not next(grouped_uris) then
-        -- There is nothing left to do or there never was anything to do. Either way, we are done
-        return {success = true}
-    end
-    local available_compression_schemes = target_provider.archive.schemes(target_uri, target_cache)
-    if available_compression_schemes.error then
-        -- Complain that we got an error from the target and bail
-        local message = string.format("Received failure while looking for archive schemes for %s", target_uri)
-        logger.warn(message, available_compression_schemes)
-        return { error = available_compression_schemes.error, success = false }
-    end
+
+function M.internal.copy_async(target_uri, grouped_uris, target_provider, target_cache, callback, command)
+    -- Some more verification that we _can_ do this asynchronously, otherwise
+    -- we need to return whatever M.internal.copy_sync does
+    logger.info(string.format("Attempting to perform %s to %s", command, target_uri))
     local temp_dir = require("netman.tools.utils").tmp_dir
-    -- TODO: Mike
-    -- Consider a coroutine for each iteration of this loop and then join those bois together so 
-    -- we can properly "utilize" multiprocessing
-    for provider, data in pairs(grouped_uris) do
-        local archive_data = provider.archive.get(data.uris, data.cache, temp_dir, available_compression_schemes)
-        if archive_data.error then
-            -- Something happened!
-            local message = string.format("Received error while trying to archive uris on %s", provider.name)
-            logger.warnn(message)
-            logger.warn(message, archive_data.error)
-            -- TODO: Consider a way to let the archival resume on failure if the user wishes...?
-            return archive_data
-        end
-        local status = target_provider.archive.put(target_uri, target_cache, archive_data.archive_path, archive_data.scheme)
-        if status.error then
-            local message = string.format("Received error from %s while trying to upload archive", target_provider.name)
-            logger.warnn(message)
-            logger.warn(message, status)
-        end
-        if opts.cleanup then
-            for _, uri in ipairs(data.uris) do
-                status = provider.delete(uri, data.cache)
-                if status.error then
-                    local message = string.format("Received error during cleanup of %s", uri)
-                    logger.warnn(message)
-                    logger.warn(message, status)
+    local dead = false
+    local archives = {}
+    local failed_providers = {}
+    local connect_handles = {}
+    local pull_handles = {}
+    local extract_handle = nil
+
+    local function cleanup()
+        if #archives > 0 then
+            for _, archive in ipairs(archives) do
+                local success, err = pcall(vim.loop.fs_unlink, archive.path)
+                if not success then
+                    logger.warn(string.format("Unable to remove %s. Error: %s", archive.path, err))
                 end
             end
         end
-        -- -- Remove the temporary file
-        assert(vim.loop.fs_unlink(archive_data.archive_path), string.format("Unable to remove %s", archive_data.archive))
     end
-    return {success = true}
+
+    local function do_error(message, details)
+        dead = true
+        cleanup()
+        local m = message and { message = message } or nil
+        if m then
+            logger.warn(message, details)
+        end
+        callback({success = false, message = m})
+    end
+
+    local function extract()
+        -- If there is a connect_handle we should probably wait until its nil????
+        if dead then return end
+        local function extract_callback()
+            if dead then return do_error() end
+            cleanup()
+            callback({success = true})
+        end
+        extract_handle = target_provider.archive.put_a(
+            target_uri,
+            target_cache,
+            archives,
+            function(response)
+                if dead then return do_error() end
+                if not response or not response.success then
+                    local message =
+                        response and response.message and response.message.message
+                        or string.format("Unknown error occured during" ..
+                            " extract of %s", target_uri)
+                    do_error(message, { uri = target_uri, archives = archives, response = response })
+                    return
+                end
+                extract_callback()
+            end
+        )
+    end
+
+    local function do_pull()
+        logger.warn("Dumping Callstack\n", utils.get_current_callstack())
+        if dead then return end
+        local function pull_callback(provider)
+            pull_handles[provider] = nil
+            if dead or next(pull_handles) then return end
+            extract()
+        end
+        -- For some reason this is calling back to `connect_host_a_callback` after completion...
+        local available_compression_schemes = target_provider.archive.schemes(target_uri, target_cache)
+
+        for provider, data in pairs(grouped_uris) do
+            logger.tracef("Reaching out to %s to get archive for %s", provider.name, table.concat(data.uris, ', '))
+            -- TODO: Check if provider is target and attempt internal move/copy???
+            pull_handles[provider] = provider.archive.get_a(
+                data.uris,
+                data.cache,
+                temp_dir,
+                available_compression_schemes,
+                function(response)
+                    if dead then return do_error() end
+                    if not response or not response.success then
+                        local message =
+                            response and response.message and response.message.message
+                            or string.format("Unknown error occured during" ..
+                            " pull of %s", table.concat(data.uris, ', '))
+                        do_error(message, { uris = data.uris, response = response })
+                        return
+                    end
+                    if not response.data then
+                        local message =
+                            response.message and response.message.message
+                            or string.format("Provider %s did not return "
+                            .. "a valid archive package back!", provider.name)
+                        do_error(message, { uris = data.uris, provider = provider, response = response})
+                        return
+                    end
+                    -- TODO: Validate the archive?
+                    table.insert(archives, response.data)
+                    pull_callback(provider)
+                end
+            )
+        end
+    end
+
+    local function do_precheck()
+        local failed = false
+        -- Little bit of preparing the table
+        connect_handles[target_uri] = true
+        for _, data in pairs(grouped_uris) do
+            for _, uri in ipairs(data.uris) do
+                connect_handles[uri] = true
+            end
+        end
+        local function connect_host_a_callback(uri)
+            connect_handles[uri] = nil
+            -- Still connections processing
+            if dead or next(connect_handles) then return end
+            logger.debug("Connection Checking Complete. Moving on to archive step")
+            do_pull()
+        end
+        for provider, data in pairs(grouped_uris) do
+            if provider.connect_host and not provider.connect_host_a then
+                -- Cannot complete asynchronously!
+                table.insert(failed_providers, provider.name)
+                failed = true
+            elseif provider.connect_host_a then
+                for _, uri in ipairs(data.uris) do
+                    if failed then break end
+                    -- If we have a "dead", we should immediately stop
+                    logger.tracef("Reaching out to %s to ensure host connection for %s", provider.name, uri)
+                    connect_handles[uri] = provider.connect_host_a(
+                        uri,
+                        data.cache,
+                        function(success)
+                            if dead then return do_error() end
+                            if not success then
+                                logger.warnf("Provider %s did not indicate success on connect to host %s", provider.name, uri)
+                            end
+                            connect_host_a_callback(uri)
+                        end
+                    )
+                end
+            end
+        end
+        if target_provider.connect_host and not target_provider.connect_host_a then
+            table.insert(failed_providers, target_provider.name)
+            failed = true
+            connect_host_a_callback(target_uri)
+        elseif not failed then
+            connect_handles[target_uri] = target_provider.connect_host_a(
+            target_uri,
+            target_cache,
+            function(success)
+                if dead then return do_error() end
+                if not success then
+                    logger.warnf("Provider %s did not inidicate success on connect to host of %s", target_provider.name, target_uri)
+                end
+                connect_host_a_callback(target_uri)
+            end
+            )
+        end
+        if #failed_providers > 0 or failed then
+            logger.warnf("Unable to complete %s asynchronously, the following providers are missing `connect_host_a` function", command, table.concat(failed_providers, ', '))
+            dead = true
+            return {
+                success = false,
+                async = false
+            }
+        end
+        failed_providers = {}
+    end
+    do_precheck()
+    return {
+        async = true,
+        stop = function(force)
+            dead = true
+            if #connect_handles > 0 then
+                for _, handle in pairs(connect_handles) do
+                    handle.stop(force)
+                end
+            end
+            if #pull_handles > 0 then
+                for _, handle in pairs(pull_handles) do
+                    handle.stop(force)
+                end
+            end
+            if extract_handle then
+                extract_handle.stop(force)
+            end
+            cleanup()
+        end
+    }
+end
+
+function M.internal.copy_sync(target_uri, grouped_uris, target_provider, target_cache, command)
+    local temp_dir = require("netman.tools.utils").tmp_dir
+    -- verify we got the right stuff
+    -- Check if the grouped_uris are connected
+    local checked_target = false
+    for provider, data in pairs(grouped_uris) do
+        if provider == target_provider then checked_target = true end
+        if provider.connect_host then
+            for _, uri in ipairs(data.uris) do
+                if not provider.connect_host(uri, data.cache) then
+                    logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+                end
+            end
+        end
+    end
+    if not checked_target and target_provider.connect_host then
+        if not target_provider.connect_host(target_uri, target_cache) then
+            logger.warnf("Provider %s did not inidicate success on connect to host of %s", target_provider.name, target_uri)
+        end
+    end
+    if grouped_uris[target_provider] then
+        if target_provider[command] then
+            local data = grouped_uris[target_provider]
+            logger.info(string.format("Attempting to %s uris (%s) internally in provider %s", command, table.concat(data.uris, ', '), target_provider.name))
+            local command_status = target_provider[command](data.uris, target_uri, target_cache)
+            if command_status.success then
+                grouped_uris[target_provider] = nil
+            end
+        else
+            logger.warnf("%s does not support internal %s. Attempting to force", target_provider.name, command)
+        end
+    end
+    if not next(grouped_uris) then
+        -- Nothing left to do
+        return { success = true, async = false }
+    end
+    local available_compression_schemes = target_provider.archive.schemes(target_uri, target_cache)
+    if available_compression_schemes.error then
+        local message = string.format("Received failure while looking for archive scheme formats on %s", target_provider.name)
+        logger.warn(message, available_compression_schemes, { target_uri = target_uri, grouped_uris = grouped_uris, target_provider = target_provider, command = command})
+        return {
+            success = false,
+            async = false,
+            message = { message = message }
+        }
+    end
+    -- WORK
+    local archives = {}
+    local failure = nil
+
+    local cleanup = function()
+        for _, archive in ipairs(archives) do
+            local success = pcall(vim.loop.fs_unlink, archive.path)
+            if not success then
+                logger.warn(string.format("Unable to remove %s", archive.path), {archive = archive})
+            end
+        end
+    end
+
+    for provider, data in pairs(grouped_uris) do
+        local archive_data = provider.archive.get(data.uris, data.cache, temp_dir, available_compression_schemes)
+        if not archive_data or not archive_data.success then
+            local message = archive_data and archive_data.message or "Unknown error occured during archival of source uris"
+            logger.warn(message)
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data then
+            local message = archive_data.message or string.format("Provider did not return archival of %s", table.concat(data.uris))
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data.name then
+            local message = archive_data.message or string.format("Provider returned invalid archival of %s. Archive missing name", table.concat(data.uris))
+            return {
+                success = false,
+                async = true,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data.path then
+            local message = archive_data.message or string.format("Provider returned invalid archival of %s. Archive missing path", table.concat(data.uris))
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        if not archive_data.data.compression then
+            local message = archive_data.message or string.format("Provider returned invalid archival of %s. Archive missing compression scheme", table.concat(data.uris))
+            return {
+                success = false,
+                async = false,
+                message = { message = message }
+            }
+        end
+        table.insert(archives, { path = archive_data.data.path, name = archive_data.data.name, compression = archive_data.data.compression } )
+        if command == 'move' then
+            for _, uri in ipairs(data.uris) do
+                local status = provider.delete(uri, data.cache)
+                if not status or not status.success then
+                    local message = status and status.message or string.format("Provider (%s) reported error while cleaning %s", provider.name, uri)
+                    logger.warn(message, { uri = uri, provider = provider, response = status})
+                    failure = {
+                        success = false,
+                        async = false,
+                        message = { message = message }
+                    }
+                end
+            end
+        end
+    end
+
+    if failure then
+        cleanup()
+        return failure
+    end
+
+    local result = target_provider.archive.put(target_uri, target_cache, archives)
+    if not result or not result.success then
+        local message = result and result.message or string.format("Unable to put archived data on target provider %s", target_provider.name)
+        logger.warn(message, { uri = target_uri, provider = target_provider, archives = archives })
+        cleanup()
+        return {
+            success = false,
+            async = false,
+            message = { message = message }
+        }
+    end
+    cleanup()
+    return {
+        success = true,
+        async = false
+    }
+end
+
+--- @param uris table | string
+---     The uris to copy. This can be a table of strings or a single string
+--- @param target_uri string
+---     The uri to copy the uris to
+--- @param opts table | nil
+---     Default: {}
+---     Any options for the copy function. Valid options 
+---         - cleanup
+---             - If provided, we will tell the originating provider to delete the origin uri after copy
+---             has been completed
+--- @return table
+---     Returns a table with the following information
+---     {
+---         success: boolean,
+---         error: { message = "Error that occurred during rename "} -- (Optional)
+---     }
+function M.copy(uris, target_uri, opts, callback)
+    opts = opts or {}
+    local async = callback and true or false
+    local command = opts.cleanup and 'move' or 'copy'
+    -- \/==========================PREWORK==========================\/
+    if type(uris) == 'string' then uris = { uris } end
+    local _, target_provider, target_cache = M.internal.validate_uri(target_uri)
+    if not target_provider then
+        local _error = string.format("Unable to locate provider for %s", target_uri)
+        logger.error(_error, {uris = uris, target_uri = target_uri, opts = opts, command = command})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    if not target_provider.archive or not target_provider.archive.put then
+         local _error = string.format("Target provider %s did not implement archive.put, unable to push archives for mass copy/move", target_provider.name)
+        logger.error(_error, { uris = uris, target_uri = target_uri, target_provider = target_provider, opts = opts, command = command})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    -- If the target provider does not have put_a then we cannot run async, even if the user requested it to be
+    if not target_provider.archive.put_a then async = false end
+    local grouped_uris = M.internal.group_uris(uris)
+    if not grouped_uris then
+        local _error = string.format("Unable to preprocess uris")
+        logger.error(_error, { uris = uris, target_uri = target_uri, opts = opts, command = command})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    local failed_providers = {}
+    for provider, _ in pairs(grouped_uris) do
+        if not provider.archive or not provider.archive.get then
+            table.insert(failed_providers, provider.name)
+        end
+        -- If one of the source providers does not have a get_a function then we cannot run async, even if the user requested it to be
+        if not provider.archive.get_a then
+            async = false
+        end
+    end
+    if #failed_providers > 0 then
+        local _error = string.format("Provider(s) %s did not implement archive.get, unable to pull archives for mass copy/move", table.concat(failed_providers))
+        logger.error(_error, { uris = uris, target_uri = target_uri, groups = grouped_uris, opts = opts})
+        return {
+            success = false,
+            message = { message = _error }
+        }
+    end
+    -- /\==========================PREWORK==========================/\
+    -- \/=========================POSTWORK==========================\/
+    if async then
+        local result = M.internal.copy_async(target_uri, grouped_uris, target_provider, target_cache, callback, command)
+        -- If the result doesn't say its async, thats because it failed additional
+        -- async checks.
+        if not result or not result.async then
+            return M.internal.copy_sync(target_uri, grouped_uris, target_provider, target_cache, command)
+        else
+            return result
+        end
+    else
+        return M.internal.copy_sync(target_uri, grouped_uris, target_provider, target_cache, command)
+    end
 end
 
 --- Attempts to submit a search to the provider of the URI.
@@ -960,7 +1742,7 @@ end
 --- this might just return nil.
 --- @param uri string
 --- @param param string
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {
 ---         search = 'filename',
 ---         case_sensitive = false
@@ -1000,22 +1782,162 @@ function M.search(uri, param, opts)
     return data
 end
 
-function M.delete(uri)
+function M.delete(uri, callback)
+    local orig_uri = uri
     local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
-    if not uri or not provider then return nil end
-    logger.info(string.format("Reaching out to %s to delete %s", provider.name, uri))
-    -- Do this asynchronously
-    provider.delete(uri, cache)
+    uri, provider, cache, _ = M.internal.validate_uri(uri)
+    if not uri or not provider then
+        return {
+            success = false,
+            message = string.format("Unable to get metadata for %s or unable to find provider for it", orig_uri)
+        }
+    end
+    -- Even if we are unsuccessful, we should at least delete the local
+    -- cached version
     M._providers.file_cache[uri] = nil
+    local return_handle = M.internal.wrap_shell_handle()
+    local return_data = nil
+    local protected_callback = function(data, complete)
+        if not callback then return end
+        if data == nil and complete == nil then return end
+        local success, _error = pcall(callback, data, complete)
+        if not success then
+            logger.warn("Delete return processing experienced a failure!", _error)
+        end
+    end
+    local result_callback = function(data, complete)
+        if return_handle._stopped == true then return end
+        if data and data.handle then
+            logger.debug("Received new handle reference from provider during async delete. Updating our handle pointer")
+            return_handle._handle = data.handle
+            return
+        end
+        if data and data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, data.message)
+        end
+        return_data = data
+        protected_callback(data, complete)
+    end
+    local error_callback = function(err)
+        logger.warn(err)
+    end
+    local connection_callback = function()
+        local raw_handle = M.internal.asp(
+            provider,
+            'delete',
+            'delete_a',
+            {uri, cache, result_callback},
+            error_callback,
+            result_callback
+        )
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
+        end
+        protected_callback(return_data)
+    end
+    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    if callback then
+        return return_handle
+    else
+        return return_data
+    end
 end
 
-function M.get_metadata(uri, metadata_keys)
+function M.internal._get_metadata_async(uri, provider, cache, is_connected, metadata_keys, force, callback)
+    -- TODO: We should be using cache for this if we can.
+    local return_handle = M.internal.wrap_shell_handle()
+    logger.infof("Attempting asynchronous get metadata of %s", uri)
+    assert(provider, "No provider provided to get_metadata")
+    logger.infof("Reaching out to %s to get metadata for %s", provider.name, uri)
+    local cb = function(response)
+        if not response or not response.success or not response.data then
+            local _err = response.message and response.message.message or "Unknown error occured during get metadata"
+            callback({success = false, message = { message = _err }})
+            return
+        end
+        local metadata = {}
+        for _, key in ipairs(metadata_keys) do
+            metadata[key] = response.data[key] or nil
+        end
+        callback({ success = true, data = metadata, async = true })
+    end
+    local function do_provider_get_metadata()
+        return_handle = provider.get_metadata_a(uri, cache, metadata_keys, cb)
+    end
+    if not is_connected and provider.connect_a then
+        local handle = provider.connect_host_a(
+            uri,
+            cache,
+            function(success)
+                if not success then
+                    logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+                end
+                do_provider_get_metadata()
+            end
+        )
+        if not handle then
+            logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing async connect host", provider.name)
+            provider.connect_host_a = nil
+        end
+        return_handle = M.internal.wrap_shell_handle(handle)
+    else
+        do_provider_get_metadata()
+    end
+    return return_handle
+end
+
+function M.internal._get_metadata_sync(uri, provider, cache, is_connected, metadata_keys, force)
+    logger.infof("Attempting synchronous get metadata of %s", uri)
+    logger.trace("Metadata Keys", metadata_keys)
+    assert(provider, "No provider provided to get_metadata")
+    if not is_connected and provider.connect then
+        local connected = provider.connect(uri, cache)
+        if not connected then
+            logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+        end
+    end
+    logger.infof("Reaching out to %s to get metadata for %s", provider.name, uri)
+    local provider_metadata = provider.get_metadata(uri, cache, metadata_keys) or {}
+    logger.debug("Response", provider_metadata)
+    if not provider_metadata.success then
+        return {
+            success = false,
+            async = false,
+            message = {
+                message =
+                    provider_metadata.message and provider_metadata.message.message
+                    or string.format("Provider reported error occured while getting metadata for %s", uri)
+            }
+        }
+    end
+    local metadata = {}
+    for _, key in ipairs(metadata_keys) do
+        metadata[key] = provider_metadata.data[key] or nil
+    end
+    return {
+        success = true,
+        data = metadata,
+        async = false
+    }
+end
+
+function M.get_metadata(uri, metadata_keys, options, callback)
+    options = options or {}
+    local orig_uri = uri
+    metadata_keys = metadata_keys or {}
     local provider, cache = nil, nil
-    uri, provider, cache = M.internal.validate_uri(uri)
-    if not uri then return nil end
-    if not metadata_keys then
-        metadata_keys = {}
+    uri, provider, cache, _ = M.internal.validate_uri(uri)
+    if not uri or not provider then
+        return {
+            success = false,
+            message = string.format("Unable to get metadata for %s or unable to find provider for it", orig_uri)
+        }
+    end
+    if #metadata_keys == 0 then
         for key, _ in pairs(netman_options.explorer.STANDARD_METADATA_FLAGS) do
             table.insert(metadata_keys, key)
         end
@@ -1031,12 +1953,63 @@ function M.get_metadata(uri, metadata_keys)
             table.insert(sanitized_metadata_keys, key)
         end
     end
-    local provider_metadata = provider.get_metadata(uri, cache, sanitized_metadata_keys) or {}
-    local metadata = {}
-    for _, key in ipairs(sanitized_metadata_keys) do
-        metadata[key] = provider_metadata[key] or nil
+    local return_handle = M.internal.wrap_shell_handle()
+    local return_data = nil
+    local protected_callback = function(data, complete)
+        if not callback then return end
+        if data == nil and complete == nil then return end
+        local success, _error = pcall(callback, data, complete)
+        if not success then
+            logger.warn("Get Metadata return processing experienced a failure!", _error)
+        end
     end
-    return metadata
+    local result_callback = function(data, complete)
+        if return_handle._stopped == true then return end
+        if data and data.handle then
+            logger.debug("Received new handle reference from provider during async get_metadata. Updating our handle pointer")
+            return_handle._handle = data.handle
+            return
+        end
+        if data and data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, data.message)
+        end
+        local metadata = {}
+        for _, key in ipairs(metadata_keys) do
+            if data and data.data and data.data[key] then
+                metadata[key] = data.data[key]
+            end
+        end
+        return_data = metadata
+        protected_callback({success = true, data = return_data}, complete)
+    end
+    local error_callback = function(err)
+        logger.warn(err)
+    end
+    local connection_callback = function()
+        local raw_handle = M.internal.asp(
+            provider,
+            'get_metadata',
+            'get_metadata_a',
+            {uri, cache, metadata_keys, result_callback},
+            error_callback,
+            callback and result_callback
+        )
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
+        end
+        protected_callback(return_data)
+    end
+    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    if callback then
+        return return_handle
+    else
+        return return_data
+    end
+
 end
 
 -- TODO: (Mike): Do a thing with this?
@@ -1117,18 +2090,11 @@ function M.load_provider(provider_path)
         return
     end
     logger.info("Validating Provider: " .. provider_path)
-    local missing_attrs = nil
-    for _, required_attr in ipairs(_provider_required_attributes) do
-        if not provider[required_attr] then
-            if missing_attrs then
-                missing_attrs = missing_attrs .. ', ' .. required_attr
-            else
-                missing_attrs = required_attr
-            end
-        end
-    end
+    local validation_details = validator(provider)
+    logger.trace("Validated Provider -> ", validation_details.provider)
+    local missing_attrs = table.concat(validation_details.missing_attrs, ', ')
     logger.info("Validation finished")
-    if missing_attrs then
+    if #validation_details.missing_attrs > 0 then
         logger.error("Failed to initialize provider: " ..
             provider_path .. ". Missing the following required attributes (" .. missing_attrs .. ")")
         M._providers.uninitialized[provider_path] = {
@@ -1139,6 +2105,7 @@ function M.load_provider(provider_path)
         }
         return
     end
+    provider = validation_details.provider
     logger.trace("Initializing " .. provider_path .. ":" .. provider.version)
     M._providers.path_to_provider[provider_path] = { provider = provider,
         cache = cache_generator:new(cache_generator.MINUTE) }
@@ -1219,12 +2186,11 @@ function M.reload_provider(provider_path)
 end
 
 --- Loads up the netman logger into a buffer.
---- @param output_path string | Optional
+--- @param output_path string | nil
 ---     Default: $HOME/random_string.logger
 ---     If provided, this will be the file to write to. Note, this will write over whatever the file that is provided.
 ---     Note, you can provide "memory" to generate this as an in memory logger dump only
 function M.generate_log(output_path)
-    logger.tracef("Generating Session Log and dumping to %s", output_path)
     local neovim_details = vim.version()
     local host_details = vim.loop.os_uname()
     local headers = {
@@ -1368,7 +2334,7 @@ end
 -- Emits the event, and will also call any functions that might care about it
 -- @param event string
 --     A valid netman event
--- @param source string | Optional
+-- @param source string | nil
 --    Default: nil
 --    If provided, this will be the URI source of the event.
 -- @example

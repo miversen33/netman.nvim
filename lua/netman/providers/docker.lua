@@ -97,7 +97,7 @@ function Container:new(container_name, provider_cache)
         logger.trace(__)
         if __.exit_code ~= 0 then
             local _error = "Unable to verify docker is available to run"
-            logger.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
+            logger.info(_error, { exit_code = __.exit_code, stderr = __.stderr })
             return {}
         end
         if __.stdout:match('Got permission denied while trying to connect to the Docker daemon socket at') then
@@ -236,7 +236,7 @@ end
 --- Runs the provided command inside the container
 --- @param command string/table
 ---     Command can be either a string or table or strings
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {STDOUT_JOIN = '', STDERR_JOIN = ''}
 ---     A table of command options. @see netman.tools.shell for details. Additional key/value options
 ---     - no_shell
@@ -329,7 +329,7 @@ function Container:current_status()
 end
 
 --- Starts the container
---- @param opts table | Optional
+--- @param opts table | nil
 ---     If provided, this table will contain key value pairs that will modify how start is ran
 ---     Valid Key Value Pairs
 ---     - async: boolean
@@ -343,7 +343,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if starting the container was successful
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during start. May not be present
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -395,7 +395,7 @@ function Container:start(opts)
 end
 
 --- Stops the container
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, the following key value pairs are acceptable options
 ---     - async: boolean
@@ -413,7 +413,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if stopping the container was successful
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during stop. May not be present
 ---     NOTE: This table is _only_ provided to opts.finish_callback.
 ---     As this function performs asychronously, nothing is returned until its complete
@@ -494,7 +494,7 @@ end
 ---     what are you even doing with your life?
 --- @param provider_cache table
 ---     The table that netman.api provides to you
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A 2D table that can contain any of the following key, value pairs
 ---     - async: boolean
@@ -517,7 +517,7 @@ end
 ---         - If opts.remote_dump is provided, archive_path will be the URI to access the archive
 ---     - success boolean
 ---         - A boolean (t/f) of if the archive succedded or not
----     - error string | Optional
+---     - error string | nil
 ---         - Any errors that need to be displayed to the user
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -610,7 +610,7 @@ end
 ---     The scheme the archive is compressed with
 --- @param provider_cache table
 ---     The cache that netman.api provided you
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of options to be used when extracting. Available key/values are
 ---         - async: boolean
@@ -629,7 +629,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if the extraction was a success
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during extraction. May not be present
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -745,7 +745,7 @@ end
 ---     A table of string locations to move. Can be files or directories
 --- @param target_location string
 ---     The location to copy to. Must be a directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how cp works
 ---     Valid Options:
@@ -755,7 +755,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested copy
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
 ---         get an error, it will not be returned. Ye be warned.
 --- @example
@@ -797,7 +797,7 @@ end
 ---     The a table of string locations to move. Can be a files or directories
 --- @param target_location string
 ---     The location to move to. Can be a file or directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how mv works
 ---     Valid Options
@@ -807,7 +807,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested move
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -846,7 +846,7 @@ end
 --- Touches a file in the container
 --- @param locations table
 ---     A table of filesystem locations (as strings) touch
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - ignore_errors: boolean
@@ -855,7 +855,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -884,7 +884,7 @@ end
 --- Creates a directory in the container
 --- @param locations table
 ---     A table of filesystem locations (as strings) create
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - ignore_errors: boolean
@@ -893,7 +893,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -924,7 +924,7 @@ end
 
 --- @param locations table
 ---     A table of netman uris to remove
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - force: boolean
@@ -935,7 +935,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -977,7 +977,7 @@ end
 ---     The location to find from
 --- @param search_param string
 ---     The string to search for
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
@@ -1007,7 +1007,7 @@ end
 ---         - If provided, used to specify the minimum depth to traverse our search
 ---     - filesystems: boolean
 ---         - If provided, tells us to descend (or not) into other filesystems
----     - exec: string or function | Optional
+---     - exec: string or function | nil
 ---         - If provided, will be used as the `exec` flag with find.
 ---         Note: the `string` form of this needs to be a find compliant shell string. @see man find for details
 ---         Alternatively, you can provide a function that will be called with every match that find gets. Note, this will be significantly slower
@@ -1075,7 +1075,7 @@ end
 ---     The string file location on the host
 --- @param location URI
 ---     The location to put the file
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table containing options to alter the effect of `put`. Valid key/value pairs are
 ---     - new_file_name: string
@@ -1167,7 +1167,7 @@ end
 ---     A netman URI of the location to download
 --- @param output_dir string
 ---     The string filesystem path to download to
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table of key/value pairs that modify how get operates. Valid key/value pairs are
 ---     - async: boolean
@@ -1192,7 +1192,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         - A true/false indicating if the get was successful
----     - error: string | Optional
+---     - error: string | nil
 ---         - A string of errors that occured during the get
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -1248,7 +1248,7 @@ end
 --- Takes a table of filesystem locations and returns the stat of them
 --- @param locations table
 ---     - A table of filesystem locations
---- @param target_flags table | Optional
+--- @param target_flags table | nil
 ---     Default: Values from @see Container.CONSTANTS.STAT_FLAGS
 ---     - If provided, will return a table with only these keys and their respective values
 ---     - NOTE: You will _always_ get `NAME` back, even if you explicitly tell us not to return
@@ -1381,7 +1381,7 @@ end
 ---     - write
 ---     - execute
 ---     This is the `rwx` part of the chmod command
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table that can alter how stat_mod operates. Valid Key Value Pairs are
 ---     - remove_mod: boolean
@@ -1449,7 +1449,7 @@ end
 ---     - user
 ---     - group
 ---     The value associated with each key should be the string for that key. EG { user = 'root', group = 'nogroup'}
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {}
 ---     If provided, a table that can alter how own_mod operates. Valid Key Value Paris are
 ---     - ignore_errors: boolean
@@ -1551,7 +1551,7 @@ function URI:new(uri, cache)
 end
 
 --- Returns ourselves in string form
---- @param type string | Optional
+--- @param type string | nil
 ---     Default: 'local'
 ---     Specifies the type of uri to return. Valid options are
 ---     - 'local'

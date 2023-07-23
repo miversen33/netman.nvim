@@ -1,3 +1,4 @@
+local JSON = require("netman.tools.parsers.json")
 local socket_files = require("netman.tools.utils").socket_dir
 local CACHE = require("netman.tools.cache")
 local metadata_options = require("netman.tools.options").explorer.METADATA
@@ -57,8 +58,8 @@ local SSH = {
             URI = 'URI'
         },
         SSH_CONNECTION_TIMEOUT = 10,
-        SSH_SOCKET_FILE_NAME = '%h-%p-%r',
-        SSH_PROTO_GLOB = '^([sftcp]+)://',
+        SSH_SOCKET_FILE_NAME = '%C', -- Much more compressed way to represent the "same" connection details
+        SSH_PROTO_GLOB = '^([sfthcp]+)://',
         MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
     },
     internal = {
@@ -77,11 +78,11 @@ M.internal.URI = URI
 ---     The authentication details for this SSH connection.
 ---     Valid Key Value pairs
 ---     - host: string
----     - user: string | Optional
----     - port: interger | Optional
----     - password: string | Optional (not implemented)
----     - key: string | Optional (not implemented)
----     - passphrase: string | Optional (not implemented)
+---     - user: string | nil
+---     - port: interger | nil
+---     - password: string | nil (not implemented)
+---     - key: string | nil (not implemented)
+---     - passphrase: string | nil (not implemented)
 --- @param provider_cache cache
 ---     The netman api provided cache.
 ---     If that confuses you, please see netman.api.register_provider for details
@@ -145,12 +146,12 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, 'ControlMaster=auto')
 
-        table.insert(_ssh.console_command, '-o')
-        table.insert(_ssh.console_command,
-            string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
-        table.insert(_ssh._put_command, '-o')
-        table.insert(_ssh._put_command,
-            string.format('ControlPath="%s %s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+    table.insert(_ssh.console_command, '-o')
+    table.insert(_ssh.console_command,
+        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+    table.insert(_ssh._put_command, '-o')
+    table.insert(_ssh._put_command,
+        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
 
         table.insert(_ssh.console_command, '-o')
         table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
@@ -283,7 +284,7 @@ function SSH:_get_archive_availability_details()
         end
     end
     extract_commands['tar.gz'] = function(location, archive)
-        local pre_format_command = "tar -oC %s -xzf %s"
+        local pre_format_command = "tar -C %s -oxzf %s"
         return string.format(pre_format_command, location:to_string(), archive)
     end
     archive_commands['tar'] = archive_commands['tar.gz']
@@ -320,7 +321,7 @@ end
 --- Runs the provided command over the SSH pipe
 --- @param command string/table
 ---     Command can be either a string or table or strings
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {STDOUT_JOIN = '', STDERR_JOIN = ''}
 ---     A table of command options. @see netman.tools.shell for details. Additional key/value options
 ---     - no_shell
@@ -381,7 +382,7 @@ end
 ---     what are you even doing with your life?
 --- @param provider_cache table
 ---     The table that netman.api provides to you
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A 2D table that can contain any of the following key, value pairs
 ---     - async: boolean
@@ -405,7 +406,7 @@ end
 ---         - If opts.remote_dump is provided, archive_path will be the URI to access the archive
 ---     - success boolean
 ---         - A boolean (t/f) of if the archive succedded or not
----     - error string | Optional
+---     - error string | nil
 ---         - Any errors that need to be displayed to the user
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -475,9 +476,10 @@ function SSH:archive(locations, archive_dir, compatible_scheme_list, provider_ca
         [command_flags.STDOUT_FILE_OVERWRITE] = true,
         [command_flags.EXIT_CALLBACK] = finish_callback,
         -- Turning off stdout pipe as STDOUT is being dumped to a file
-        [command_flags.STDOUT_PIPE_LIMIT] = 0
+        [command_flags.STDOUT_PIPE_LIMIT] = 0,
+        [command_flags.ASYNC] = opts.async and true or false,
+        [command_flags.STDOUT_FILE] = string.format("%s/%s", archive_dir, archive_name)
     }
-    if opts.async then command_options[command_flags.ASYNC] = true end
     -- TODO
     -- if opts.remote_dump then
     --     -- This probably doesn't work
@@ -485,7 +487,6 @@ function SSH:archive(locations, archive_dir, compatible_scheme_list, provider_ca
     --         archive_name)
     --     archive_path = string.format("ssh://%s///%s/%s", self.host, archive_dir, archive_name)
     -- else
-    command_options[command_flags.STDOUT_FILE] = string.format("%s/%s", archive_dir, archive_name)
     -- end
     local run_details = self:run_command(compress_command, command_options)
     if not opts.async then return return_details else return run_details end
@@ -498,9 +499,7 @@ end
 ---     The location to extract to
 --- @param scheme string
 ---     The scheme the archive is compressed with
---- @param provider_cache table
----     The cache that netman.api provided you
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of options to be used when extracting. Available key/values are
 ---         - async: boolean
@@ -508,8 +507,6 @@ end
 ---             that finish_callback is used with this
 ---         - ignore_errors: boolean
 ---             If provided, we will not output any errors we get
----         - remote_dump: boolean
----             Indicates that the archive is already on the host
 ---         - cleanup: boolean
 ---             Indicates that we need to delete the archive after successful extraction
 ---         - finish_callback: function
@@ -519,7 +516,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if the extraction was a success
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during extraction. May not be present
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -529,8 +526,8 @@ end
 ---     -- Additionally, it assumes that `/tmp/some.tar.gz` exists on the local machine
 ---     local host = SSH:new('user@host')
 ---     host:extract('/tmp/some.tar.gz', '/tmp/', 'tar.gz', cache)
----     -- TODO: Add an example of how to do an extract with a Pipe...
-function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
+-- -     -- TODO: Add an example of how to do an extract with a Pipe...
+function SSH:extract(archive, target_dir, scheme, opts)
     opts = opts or {}
     local return_details = {}
     local run_details = {}
@@ -554,18 +551,6 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
     end
     assert(target_dir.__type and target_dir.__type == 'netman_uri',
         string.format("%s is not a valid netman uri", target_dir))
-    -- If the archive isn't remote, we will want to craft a different command to extract it.
-    local extract_command = nil
-    local cleanup = nil
-    local mkdir_status = self:mkdir(target_dir, { force = true })
-    if not mkdir_status or not mkdir_status.success then
-        return_details = { success = false, error = mkdir_status.error or SSH.CONSTANTS.MKDIR_UNKNOWN_ERROR }
-        if opts.finish_callback then
-            opts.finish_callback(return_details)
-            return
-        end
-        return return_details
-    end
     local finish_callback = function(command_output)
         logger.trace(command_output)
         if command_output.exit_code ~= 0 then
@@ -574,7 +559,10 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
             return_details = { error = _error, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
         end
-        if cleanup then cleanup() end
+        if opts.cleanup then
+            ---@diagnostic disable-next-line: param-type-mismatch, missing-parameter
+            self:rm(archive)
+        end
         return_details = { success = true }
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
@@ -585,55 +573,11 @@ function SSH:extract(archive, target_dir, scheme, provider_cache, opts)
         [command_flags.STDOUT_PIPE_LIMIT] = 0,
         [command_flags.EXIT_CALLBACK] = finish_callback
     }
-    if not opts.remote_dump then
-        -- There is no way for us to do this command "asynchronously" as we have to perform the commands in sync
-        opts.async = false
-        -- This is going to cat the contents of the archive into docker in an
-        -- "interactive" session, which will pipe into the provided command.
-        local fh = io.open(archive, 'r+b')
-        if not fh then
-            local _error = string.format("Unable to read %s", archive)
-            if not opts.ignore_errors then logger.warn(_error) end
-            return { error = _error, success = false }
-        end
-        extract_command = {}
-        for _, _command in ipairs(self.console_command) do
-            table.insert(extract_command, _command)
-        end
-        table.insert(extract_command, '/bin/sh')
-        table.insert(extract_command, '-c')
-        table.insert(extract_command, string.format("'%s'", extraction_function(target_dir, '-')))
-        if opts.cleanup then
-            cleanup = function()
-                vim.loop.fs_unlink(archive)
-            end
-        end
-        local command = shell:new(extract_command, command_options)
-        command:run()
-        local stream = nil
-        while true do
-            -- NOTE:
-            -- We will probably want to tweak this a bit to get better
-            -- performance. Also keep in mind that we will eventually
-            -- allow passing in PIPES to read straight through from
-            -- STDOUT from on provider into STDIN in another provider
-            stream = fh:read(SSH.CONSTANTS.IO_BYTE_LIMIT)
-            if not stream then break end
-            command:write(stream)
-        end
-        fh:close()
-        command:close()
-    else
-        extract_command = extraction_function(target_dir, archive)
-        if opts.cleanup then
-            cleanup = function()
-                ---@diagnostic disable-next-line: param-type-mismatch, missing-parameter
-                self:rm(archive, provider_cache)
-            end
-        end
-        run_details = self:run_command(extract_command, command_options)
+    local handle = self:run_command(extraction_function(target_dir, archive), command_options)
+    if not opts.async then
+        return handle
     end
-    if not opts.async then return return_details else return run_details end
+    return run_details
 end
 
 --- Copies location(s) to another location in the ssh
@@ -641,7 +585,7 @@ end
 ---     The a table of string locations to move. Can be a files or directories
 --- @param target_location string
 ---     The location to move to. Can be a file or directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how copy works
 ---     Valid Options
@@ -651,7 +595,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the copy
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during copy. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -694,7 +638,7 @@ end
 ---     The a table of string locations to move. Can be a files or directories
 --- @param target_location string
 ---     The location to move to. Can be a file or directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how mv works
 ---     Valid Options
@@ -704,7 +648,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the move
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -746,23 +690,35 @@ end
 --- Touches a file in the host
 --- @param locations table
 ---     A table of filesystem locations (as strings) touch
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
+---     - async: boolean
+---         If provided, tells touch to run asynchronously. This affects the output of this function as we now will return a handle to the job instead of tahe data
+---     - finish_callback: function
+---         If provided, we will call this function with the output of touch. Note, we do _not_ stream the results. Highly recommended if you also provide `opts.async`
 ---     - ignore_errors: boolean
 ---         - If provided, we will not complain one bit when things explode :)
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:touch('/tmp/testfile.txt')
+---     -- Or async
+---     host:touch('/tmp/testfile.txt', {
+---         async = true,
+---         finish_callback = function(output)
+---             print(output)
+---         end
+---     })
 function SSH:touch(locations, opts)
     opts = opts or {}
+    local return_data = nil
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     local touch_command = { "touch" }
     local __ = {}
@@ -772,35 +728,58 @@ function SSH:touch(locations, opts)
         table.insert(__, location)
     end
     locations = __
-    local output = self:run_command(touch_command, { no_shell = true })
-    if output.exit_code ~= 0 and not opts.ignore_errors then
-        local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
-        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
-        return { success = false, error = _error }
+    local finish_callback = function(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
+            logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+            return_data = { success = false, error = _error }
+            if callback then callback(return_data) end
+            return
+        end
+        return_data = { success = true }
+        if callback then callback(return_data) end
     end
-    return { success = true }
+    local output = self:run_command(touch_command, {
+        no_shell = true,
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    })
+    if opts.async then return output end
+    return return_data
 end
 
 --- Creates a directory in the host
 --- @param locations table
 ---     A table of filesystem locations (as strings) create
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
+---     - async: boolean
+---         If provided, tells stat to run asynchronously. This affects the output of this function as we now will return a handle to the job instead of the data
+---     - finish_callback: function
+---         If provided, we will call this function with the output of mkdir. Note, we do _not_ stream the results.
 ---     - ignore_errors: boolean
 ---         - If provided, we will not complain one bit when things explode :)
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
----         it will not be returned. Ye be warned
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:mkdir('/tmp/testdir1')
+---     -- Or async
+---     host:mkdir('/tmp/testdir1', {
+---         async = true,
+---         finish_callback = function(output)
+---             print(output)
+---         end
+---     })
 function SSH:mkdir(locations, opts)
     opts = opts or {}
+    local return_data = nil
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     -- It may be worth having this do something like
     -- test -d location || mkdir -p location
@@ -813,29 +792,48 @@ function SSH:mkdir(locations, opts)
         table.insert(__, location)
     end
     locations = __
-    local output = self:run_command(mkdir_command, { no_shell = true })
-    if output.exit_code ~= 0 and not opts.ignore_errors then
-        local _error = string.format("Unable to make %s", table.concat(locations, ' '))
-        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
-        return { success = false, error = _error }
+    local finish_callback = function(output)
+        logger.trace(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to make %s", table.concat(locations, ' '))
+            logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+            return_data = { success = false, error = _error }
+            if callback then callback(return_data) end
+            return
+        end
+        return_data = { success = true }
+        if callback then callback(return_data) end
     end
-    return { success = true }
+    local output = self:run_command(mkdir_command, {
+        no_shell = true,
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    })
+    if opts.async then return output end
+    return return_data
 end
 
 --- @param locations table
 ---     A table of netman uris to remove
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how rm does "things". Valid key/value pairs are
 ---     - force: boolean
 ---         - If provided, we will try to force the removal of the targets
 ---     - ignore_errors: boolean
 ---         - If provided, we will not complain one bit when things explode :)
+---     - async: boolean
+---         - If provided, we will run the rm command asynchronously. You will get a shell handle back instead of the
+---         - usual response.
+---     - finish_callback: function
+---         - If provided, we will call this with the output of the removal instead. Note, it is recommended to use
+---         - this with opts.async or you will not get any response from the job!
 --- @return table
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -846,8 +844,14 @@ end
 ---     -- You can also also provide the `ignore_errors` flag if you don't care if this
 ---     -- works or not
 ---     host:rm('/tmp/somedir', {ignore_errors=true})
+---     -- You can also do the removal asynchronously
+---     host:rm('/tmp/somdir', {
+---         async = true,
+---         finish_callback = function(output) print("RM Output", vim.inspect(output) end)
+---     })
 function SSH:rm(locations, opts)
     opts = opts or {}
+    local return_data = nil
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     local rm_command = { 'rm', '-r' }
     if opts.force then table.insert(rm_command, '-f') end
@@ -867,13 +871,25 @@ function SSH:rm(locations, opts)
         table.insert(__, location:to_string())
     end
     locations = __
-    local output = self:run_command(rm_command, { no_shell = true })
-    if output.exit_code ~= 0 and not opts.ignore_errors then
-        local _error = string.format("Unable to remove %s", table.concat(locations, ' '))
-        logger.error(_error, { exit_code = output.exit_code, error = output.stderr })
-        return { success = false, error = _error }
+    local finish_callback = function(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to delete %s", table.concat(locations, ' '))
+            logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+            return_data = { success = false, error = _error }
+            if callback then callback(return_data) end
+            return
+        end
+        return_data = { success = true }
+        if callback then callback(return_data) end
     end
-    return { success = true }
+    local output = self:run_command(rm_command, {
+        no_shell = true,
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    })
+    if opts.async then return output end
+    return return_data
 end
 
 --- Runs find within the host
@@ -881,7 +897,7 @@ end
 ---     The location to find from
 --- @param search_param string
 ---     The string to search for
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
@@ -918,7 +934,7 @@ end
 ---         - By not providing this, we will default to using finds `;` option which means
 ---         that exec will execute a new "command" for every match. If you can, you should consider
 ---         setting this to true as you will see great performance increases
----     - exec: string or function | Optional
+---     - exec: string or function | nil
 ---         - If provided, will be used as the `exec` flag with find.
 ---         Note: the `string` form of this needs to be a find compliant shell string. @see man find for details
 ---         Alternatively, you can provide a function that will be called with every match that find gets. Note, this will be significantly slower
@@ -997,7 +1013,7 @@ function SSH:grep(uri, param, opts)
 end
 
 --- Attempts to get the user's home directory
---- @param user string | Optional
+--- @param user string | nil
 ---     Default: current logged in user
 ---     The user to get the home directory for.
 --- @return uri string | nil
@@ -1018,11 +1034,11 @@ function SSH:_get_user_home(user)
     end
     if output.exit_code ~= 0 then
         -- Logger the exit code, and still attempt to read the output, we might be able to establish what we need
-        logger.warn("Received Non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
+        logger.warn("Received non-0 exit code", {stdout = output.stdout, stderr = output.stderr})
     end
-    local success, details = pcall(vim.fn.json_decode, output.stdout)
+    local success, details = pcall(JSON.decode, JSON, output.stdout)
     if success ~= true then
-        logger.warn("Unable to parse home directory of user!")
+        logger.warn("Unable to parse home directory of user!", {error = details})
         return nil
     end
     if details.COMMAND_OUTPUT then
@@ -1040,7 +1056,7 @@ end
 ---     The string file location on the host
 --- @param location URI
 ---     The location to put the file
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table containing options to alter the effect of `put`. Valid key/value pairs are
 ---     - new_file_name: string
@@ -1065,7 +1081,7 @@ end
 function SSH:put(file, location, opts)
     opts = opts or {}
     local return_details = {}
-    assert(vim.loop.fs_stat(file), string.format("Unable to location %s", file))
+    assert(vim.loop.fs_stat(file), string.format("Unable to locate %s", file))
     if type(location) == 'string' then
         if not location:match(SSH.CONSTANTS.SSH_PROTO_GLOB) then
             -- A little bit of uri coalescing
@@ -1084,9 +1100,9 @@ function SSH:put(file, location, opts)
         -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
         -- if we get an error. Thus, error == gud
         if status == true then
-            local _, _stat = next(___)
+            local _stat = ___.data
             if _stat.TYPE ~= 'directory' then
-                logger.warn(_error)
+                logger.info(_error)
                 file_name = location:to_string()
                 location = location:parent()
             end
@@ -1144,7 +1160,7 @@ end
 ---     A netman URI of the location to download
 --- @param output_dir string
 ---     The string filesystem path to download to
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table of key/value pairs that modify how get operates. Valid key/value pairs are
 ---     - async: boolean
@@ -1159,21 +1175,44 @@ end
 ---         force will instead cat the file from within the docker environment and pipe the STDOUT
 ---         into the file location provided
 ---     - finish_callback: function
----         - A function to call when the get is complete. Note, this is an asychronous function
----         so if you want to get output from the get, you will want to provide this
+---         - A function to call when the get is complete. Note, this is basically required if you provide
+---         `async = true` in the options. If you want to get output from the get, you will want to provide this
 ---     - new_file_name: string
 ---         - If provided, sets the downloaded file name to this. By default the file will maintain its
 ---         current filename
 --- @return table
----     NOTE: This is provided to the `finish_callback` if its provided.
----     Returns a table that contains the following key/value pairs
----     - success: boolean
----         - A true/false indicating if the get was successful
----     - error: string | Optional
----         - A string of errors that occured during the get
+---     The return contents here varies depending on if `:get` is called asynchronously or not.
+---     If it is called with `opts.finish_callback` defined, you will get the following a shell handled returned.
+---     for details on this, please see netman.tools.shell.new_async_handler
+---
+---     If opts.finish_callback is not provided, you will receive the below table, and if it is provided, this
+---     table will be sent to the aforementioned callback associated with `opts.finish_callback`
+---     {
+---         - success: boolean
+---             - A true/false indicating if the get was successful
+---         - error: {
+---             - message: string
+---             - A string of errors that occured during the get. Note, this table will only be provided if there
+---             - were errors encountered
+---           }
+---         - data: {
+---             - file: string
+---               - String representation of the local absolute path of the downloaded file
+---           }
+---     }
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     host:get('/tmp/ubuntu.tar.gz', '/tmp/')
+---     -- OR
+---     local callback = function(result)
+---         if not result.success then
+---             -- Handle failure to download?
+---             print(string.format("Unable to download /tmp/ubuntu.tar.gz. Received Error: %s", result.error.message))
+---             return
+---         end
+---         print(string.format("Downloaded /tmp/ubuntu.tar.gz to %s", result.data.file))
+---     end
+---     host:get('/tmp/ubuntu.tar.gz', '/tmp/', {async = true, finish_callback = callback}) -- This will run the get command asynchronously
 function SSH:get(location, output_dir, opts)
     opts = opts or {}
     local return_details = {}
@@ -1193,21 +1232,24 @@ function SSH:get(location, output_dir, opts)
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to download %s", location:to_string())
             logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
-            return_details = { error = _error, success = false }
+            return_details = { error = {message = _error}, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
-        return_details = { success = true }
+        return_details = {
+            success = true,
+            data = {
+                file = string.format("%s%s", output_dir, file_name)
+            }
+        }
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
     local copy_command = nil
     local command_options = {
         [command_flags.STDERR_JOIN] = '',
-        [command_flags.EXIT_CALLBACK] = finish_callback
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async and true or false
     }
-    if opts.async then
-        command_options[command_flags.ASYNC] = true
-    end
     if opts.force then
         -- Shenanigans activate!
         command_options[command_flags.STDOUT_FILE] = string.format('%s/%s', output_dir, file_name)
@@ -1235,12 +1277,23 @@ end
 --- Takes a table of filesystem locations and returns the stat of them
 --- @param locations table
 ---     - A table of filesystem locations
---- @param target_flags table | Optional
+--- @param target_flags table | nil
 ---     Default: Values from @see Container.CONSTANTS.STAT_FLAGS
 ---     - If provided, will return a table with only these keys and their respective values
 ---     - NOTE: You will _always_ get `NAME` back, even if you explicitly tell us not to return
 ---     it. We use it to order the stat entries on return, so deal with it
+--- @param opts table | nil
+---     Default: {}
+---     - If provided, the following key/value pairs are acceptable
+---         - async: boolean
+---             - If provided, tells stat to run asynchronously. This affects the output of this function
+---             as we now will return a handle to the job instead of the data
+---         - finish_callback: function
+---             - If provided, we will call this function with the output of stat. Note, we do _not_ stream
+---             the results, instead just calling this with the same big table as we would return synchronously
 --- @return table
+---     The output of this function depends on if `opts.async` is defined or not.
+---     If it is, this function will return 
 ---     - Returns a table where each key is the uri's _local_ name, and its value is a stat table
 ---     containing at most, the following keys
 ---         - mode
@@ -1258,9 +1311,52 @@ end
 --- @example
 ---     local host = SSH:new('someuser@somehost')
 ---     print(vim.inspect(host:stat('/tmp')))
-function SSH:stat(locations, target_flags)
+function SSH:stat(locations, target_flags, opts)
+    local remote_locations = {}
+    --TODO: (Mike) Consider caching this for a short amount of time????
+    opts = opts or {}
     -- Coerce into a table for iteration
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    local return_details = nil
+    local finish_callback = function(output)
+        logger.trace(output)
+        local callback = opts.finish_callback
+        if output.exit_code ~= 0 then
+            local r_locations = table.concat(remote_locations, ', ')
+            local _error = "Received non-0 exit code while trying to stat"
+            if r_locations:len() > 0 then
+                _error = _error .. ' ' .. r_locations
+            end
+            local suberror = nil
+            if
+                output.stderr:match('No route to host')
+                or output.stderr:match('Could not resolve hostname')
+            then
+                suberror = string.format("Unable to connect to ssh host %s", self.host)
+            end
+            if output.stderr:match('No such file or directory') then
+                suberror = "No such file or directory"
+            end
+            if suberror then _error = string.format("%s: %s", _error, suberror) end
+            logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code, stdout = output.stdout})
+            return_details = { error = _error, success = false}
+            if callback then callback(return_details) end
+            return
+        end
+        local data = self:_stat_parse(output.stdout, target_flags)
+        if not data then
+            local _error = "Unable to process stat output"
+            logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code, output=output.stdout })
+            return_details = { error = _error, success = false }
+            if callback then callback(return_details) end
+            return
+        end
+        return_details = {
+            success = true,
+            data = data
+        }
+        if callback then callback(return_details) end
+    end
     local stat_flags = {
         '-L',
         '-c',
@@ -1272,20 +1368,25 @@ function SSH:stat(locations, target_flags)
     end
     local __ = {}
     for _, location in ipairs(locations) do
-        if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
+        if location.__type and location.__type == 'netman_uri' then
+            table.insert(remote_locations, location:to_string('remote'))
+            location = location:to_string()
+        end
         table.insert(__, location)
         table.insert(stat_command, location)
     end
     locations = __
-    local stat_details = self:run_command(stat_command, { [command_flags.STDERR_JOIN] = '' })
-    if stat_details.exit_code ~= 0 then
-        -- Complain about stat failure??
-        logger.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
-            { error = stat_details.stderr, exit_code = stat_details.exit_code }))
-        return {}
-    end
-    --TODO: (Mike) Consider caching this for a short amount of time????
-    return self:_stat_parse(stat_details.stdout, target_flags)
+    local command_opts = {
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        [command_flags.ASYNC] = opts.async
+    }
+    local handle = self:run_command(stat_command, command_opts)
+    -- If async was not specified then this will block until the above `finish_callback` is complete
+    -- which will subsequently set return_details
+    if opts.async then return handle end
+    return return_details
+    -- return self:_stat_parse(stat_details.stdout, target_flags)
 end
 
 function SSH:_stat_parse(stat_output, target_flags)
@@ -1376,7 +1477,7 @@ end
 ---     - write
 ---     - execute
 ---     This is the `rwx` part of the chmod command
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table that can alter how stat_mod operates. Valid Key Value Pairs are
 ---     - remove_mod: boolean
@@ -1444,7 +1545,7 @@ end
 ---     - user
 ---     - group
 ---     The value associated with each key should be the string for that key. EG { user = 'root', group = 'nogroup'}
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {}
 ---     If provided, a table that can alter how own_mod operates. Valid Key Value Paris are
 ---     - ignore_errors: boolean
@@ -1673,14 +1774,16 @@ function M.ui.get_host_details(config, host, provider_cache)
 end
 
 function M.internal.prepare_config(config)
+    logger.trace("Ensuring Provided SSH configuration has valid keys in it")
     if not config:get('hosts') then
         config:set('hosts', {})
         config:save()
     end
 end
 
-function M.internal.parse_user_sshconfig(config)
-    local config_location = string.format("%s/.ssh/config", vim.loop.os_homedir())
+function M.internal.parse_user_sshconfig(config, ssh_config)
+    local config_location = ssh_config or string.format("%s/.ssh/config", vim.loop.os_homedir())
+    logger.infof("Parsing ssh configuration %s", config_location)
     local _config = io.open(config_location, 'r')
     if not _config then
         logger.warn(string.format("Unable to open user ssh config: %s", config_location))
@@ -1711,6 +1814,7 @@ function M.internal.validate(uri, cache)
 end
 
 function M.internal.read_directory(uri, host, callback)
+    logger.tracef("Reading %s as directory", uri:to_string("remote"))
     local find_cmd = 'stat -L -c \\|MODE=%f,BLOCKS=\\>%b,BLKSIZE=\\>%B,MTIME_SEC=\\>%X,USER=%U,GROUP=%G,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%s,TYPE=%F,NAME=%n\\|'
 
     local partial_output = {}
@@ -1740,24 +1844,35 @@ function M.internal.read_directory(uri, host, callback)
                     METADATA = metadata
                 }
                 if callback then
-                    callback(obj)
+                    callback({type = api_flags.READ_TYPE.EXPLORE, data = {obj}})
                 else
                     table.insert(children, obj)
                 end
             end
             ::continue::
         end
-
     end
     local exit_callback = function()
+        logger.debugf("Completed read of directory %s", uri:to_string('remote'))
         if #partial_output > 0 then
+            logger.trace("Partial output still left to be processed after completion. Processing now...")
             -- Force cleanup of any data left
             stdout_callback(table.concat(partial_output, ''), true)
         end
-        if callback then callback(nil, true) end
+        if callback then
+            logger.trace("Sending complete signal to callback")
+            callback(nil, true)
+        end
     end
     local async = callback and true or false
-    local handle = M.internal.find(uri, host, {max_depth = 1, exec = find_cmd, stdout_callback = stdout_callback, exit_callback = exit_callback, async = async})
+    local opts = {
+        max_depth = 1,
+        exec = find_cmd,
+        stdout_callback = stdout_callback,
+        exit_callback = exit_callback,
+        async = async
+    }
+    local handle = M.internal.find(uri, host, opts)
     -- Assuming callback means we are doing this asynchronously
     if callback then return handle end
     -- We can't get here until we are done if we aren't running asynchronously
@@ -1768,23 +1883,92 @@ function M.internal.read_directory(uri, host, callback)
     }
 end
 
-function M.internal.read_file(uri, host)
-    local status = host:get(uri, local_files, { new_file_name = uri.unique_name })
-    if status.success then
-        return {
-            success = true,
-            data = {
-                local_path = string.format("%s%s", local_files, uri.unique_name),
-                origin_path = uri:to_string()
-            },
-            type = api_flags.READ_TYPE.FILE
+function M.internal.read_file(uri, host, callback)
+    logger.tracef("Reading %s as file", uri:to_string('remote'))
+    local process_handle = function(handle)
+        if handle.success then
+            return {
+                success = true,
+                data = {
+                    local_path = string.format("%s%s", local_files, uri.unique_name),
+                    origin_path = uri:to_string()
+                },
+                type = api_flags.READ_TYPE.FILE
+            }
+        else
+            return handle
+        end
+    end
+    local _saved_callback = callback
+    if callback then
+        callback = function(data)
+            _saved_callback(process_handle(data), true)
+        end
+    end
+    local opts = {
+        new_file_name = uri.unique_name,
+        async = callback and true or false,
+        finish_callback = callback
+    }
+    local handle = host:get(uri, local_files, opts)
+    if opts.async then
+        return
+        {
+            type = api_flags.READ_TYPE.FILE,
+            handle = handle
         }
     else
-        return status
+        return process_handle(handle)
     end
 end
 
 --- Exposed endpoints
+
+function M.read_a(uri, cache, callback)
+    local host = nil
+    if uri.__type and uri.__type == 'netman_uri' then
+        uri = uri.uri
+    end
+    local validation = M.internal.validate(uri, cache)
+    if validation.error then return validation end
+    uri = validation.uri
+    host = validation.host
+    -- This should really be asynchronous
+    logger.debugf("Checking type of %s to determine how to read it", uri:to_string('remote'))
+    local stat = host:stat(uri, { M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE})
+    if not stat.success then
+        return {
+            success = false,
+            message = {
+                message = stat.error
+            }
+        }
+    end
+    local _ = nil
+    _, stat = next(stat.data)
+    if not stat then
+        return {
+            success = false,
+            message = {
+                message = string.format("Unable to find stat results for %s", uri:to_string('remote'))
+            }
+        }
+    end
+    -- If the container is running there is no reason we can't quickly stat the file in question...
+    if stat.TYPE == 'directory' then
+        return {
+            type = api_flags.READ_TYPE.EXPLORE,
+            handle = M.internal.read_directory(uri, host, callback)
+        }
+    else
+        -- We don't support stream read type so its either a directory or a file...
+        -- Idk maybe we change that if we allow archive reading but 🤷
+        return {
+            type = api_flags.READ_TYPE.FILE,
+            handle = M.internal.read_file(uri, host, callback)
+        }
+    end
+end
 
 --- Reads contents from a host and returns them in the prescribed netman.api.read return format
 --- @param uri string
@@ -1794,28 +1978,66 @@ end
 --- @return table
 ---     @see :help netman.api.read for details on what this returns
 function M.read(uri, cache)
-    local host = nil
-    local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
-    uri = validation.uri
-    host = validation.host
-    local _, stat = next(host:stat(uri, { M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE }))
-    if not stat then
-        return {
-            success = false,
-            error = {
-                message = string.format("%s doesn't exist", uri:to_string())
+    -- sleep while we wait?
+    local read_return = nil
+    local return_cache = {}
+    local dead = false
+    local _type = nil
+    local callback = function(data, complete)
+        if _type == api_flags.READ_TYPE.FILE then
+            -- The data we get back will be a bit different
+            -- if we are handling an async file pull vs a directory stream
+            return_cache = data.data
+            complete = true
+        else
+            if data and data.data then
+                -- Guard rail for if there is no URI attribute on the provided data
+                -- This can happen if read is called synchronously as
+                -- data.data will be a 1D table instead of a raw object
+                if data.data.URI then
+                    return_cache[data.data.URI] = data.data
+                else
+                    return_cache = data.data
+                end
+            end
+        end
+        if complete then read_return = return_cache end
+    end
+    local _ = M.read_a(uri, cache, callback)
+    if not _ or not _.handle then
+        -- Something happened, we didn't receive anything useful!
+        if _.error and _.error.message then
+            local message = _.error.message
+            logger.warn(string.format("Received error while trying to read %s: Error ", uri), message)
+            return {
+                success = false,
+                message = {
+                    message = message
+                }
             }
-        }
+        end
     end
-    -- If the container is running there is no reason we can't quickly stat the file in question...
-    if stat.TYPE == 'directory' then
-        return M.internal.read_directory(uri, host)
-    else
-        -- We don't support stream read type so its either a directory or a file...
-        -- Idk maybe we change that if we allow archive reading but 🤷
-        return M.internal.read_file(uri, host)
+    _type = _.type
+    local handle = _.handle
+    local timeout = 5000
+    local kill_timer = vim.loop.new_timer()
+    -- This should probably be configurable
+    logger.tracef("Setting terminator for %s seconds from now", timeout / 1000)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Read Handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not read_return and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
     end
+    kill_timer:stop()
+    return {
+        success = true,
+        data = read_return,
+        type = _type
+    }
 end
 
 function M.internal.grep()
@@ -1849,94 +2071,230 @@ function M.search(uri, cache, param, opts)
     return M.internal.find(uri, host, opts)
 end
 
+function M.write_a(uri, cache, data, callback)
+    local host = nil
+    if uri.__type and uri.__type == 'netman_uri' then
+        uri = uri.uri
+    end
+    local validation = M.internal.validate(uri, cache)
+    if validation.error then return validation end
+    uri = validation.uri
+    logger.debug("Attempting write to", uri)
+    host = validation.host
+    local complete_func = function()
+        callback({success = true, data = {uri = uri}}, true)
+    end
+
+    local error_func = function(message)
+        message = message or "Unknown error encountered during async write"
+        callback({success = false, message = { message = message}})
+    end
+
+    local stat_func = function(call_chain)
+        local cb = function(response)
+            logger.debug("Stat Response", response)
+            if not response or not response.success or not response.data then
+                local _error = response.error and response.error or string.format("Unable to locate newly created %s", uri:to_string('remote'))
+                logger.warn(_error, response)
+                return error_func(string.format("Unable to stat newly directory %s", uri:to_string('remote')))
+            end
+            local _, response_data = next(response.data)
+            uri = URI:new(response_data.URI, cache)
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+                return
+            end
+        end
+        local handle = {
+            handle = host:stat(uri, nil, { async = true, finish_callback = cb})
+        }
+        callback(handle)
+        return handle
+    end
+
+    local push_data_func = function(call_chain)
+        -- I wonder if we can push this into a luv work thread?
+        data = data or {}
+        data = table.concat(data, '')
+        local local_file = string.format("%s%s", local_files, uri.unique_name)
+        logger.debugf("Saving data to local file %s", local_file)
+        local fh = io.open(local_file, 'w+')
+        assert(fh, string.format("Unable to open local file %s for %s", local_file, uri:to_string('remote')))
+        assert(fh:write(data), string.format("Unable to write to local file %s for %s", local_file, uri:to_string('remote')))
+        assert(fh:flush(), string.format('Unable to save local file %s for %s', local_file, uri:to_string('remote')))
+        assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
+
+        local cb = function(response)
+            if not response.success then
+                logger.warn(string.format("Received error while trying to upload data to %s", uri:to_string('remote')), response)
+                return error_func(response.error)
+            end
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+            end
+        end
+        local write_opts = {
+            finish_callback = cb,
+            async = true
+        }
+        local handle = {
+            handle = host:put(local_file, uri, write_opts)
+        }
+        callback(handle)
+        return handle
+    end
+
+    local touch_func = function(call_chain)
+        logger.debugf("Creating file %s", uri:to_string('remote'))
+        local cb = function(response)
+            if not response.success then
+                logger.warn(string.format("Received error while trying to create %s", uri:to_string('remote')), response)
+                return error_func(response.error)
+            end
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+                return
+            end
+        end
+        local handle = {
+            handle = host:touch(uri, {async = true, finish_callback = cb})
+        }
+        callback(handle)
+        return handle
+    end
+
+    local mkdir_func = function(call_chain)
+        logger.debugf("Creating directory %s", uri:to_string('remote'))
+        local cb = function(response)
+            if not response.success then
+                logger.warn(string.format("Received error while trying to create %s", uri:to_string('remote')), response)
+                return error_func(response.error)
+            end
+            if call_chain and #call_chain > 0 then
+                local next_call = table.remove(call_chain, 1)
+                next_call(call_chain)
+                return
+            end
+        end
+        local handle = {
+            handle = host:mkdir(uri, { async = true, finish_callback = cb})
+        }
+        callback(handle)
+        return handle
+    end
+    -- As a first pass POC, this _works_ but it feels icky
+    -- Since this is all callback based async stuff, there
+    -- probably isn't a better way to handle this :(
+    if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
+        -- Using the observed type based on the string name
+        -- as it might not exist and thus we can't stat to
+        -- figure out what it is...
+        return mkdir_func({stat_func, complete_func})
+    else
+        return touch_func({stat_func, push_data_func, complete_func})
+    end
+end
+
 function M.write(uri, cache, data, opts)
     opts = opts or {}
+    local handle = nil
+    local dead = false
+    local write_result = nil
+    local cb = function(response)
+        if response.success ~= nil then
+            write_result = response
+        end
+        if response.handle then handle = response.handle end
+    end
+    handle = M.write_a(uri, cache, data, cb)
+    -- TODO: Make this configurable??????
+    local timeout = 10000
+    logger.tracef("Setting terminator for %s seconds from now", timeout / 1000)
+    local kill_timer = vim.loop.new_timer()
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Read Handle took too long. Killing pid %s", handle.pid))
+        handle.handle.stop()
+    end)
+    while not write_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return write_result or { success = false, message = { message = "Unknown error occured during write"}}
+end
+
+function M.delete_a(uri, cache, callback)
     local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
-        local _ = host:mkdir(uri)
-        if not _.success then
-            return {
-                success = false, error = { message = _.error }
-            }
-        end
-        local _ = host:stat(uri)
-        if not _ then
-            return {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string()) }
-            }
-        end
-        local _, _stat = next(_)
-        return {
-            success = true, uri = _stat.URI
-        }
-    end
-    -- Lets make sure the file exists?
-    local _ = host:touch(uri)
-    if not _.success then
-        return { success = false, error = { message = _.error or string.format("Unable to create %s", uri) } }
-    end
-    data = data or {}
-    data = table.concat(data, '')
-    local local_file = string.format("%s%s", local_files, uri.unique_name)
-    local fh = io.open(local_file, 'w+')
-    assert(fh, string.format("Unable to open local file %s for %s", local_file, uri:to_string('remote')))
-    assert(fh:write(data), string.format("Unable to write to local file %s for %s", local_file, uri:to_string('remote')))
-    assert(fh:flush(), string.format('Unable to save local file %s for %s', local_file, uri:to_string('remote')))
-    assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
-    local return_details = nil
-    local finish_callback = function(status)
-        return_details = status
-        if status.error then
-            return_details = {
-                success = false,
-                error = {
-                    message = status.error
-                }
-            }
+    local handle = nil
+
+    local rm = function(response)
+        if not response or not response.success then
+            local _error =
+                response and response.error
+                or "Unknown error occured during removal"
+            callback({success = false, message = { message = _error }})
             return
         end
-        local ___ = host:stat(uri)
-        local _, stat = next(___)
-        if not _ then
-            return_details = {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string()) }
-            }
-        else
-            return_details = {
-                success = true,
-                uri = stat.URI
-            }
+        callback({success = true})
+    end
+
+    local handle_stat = function(response)
+        local successful_removal = not response or (response.error and response.error:match('No such file or directory') and true)
+        if successful_removal then
+            callback({success = true})
+            return
         end
-        -- Provide a way to return this inside this callback if the user reqeusts it
-        -- return return_details
+        if response.error then
+            -- Something bad happened!
+            callback({success = false, message = { message = response.error or "Unknown error occured during check for location to remove"}})
+            return
+        end
+        handle = host:rm(uri, { async = true, finish_callback = rm })
+        callback({handle = handle})
     end
-    local write_opts = {
-        finish_callback = finish_callback,
-        async = opts.async or false
+
+    handle = {
+        handle = host:stat(uri, nil, { async = true, finish_callback = handle_stat})
     }
-    -- WARN: This should fail on async as we immediately check to see if the put was successful or not....
-    local _ = host:put(local_file, uri, write_opts)
-    if not _.success then
-        return_details = { uri = return_details.uri or nil, success = false, error = { message = _.error } }
-    end
-    return return_details
+    return handle
 end
 
 function M.delete(uri, cache)
-    local host = nil
-    local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
-    uri = validation.uri
-    host = validation.host
-    return host:rm(uri, { force = true })
+    local delete_result = nil
+    local dead = false
+    local timeout = 2000
+    local handle = nil
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        if response.success ~= nil then
+            delete_result = response
+        end
+        if response.handle then handle = response.handle end
+    end
+    handle = M.delete_a(uri, cache, cb)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Delete handle took too long. Killing pid %s", handle.pid))
+        handle.handle.stop()
+    end)
+    while not delete_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return delete_result or { success = false, message = { message = "Unknown error occured during removal"}}
 end
 
 function M.connect_host(uri, cache)
-    -- Just run connect_a and block until complete
+    -- Just run connect__host_a and block until complete
     local connected = false
     local callback = function(success) connected = success end
     shell.join(M.connect_host_a(uri, cache, callback))
@@ -1962,13 +2320,48 @@ function M.close_connection(uri, cache)
     
 end
 
-function M.get_metadata(uri, cache)
+function M.get_metadata_a(uri, cache, flags, callback)
     local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    return host:stat(uri)
+    local cb = function(response)
+        if not response or not response.success or not response.data then
+            local _error = string.format("Unable to get metadata for %s", uri:to_string('remote'))
+            logger.warnn(_error)
+            logger.error(response)
+            callback({success = false, message = { message = _error }})
+            return
+        end
+        local _, stat = next(response.data)
+        callback({ success = true, data = stat })
+    end
+    return {
+        handle = host:stat(uri, flags, { async = true, finish_callback = cb})
+    }
+end
+
+function M.get_metadata(uri, cache, flags)
+    local stat_result = nil
+    local dead = false
+    local timeout = 2000
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        stat_result = response
+    end
+    local handle = M.get_metadata_a(uri, cache, flags, cb)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Stat handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not stat_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return stat_result or { success = false, message = { message = "Unknown error occured during stat"}}
 end
 
 function M.update_metadata(uri, cache, updates)
@@ -2025,31 +2418,219 @@ function M.move(uris, target_uri, cache)
     return host:mv(validated_uris, target_uri)
 end
 
-function M.archive.get(uris, cache, archive_dump_dir, available_compression_schemes)
-    if type(uris) ~= 'table' or #uris == 0 then uris = { uris } end
+function M.archive.get_a(uris, cache, archive_dump_dir, available_compression_scheme, callback)
+    assert(uris, string.format("No uris provided to retrieve"))
+    logger.info(string.format("Asynchronously retreiving archive of %s and storing it in %s", table.concat(uris, ', '), archive_dump_dir))
     local host = nil
     local __ = {}
     for _, uri in ipairs(uris) do
         local validation = M.internal.validate(uri, cache)
         if validation.error then return validation end
         assert(host == nil or validation.host == host,
-            string.format("Host mismatch for archive! %s != %s", host, validation.host))
+            string.format("Host mismatch for archive! %s != %s", host, validation.host)
+        )
         table.insert(__, validation.uri)
-
         host = validation.host
     end
-    uris = __
-    return host:archive(uris, archive_dump_dir, available_compression_schemes, cache)
+    local _cb = function(response)
+        if not response or not response.success then
+            local message = response and response.message
+                or "Unknown erorr received during archive request"
+            logger.warn(message, response)
+            callback({
+                success = false,
+                message = { message = message }
+            })
+            return
+        end
+        callback({
+            success = true,
+            data = {
+                path = response.archive_path,
+                name = response.archive_name,
+                compression = response.scheme
+            }
+        })
+    end
+    logger.trace("Reaching out to host archive function")
+    return host:archive(uris, archive_dump_dir, available_compression_scheme, cache, { async = true, finish_callback = _cb})
 end
 
-function M.archive.put(uri, cache, archive, compression_scheme)
-    assert(archive, string.format("Invalid Archive provided for upload to %s", uri))
+function M.archive.get(uris, cache, archive_dump_dir, available_compression_schemes)
+    logger.info(string.format("Retrieving archive of %s and storing it in %s", table.concat(uris, ', '), archive_dump_dir))
+    local get_result = nil
+    local dead = false
+    local timeout = 10000
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        get_result = response
+    end
+    local handle = M.archive.get_a(uris, cache, archive_dump_dir, available_compression_schemes, cb)
+    logger.tracef("Starting Terminator for %s milliseconds", timeout)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Get handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not get_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return get_result or { success = false, message = { message = "Unknown error occured during get"}}
+end
+
+function M.archive.put_a(uri, cache, archives, callback)
+    assert(archives, string.format("No archives provided to upload to %s", uri))
+    if #archives == 0 then archives = { archives } end
+    local _err = string.format("Invalid archive provided to upload to %s", uri)
+    for _, archive in ipairs(archives) do
+        logger.trace("Validating Archive", archive)
+        assert(type(archive) == 'table', _err)
+        assert(archive.path, _err .. ": Missing Path attribute")
+        assert(archive.compression, _err .. ": Missing Compression attribute")
+        assert(archive.name, _err .. ": Missing Name attribute")
+    end
     local host = nil
     local validation = M.internal.validate(uri, cache)
     if validation.error then return validation end
     uri = validation.uri
     host = validation.host
-    return host:extract(archive, uri, compression_scheme, cache)
+    local dead = false
+
+    local mkdir_handle = nil
+    local put_handles = {}
+    local extract_handles = {}
+    local extract_callback = function(archive)
+        extract_handles[archive] = nil
+        logger.trace(string.format("Processing Extraction Output of %s", archive), extract_handles)
+        -- Still extractions being processed or something dead
+        if dead or next(extract_handles) then return end
+        if callback then callback({success = true}) end
+    end
+
+    local extraction_function = function()
+        -- We don't have the name of the put file to extract 🙃
+        logger.info("Extracting remote archives")
+        for _, archive in ipairs(archives) do
+            extract_handles[archive.path] = host:extract(
+                string.format("%s/%s", uri:to_string('local'), archive.name),
+                uri,
+                archive.compression,
+                {
+                    async = true,
+                    cleanup = true,
+                    finish_callback = function(response)
+                        if not response or not response.success then
+                            local _error = response and response.error or "Unknown error occured during archive extraction"
+                            logger.warn(_error, response)
+                            if callback then
+                                callback({success = false, message = { message = _error}})
+                            end
+                            return
+                        end
+                        extract_callback(archive.path)
+                    end
+                }
+            )
+        end
+    end
+
+    local put_callback = function(archive)
+        put_handles[archive] = nil
+        -- Still puts being processed or something dead
+        if dead or next(put_handles) then return end
+        extraction_function()
+    end
+
+    local put_function = function()
+        logger.info("Pushing archive(s) up to remote", archives)
+        for _, archive in ipairs(archives) do
+            logger.trace("Pushing Archive up to remote", {archive = archive})
+            put_handles[archive.path] = host:put(
+                archive.path,
+                uri,
+                {
+                    new_file_name = archive.name,
+                    async = true,
+                    finish_callback = function(response)
+                        if not response or not response.success then
+                            -- Complain about failure and quit
+                            local _error = response and response.error or "Unknown error occured during archive upload"
+                            logger.warn(_error, response)
+                            if callback then
+                                callback({success = false, message = { message = _error}})
+                            end
+                            return
+                        end
+                        put_callback(archive.path)
+                    end
+                }
+            )
+        end
+    end
+
+    local mkdir_function = function()
+        logger.debugf("Ensuring %s exists", uri:to_string('remote'))
+        host:mkdir(
+            uri,
+            {
+                async = true,
+                finish_callback = function(response)
+                    if not response or not response.success then
+                        local _error = response and response.error or "Unknown error occured while creating remote directory"
+                        logger.warn(_error, response)
+                        if callback then
+                            callback({success = false, message = { message = _error}})
+                        end
+                        return
+                    end
+                    mkdir_handle = nil
+                    put_function()
+                end
+            }
+        )
+    end
+
+    mkdir_function()
+    return {
+        stop = function(force)
+            logger.warnf("Stopping all put activity! Force=%s", force or false)
+            dead = true
+            if mkdir_handle then mkdir_handle.stop(force) end
+            for _, handle in pairs(put_handles) do
+                handle.stop(force)
+            end
+            for _, handle in pairs(extract_handles) do
+                handle.stop(force)
+            end
+        end
+    }
+end
+
+function M.archive.put(uri, cache, archives)
+    local put_result = nil
+    local dead = false
+    local timeout = 10000
+    local handle = nil
+    local kill_timer = vim.loop.new_timer()
+    local cb = function(response)
+        if response.success ~= nil then
+            put_result = response
+        end
+    end
+    handle = M.archive.put_a(uri, cache, archives, cb)
+    kill_timer:start(timeout, 0, function()
+        dead = true
+        logger.warn(string.format("Put handle took too long. Killing pid %s", handle.pid))
+        handle.stop()
+    end)
+    while not put_result and not dead do
+        vim.loop.run('once')
+        vim.loop.sleep(1)
+    end
+    kill_timer:stop()
+    return put_result or { success = false, message = { message = "Unknown error occured during put"}}
 end
 
 function M.archive.schemes(uri, cache)

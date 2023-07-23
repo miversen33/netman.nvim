@@ -41,7 +41,7 @@ function M.read(...)
                     )
                     return
                 else
-                    logger.errorn(string.format("Netman Error: %s", data.error.message))
+                    logger.warnn(string.format("Netman Error: %s", data.error.message))
                     logger.infon("See netman logs for more details. :h Nmlogs")
                 end
             end
@@ -66,28 +66,48 @@ function M.read(...)
     end
 end
 
-function M.write(uri)
+function M.write(uri, callback)
     uri = uri or vim.fn.expand('%')
     if uri == nil then
         logger.errorn("Write Incomplete! Unable to parse uri for buffer!")
         return
     end
     local buffer_index = vim.fn.bufnr(uri)
-    local status = api.write(buffer_index, uri)
-    if not status.success then
-        logger.errorn(status.error.message)
-        logger.error(status)
-        return
+    local cb = function(status)
+        if not status.success then
+            logger.warnn(status.message.message)
+            logger.error(status)
+            if callback then callback({ success = false}) end
+            return
+        end
+        vim.defer_fn(function()
+            vim.api.nvim_command('sil! set nomodified')
+        end, 1)
+        if callback then callback({ success = true}) end
     end
-    vim.api.nvim_command('sil! set nomodified')
+    local data = {type = 'buffer', index = buffer_index}
+    api.write(uri, data, nil, cb)
 end
 
-function M.delete(uri)
+function M.delete(uri, callback)
     if uri == nil then
         logger.warnn("No uri provided to delete!")
         return
     end
-    api.delete(uri)
+    local cb = function(status)
+        if not status.success then
+            logger.warnn(status.message.message)
+            logger.error(status)
+            if callback then callback({success = false}) end
+            return
+        end
+        if callback then
+            callback({success = true})
+        else
+            logger.infonf("Successfully deleted %s", uri)
+        end
+    end
+    api.delete(uri, cb)
 end
 
 function M.init()

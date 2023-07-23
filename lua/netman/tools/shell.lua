@@ -98,7 +98,7 @@ Shell.CONSTANTS = {
 ---     I understand this is alot to provide and create. Thus there a couple helper "shortcuts" that can
 ---     be used instead. This is done by specifying different `type`s. Below are the acceptable `type` values
 ---     that can be provided
----     - "manual" (See above for the requirements for that)
+---     - "manual" (See below for the requirements for that)
 ---     - "plenary"
 ---     - "vimjob"
 --- 
@@ -150,6 +150,10 @@ Shell.CONSTANTS = {
 ---         - This is the job id that is provided via :h jobstart
 ---
 --- @return table
+---     - is_active boolean
+---         - A bolean to indicate if the process handle is active.
+---         - This will be true by default, so if it is false,
+---         - you can assume that the process has ended for _some reason_
 ---     - pid integer
 ---         - The current process pid
 ---     - read function
@@ -166,10 +170,13 @@ Shell.CONSTANTS = {
 ---         - @param data string
 ---             - Data to write to stdin
 ---             - WARN: This will throw an error if you try to write after the process is closed!
----     - close function
+---     - stop function
 ---         - @param force boolean | Optional
 ---             - Default: false
----             - This will close the shell process. Force will execute a kill -9 on the process.
+---             - This will stop the shell process. Force will execute a kill -9 on the process.
+---     - add_exit_callback function
+---         - @param callback function
+---             - Saves the callback for later callback when the handle's underlying process is complete
 ---     - exit_code integer
 ---         - This will be nil until the process is stopped at which time it will be populated with
 ---         whatever the exit code was
@@ -179,12 +186,17 @@ Shell.CONSTANTS = {
 function Shell.new_async_handler(type, handler_opts)
     -- We could probably break this into it separate functions but 🤷
     local handle = {
+        is_active = true,
         pid = nil,
         read = nil,
         write = nil,
-        close = nil,
+        stop = nil,
         exit_code = nil,
-        exit_signal = nil
+        exit_signal = nil,
+        add_exit_callback = nil,
+        __type = 'netman_shell_handle',
+        __exit_callbacks = {},
+        __dun = false
     }
     local required_attrs = {}
     if type == 'vimjob' then
@@ -216,27 +228,53 @@ function Shell.new_async_handler(type, handler_opts)
         handle.write = function(data)
             handler_opts:send(data)
         end
-        handle.close = function(force)
+        handle.stop = function(force)
+            handle.is_active = false
             -- It looks like plenary jobs don't have a force option. Omitting for now
             -- Also the function expects a code and signal.
             local signal = force and 9 or 15
             handler_opts:shutdown(-1, signal)
         end
         handler_opts:add_exit_callback(function(code, signal)
+            handle.is_active = false
             handle.exit_code = code
             handle.exit_signal = signal
+            handle.__dun = true
+            for _, callback in ipairs(handle.__exit_callbacks) do
+                callback(code, signal)
+            end
         end)
+        handle.add_exit_callback = function(callback)
+            if handle.__dun then
+                callback(handle.exit_code, handle.exit_signal)
+                return
+            end
+            table.insert(handle.__exit_callbacks, callback)
+        end
     else
-        required_attrs = {"pid", "read", "write", "stop"}
+        required_attrs = {"pid", "read", "write", "stop", "add_exit_callback"}
         for _, attr in ipairs(required_attrs) do
             assert(handler_opts[attr], string.format("No %s attribute provided with async handle!", attr))
             handle[attr] = handler_opts[attr]
         end
         assert(handler_opts.add_exit_callback, "No add exit_callback provided with async handle!")
         handler_opts.add_exit_callback(function(exit_info)
+            handle.is_active = false
             handle.exit_code = exit_info.exit_code
             handle.exit_signal = exit_info.signal
+            handle.__dun = true
+            for _, callback in ipairs(handle.__exit_callbacks) do
+                callback(exit_info.code, exit_info.signal)
+            end
         end)
+        handle.add_exit_callback = function(callback)
+            handle.is_active = false
+            if handle.__dun then
+                callback(handle.exit_code, handle.exit_signal)
+                return
+            end
+            table.insert(handle.__exit_callbacks, callback)
+        end
     end
     return handle
 end
@@ -660,7 +698,10 @@ function Shell:dump_self_to_table()
     for _, arg in ipairs(self._args) do
         table.insert(cmd_pieces, arg)
     end
+    local elapsed_time = self._end_time and self._end_time - self._start_time
+    local elapsed_time_ml = self._end_time and (self._end_time - self._start_time) / 1000000
     return {
+        pid = self._pid,
         command = self._command_as_string,
         cmd_pieces = cmd_pieces,
         opts = self._options,
@@ -673,31 +714,59 @@ function Shell:dump_self_to_table()
     }
 end
 
---- Blocks current thread while waiting for the shells to complete
+--- Waits for all the provided shells to finish.
+--- NOTE: This _will_ lockup the thread running this command until all shells are finished
 --- @param shells table
----     A 1 dimensional array of shell objects to wait on. Can also be a shell handle object
---- @return nil
-function Shell.join(shells)
+---     A 1 dimensional table of netman_shell_handle objects. See Shell.new_async_handler for details
+--- @param sleep_check function | Optional
+---     Default: nil
+---     If provided, this will be called directly before each iteration of the "wait" loop is performed.
+---     We will check the return of this function and if it is "truthy", we will stop the wait loop and cancel
+---     all running shells. Basically, a quick dirty "stop all things"
+function Shell.join(shells, sleep_check)
+    if type(shells) ~= 'table' or #shells == 0 then
+        -- I don't know what the hell you gave me but we are wrapping it in a table so it can "properly"
+        -- fail later
+        shells = { shells }
+    end
     local waiting_shells = {}
     for _, shell in ipairs(shells) do
-        local pid = shell._pid or shell.pid
-        assert(pid ~= nil, "Unable to find pid for shell join!")
-        assert(shell.__type == 'netman_shell' or shell.__type == 'netman_shell_handle', string.format("Invalid object type %s. Must be either a Netman Shell or Netman Shell Handle", shell.__type))
-        table.insert(waiting_shells, pid)
-        local callback_function = function()
+        require("netman").logger.debug(shell)
+        assert(shell.__type == 'netman_shell_handle', string.format("Invalid object type %s. Must be a Netman Shell Handle", shell.__type))
+        assert(shell.pid, "Unable to find pid for shell!")
+        table.insert(waiting_shells, shell.pid)
+        local callback = function()
             local index = -1
             for i, w_pid in ipairs(waiting_shells) do
-                index = i
-                if w_pid == pid then break end
+                if w_pid == shell.pid then
+                    index = i
+                    break
+                end
             end
-            table.remove(waiting_shells, index)
+            if index > -1 then
+                -- This should always be the case but 🤷
+                table.remove(waiting_shells, index)
+            end
         end
-        if shell.__type == 'netman_shell' then shell:add_exit_callback(callback_function)
-        else shell.add_exit_callback(callback_function) end
+        shell.add_exit_callback(callback)
     end
+    local stop = false
     while #waiting_shells > 0 do
-        -- Wait for the shells to open up?
-        uv.sleep(5)
+        uv.run('once')
+        if sleep_check and sleep_check() then
+            stop = sleep_check()
+            if stop then
+                break
+            end
+        end
+        uv.sleep(1)
+        -- Sleep for 1 millisecond and then run the uv loop once.
+    end
+    if stop then
+        -- Caller requested full stop. Kill all the things
+        for _, shell in ipairs(shells) do
+            shell.stop(true)
+        end
     end
 end
 
