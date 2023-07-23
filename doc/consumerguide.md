@@ -7,17 +7,19 @@ If you're trying to figure out how to use netman for your own plugin, this is th
 - [How to request information from a URI](#requesting-information-from-a-uri)
   - [TLDR](#short-example)
   - [In Depth Details](#long-example)
-- [How to update the data behind that URI](#updating-data-for-a-uri)
+- [How to update the data behind that URI](#updatingdeleting-data-for-a-uri)
   - [TLDR](#short-update-example)
   - [In Depth Details](#long-update-example)
-- [How to delete the data behind that URI](#updating-data-for-a-uri)
+- [How to delete the data behind that URI](#updatingdeleting-data-for-a-uri)
   - [TLDR](#short-update-example)
   - [In Depth Details](#long-update-example)
-- [How to move/copy your URI to a different URI]
-- [How to get the metadata for that URI]
+- [How to move/copy your URI to a different URI](#async-copymove)
+  - [TLDR](#short-copy-example)
+- [How to get the metadata for that URI](#requesting-metadata-for-uri)
+  - [TLDR](#short-get-metadata-example)
 - How to modify the metadata for that URI - Coming Soon
-- [How to get the available providers within Netman]
-- [How to get the hosts available on each provider within Netman]
+- [How to get the available providers within Netman](#getting-list-of-available-providers)
+- [How to get the hosts available on each provider within Netman](#getting-list-of-available-providers)
 
 # Requesting Information from a URI
 
@@ -120,15 +122,18 @@ local uri = "ssh://a-really-cool-host///etc/nginx/nginx.conf"
 
 print(inspect(netman_api.read(uri)))
 
+```
+
+```lua
 -- Printed Response
---  {
---    success = true,
---    type = 'FILE',
---    data = {
---        local_path = "$SOME_PATH_ON_YOUR_LOCAL_MACHINE$",
---        origin_path = "/etc/nginx/nginx.conf"
---    }
--- }
+{
+    success = true,
+    type = 'FILE',
+    data = {
+        local_path = "$SOME_PATH_ON_YOUR_LOCAL_MACHINE$",
+        origin_path = "/etc/nginx/nginx.conf"
+    }
+}
 ```
 
 To break this down, the `api.read` function performs the following actions.
@@ -334,7 +339,7 @@ If `retry` is indicated, it will be either `true`, `false`, or a `function`.
 
 As this is running asynchronously, there is nothing for us to return data wise. The return of `api.read` in this case is the [aforementioned handle](#asynchronous-example).
 
-# Updating Data for a URI
+# Updating/Deleting Data for a URI
 
 Another very important thing a consumer will want to do is "update" a URI. That is, to update the contents of whatever is behind the URI. As an example, a user may want to add some new lines to a configuration located at `ssh://a-really-cool-host///etc/nginx/nginx.conf`. A consumer's job then is to tell Netman that you want to save new information in place of whatever is currently stored at that endpoint. This is done via the `api.write`, and `api.delete` functions within Netman's [api](https://github.com/miversen33/netman.nvim/wiki/API-Documentation#api)
 
@@ -350,6 +355,7 @@ print(inspect(netman_api.write('ssh://a-really-cool-host///etc/nginx/nginx.conf'
 ```
 
 ```lua
+-- Printed Return Data
 {
   success = true
 }
@@ -397,18 +403,176 @@ local netman_api = require("netman.api")
 local uri = "ssh://a-really-cool-host///etc/nginx/nginx.conf"
 
 print(inspect(netman_api.write('ssh://a-really-cool-host///etc/nginx/nginx.conf', {"new lines to overwrite config with"})))
+```
 
--- Printed Response
---  {
---    success = true,
--- }
+```lua
+-- Printed Return Data
+{
+    success = true,
+}
 ```
 
 To break this down, the `api.write`/`api.delete` function performs the following actions
 
 - [API Request Validation](#api-request-validation)
 - Call the provider's respective function (`write`/`delete`)
-- Return either a success table or async handle to the consumer, depending on the aforementioned `ASP validation` results.
+- Return either a success table or async handle to the consumer, depending on the aforementioned `ASP validation` results.[How to get the metadata for that URI]
+
+
+# Copying/Moving a URI to another URI
+
+Among the things that a user might wish to do, being able to "move" or "copy" a URI to another URI is certainly higher up on the list. As such, Netman provides an abstracted way to perform this action both synchronously and asynchronously. Before getting too deep into the weeds here, it should be called out
+**Copy and Move are _not_ required functions for a provider to implement and thus your attempts to perform these may not work. If the provider did not implement the necessary functions to perform a copy/move, you will get a failure returned to you!**
+
+## Short Copy Example
+
+`Copy` and `Move` both have the exact same signature and return details and thus only `copy` will be detailed here.
+Below is a small snippet to show you how to synchronously `copy` a URI to another URI.
+
+```lua
+-- Defining a couple module imports
+local inspect = vim and vim.inspect and require("inspect")
+local netman_api = require("netman.api")
+print(inspect(netman_api.copy('ssh://a-really-cool-host///etc/nginx/nginx.conf', 'ssh://a-really-cool-host///etc/nginx/nginx.conf')))
+```
+
+```lua
+-- Printed Return Data
+{
+  success = true
+}
+```
+
+## Short Copy Return Explanation
+
+- success = true
+  - The write was completed successfully
+
+Congratulations! We have successfully copied a URI to a second location using Netman's api and the core `ssh` provider. Remember, this is a synchronous write! So Neovim will lock up while the writing to the URI. This may be fine for small writes over a fast network, but typically you will find that you want this be ran in the background.
+
+## Async Copy/Move
+
+Just like [async reading](#async-reading), you can easily specify you want the provider to run its copy/move asynchronously by simply adding a callback as an additional parameter. This changes the above call from
+
+```lua
+api.copy('ssh://a-really-cool-host///etc/nginx/nginx.conf', 'ssh://a-really-cool-host///etc/nginx/nginx.conf')
+```
+
+to
+
+```lua
+api.copy(
+  'ssh://a-really-cool-host///etc/nginx/nginx.conf',
+  'ssh://a-really-cool-host///etc/nginx/nginx.conf',
+  {},
+  function(data) print(inspect(data)) end
+)
+```
+
+The `ASP` model is detailed more in [`API ASP Validation`](#api-asp-validation) and thus we won't go into it in depth here. Just remember, any asynchronous functionality in Netman's API will follow the `ASP` model. This includes `api.copy` and `api.move`.
+
+<!-- ## Long Copy/Move Example -->
+
+## API Async Return
+
+When calling a function asynchronously in Netman, Netman's API will actually mutate the return signature of said function. A function that is called asynchronously within Netman will always return with the same structure, regardless of what its _synchronous_ counterpart would return.
+
+```lua
+-- Printed Return Data
+{
+  read = function(pipe: string) -> table,
+  write = function(data: table|string) -> nil,
+  stop = function(force: boolean) -> nil
+}
+```
+
+This structure will allow a consumer to interact with the underlying asynchronous process/processes without having to establish _which_ current process you need to deal with. All these functions are safe to call at any time in the life of the request.
+
+A note, a consumer _likely_ won't need to use `read` often as most of the time their callback should be passed any data they need to read. However, `read` _can_ be used to potentially view the underlying STDOUT/STDERR pipe if a developer is trying to troubleshoot something within their request process.
+
+# Requesting Metadata for URI
+
+As a consumer of the data provided by Netman, you may very well care about the "metadata" for a URI. That is, you might care about the data related to the data. Is the URI a "directory"? How big is it? When was it last modified? Etc, this is all "metadata". And the Netman API provides a way to request this metadata.
+
+## Short Get Metadata Example
+
+### Sync Get Metadata Example
+
+```lua
+-- Defining a couple module imports
+local inspect = vim and vim.inspect and require("inspect")
+local netman_api = require("netman.api")
+print(inspect(netman_api.get_metadata('ssh://a-really-cool-host///etc/nginx/nginx.conf')))
+```
+
+```lua
+-- Printed Return Data
+{
+  data = {
+    ABSOLUTE_PATH = { {
+        name = "etc",
+        uri = "ssh://a-really-cool-host///etc/"
+      }, {
+        name = "nginx",
+        uri = "ssh://a-really-cool-host///etc/nginx/"
+      }, {
+        name = "nginx.conf",
+        uri = "ssh://a-really-cool-host///etc/nginx/nginx.conf"
+      } },
+    BLKSIZE = "512",
+    FIELD_TYPE = "DESTINATION",
+    GROUP = "root",
+    INODE = "533487",
+    MTIME_SEC = "1687533200",
+    NAME = "nginx.conf",
+    PERMISSIONS = "644",
+    SIZE = "596",
+    TYPE = "regular file",
+    URI = "ssh://a-really-cool-host///etc/nginx/nginx.conf",
+    USER = "root"
+  },
+  success = true
+}
+```
+
+### Short Get Metadata Return Explanation
+
+
+So what does all this mean?
+
+- success = true
+  - Indicates that the request was successful. Always check this before checking data
+- `data`
+  - This is the key that will contain the relevant "metadata" on to inspect
+    - The keys in `data` are closely related to the various `STAT` flags you can request with the linux `STAT` command. Thus there won't be a great deal of effort put into explaining most of them. There are a few keys that deserve to be called out though
+      - URI
+        - The absolute URI to follow to interact with this resource.
+      - FIELD_TYPE
+        - This will be either `DESTINATION` or `LINK` and is used to indicate if the resource is an endpoint (think like a file) or it contains more resources (think directory). The distinction is made here specifically to handle the fact that Netman generally doesn't know what a "file" or "directory" is, and keeping distinctly different from `file`, and `directory` will make it easier for netman to support "non" filesystems (such as databases).
+      - ABSOLUTE_PATH
+        - An array of URIs to follow to "navigate to" this location. This is very useful if you wish to display a sort of "path" leading to the resource. Think along the lines of "tree" displays.
+
+### Async Get Metadata Example
+
+```lua
+-- Defining a couple module imports
+local inspect = vim and vim.inspect and require("inspect")
+local netman_api = require("netman.api")
+print(inspect(netman_api.get_metadata('ssh://a-really-cool-host///etc/nginx/nginx.conf', nil, nil, function(data) print(data) end)))
+```
+
+```lua
+-- Printed Return Data
+{
+  read = function(pipe: string) -> table,
+  write = function(data: table|string) -> nil,
+  stop = function(force: boolean) -> nil
+}
+```
+
+Async `get_metadata` will mutate the return structure to a valid Async handle, as laid out in [API Async Return](#api-async-return)
+
+## Long Get Metadata Example
 
 # API Request Validation
 
@@ -435,18 +599,40 @@ This ask, say, prove (ASP) model is used to ensure as consistent an experience w
 
 Running requests asynchronously can be quite beneficial (and generally gives a performance increase on more painful operations within a provider). The biggest thing to remember is that even if you ask for the api to run something asynchronously, it may not be able to complete that for one reason or another. The data will still follow the async flow however. So you will still get a handle back, though the handle will not be interactable (as the handles under it will be completed and removed by the time you get it). Your data will be provided through the provided callback synchronously as opposed to asynchronously (in the event that we cannot run asynchronously). Etc.
 
-## API Async Return
+# Getting list of available providers
 
-When calling a function asynchronously in Netman, Netman's API will actually mutate the return signature of said function. A function that is called asynchronously within Netman will always return with the same structure, regardless of what its _synchronous_ counterpart would return.
+There may be times when you wish to display the providers that are available in netman. The best way to retrieve this via the `netman.ui` module. Specifically the `ui.get_providers` function. An example
 
 ```lua
+local inspect = vim and vim.inspect and require("inspect")
+local netman_ui = require("netman.ui")
+print(inspect(netman_ui.get_providers()))
+```
+
+```lua
+-- Printed results
 {
-  read = function(pipe: string) -> table,
-  write = function(data: table|string) -> nil,
-  stop = function(force: boolean) -> nil
+  docker = {
+    hosts = <function 1>,
+    path = "netman.providers.docker",
+    ui = {
+      highlight = "",
+      icon = ""
+    }
+  },
+  ssh = {
+    hosts = <function 2>,
+    path = "netman.providers.ssh",
+    ui = {
+      highlight = "",
+      icon = ""
+    }
+  }
 }
 ```
 
-This structure will allow a consumer to interact with the underlying asynchronous process/processes without having to establish _which_ current process you need to deal with. All these functions are safe to call at any time in the life of the request.
+More details on this can be found with `:h netman.ui.get_provider`, however the main things to care about here are
 
-A note, a consumer _likely_ won't need to use `read` often as most of the time their callback should be passed any data they need to read. However, `read` _can_ be used to potentially view the underlying STDOUT/STDERR pipe if a developer is trying to troubleshoot something within their request process.
+1) The key to each provider is its "display" name
+2) `hosts` is a function that is designed to be lazy called to fetch the available hosts only when you are ready for them. This is because it may be "expensive" for a provider to fetch the available hosts
+
