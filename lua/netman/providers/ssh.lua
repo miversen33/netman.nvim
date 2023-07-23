@@ -1991,8 +1991,14 @@ function M.read(uri, cache)
             complete = true
         else
             if data and data.data then
-                -- Guard rails for if we get nil data back
-                return_cache[data.data.URI] = data.data
+                -- Guard rail for if there is no URI attribute on the provided data
+                -- This can happen if read is called synchronously as
+                -- data.data will be a 1D table instead of a raw object
+                if data.data.URI then
+                    return_cache[data.data.URI] = data.data
+                else
+                    return_cache = data.data
+                end
             end
         end
         if complete then read_return = return_cache end
