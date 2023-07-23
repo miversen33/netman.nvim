@@ -1135,10 +1135,14 @@ function M.read(uri, opts, callback)
             'read_a',
             {uri, cache, result_callback},
             error_callback,
-            result_callback
+            callback and result_callback
         )
-        if raw_handle and raw_handle.handle then
-            return_handle._handle = raw_handle
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
         end
         protected_callback(return_data)
     end
@@ -1215,8 +1219,12 @@ function M.write(uri, data, options, callback)
             error_callback,
             result_callback
         )
-        if raw_handle and raw_handle.handle then
-            return_handle._handle = raw_handle
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
         end
         protected_callback(return_data)
     end
@@ -1822,8 +1830,12 @@ function M.delete(uri, callback)
             error_callback,
             result_callback
         )
-        if raw_handle and raw_handle.handle then
-            return_handle._handle = raw_handle
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
         end
         protected_callback(return_data)
     end
@@ -1941,11 +1953,61 @@ function M.get_metadata(uri, metadata_keys, options, callback)
             table.insert(sanitized_metadata_keys, key)
         end
     end
-    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
-    if callback and provider.get_metadata_a then
-        return M.internal._get_metadata_async(uri, provider, cache, is_connected, metadata_keys, options.force, callback)
+    local return_handle = M.internal.wrap_shell_handle()
+    local return_data = nil
+    local protected_callback = function(data, complete)
+        if not callback then return end
+        if data == nil and complete == nil then return end
+        local success, _error = pcall(callback, data, complete)
+        if not success then
+            logger.warn("Get Metadata return processing experienced a failure!", _error)
+        end
+    end
+    local result_callback = function(data, complete)
+        if return_handle._stopped == true then return end
+        if data and data.handle then
+            logger.debug("Received new handle reference from provider during async get_metadata. Updating our handle pointer")
+            return_handle._handle = data.handle
+            return
+        end
+        if data and data.message then
+            logger.debugf("Logging message provided by %s for consumer: %s", provider, data.message)
+        end
+        local metadata = {}
+        for _, key in ipairs(metadata_keys) do
+            if data and data.data and data.data[key] then
+                metadata[key] = data.data[key]
+            end
+        end
+        return_data = metadata
+        protected_callback({success = true, data = return_data}, complete)
+    end
+    local error_callback = function(err)
+        logger.warn(err)
+    end
+    local connection_callback = function()
+        local raw_handle = M.internal.asp(
+            provider,
+            'get_metadata',
+            'get_metadata_a',
+            {uri, cache, metadata_keys, result_callback},
+            error_callback,
+            callback and result_callback
+        )
+        if raw_handle then
+            if raw_handle.handle then
+                return_handle._handle = raw_handle
+            elseif not callback then
+                result_callback(raw_handle)
+            end
+        end
+        protected_callback(return_data)
+    end
+    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    if callback then
+        return return_handle
     else
-        return M.internal._get_metadata_sync(uri, provider, cache, is_connected, metadata_keys, options.force)
+        return return_data
     end
 
 end
