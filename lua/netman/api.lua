@@ -1226,7 +1226,6 @@ function M.write(uri, data, options, callback)
                 result_callback(raw_handle)
             end
         end
-        protected_callback(return_data)
     end
     return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
     if callback then
@@ -1923,7 +1922,6 @@ function M.get_metadata(uri, metadata_keys, options, callback)
                 result_callback(raw_handle)
             end
         end
-        protected_callback(return_data)
     end
     return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
     if callback then
