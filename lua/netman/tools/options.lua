@@ -10,7 +10,7 @@ return {
             ,EXPLORE = "EXPLORE"
         }
         ,ATTRIBUTES = {
-            FILE = "FILE"
+            DESTINATION = "DESTINATION"
             ,DIRECTORY = "DIRECTORY"
             ,LINK = "LINK"
         },
