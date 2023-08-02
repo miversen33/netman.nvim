@@ -928,8 +928,8 @@ end
 --- WARN: If you put an issue in saying anything about using
 --- these functions is not working in your plugin, you will
 --- be laughed at and ridiculed
-function M.internal._process_read_result(uri, provider_name, data)
-    provider_name = provider_name or 'nil'
+function M.internal._process_read_result(uri, provider, data)
+    local provider_name = provider.name or 'nil'
     local processed_data = nil
     if not data then
         logger.warnf("No data provided when attempting to read %s", uri)
@@ -1111,6 +1111,7 @@ function M.read(uri, opts, callback)
             return
         end
         if complete and not data then
+            logger.errorf("%s did not return valid data on completion of read of %s", provider.name, uri)
             -- There is nothing of substance passed,
             -- but the complete flag was still provided.
             -- Call the consumer's complete handle and return
