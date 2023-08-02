@@ -1861,7 +1861,7 @@ function M.internal.read_directory(uri, host, callback)
         end
         if callback then
             logger.trace("Sending complete signal to callback")
-            callback(nil, true)
+            callback({type = api_flags.READ_TYPE.EXPLORE, data = {}}, true)
         end
     end
     local async = callback and true or false
