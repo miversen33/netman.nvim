@@ -55,6 +55,7 @@ local _session_logs = {}
 
 local M = {
     LEVELS = CONSTANTS.LEVELS,
+    forwarders = {},
 }
 
 --- Creates a new logging object to write logs to
@@ -266,6 +267,16 @@ M.new = function(opts)
             end)
             _:send()
         end
+        local _ = nil
+        _= vim.loop.new_async(function()
+            vim.schedule(function()
+                for _, forwarder in pairs(M.forwarders) do
+                    forwarder(header .. '\t' .. _generated_log)
+                end
+            end)
+            _:close()
+        end)
+        _:send()
     end
 
     local _max_level_string_length = 0
@@ -374,6 +385,25 @@ end
 --- Note: This does _not_ read from the filestore
 M.get_session_logs = function(session_id)
     return _session_logs[session_id] or _session_logs
+end
+
+M.add_log_forwarder = function(callback)
+    local new_forwarder_id = nil
+    while new_forwarder_id == nil do
+        -- Shitty way to ensure we have "unique" ids for forwarders
+        -- Realistically we should only have this "loop" once pretty much
+        -- always
+        new_forwarder_id = string.format("%s", math.random(1, 10000))
+        if M.forwarders[new_forwarder_id] then
+            new_forwarder_id = nil
+        end
+    end
+    M.forwarders[new_forwarder_id] = callback
+    return new_forwarder_id
+end
+
+M.remove_log_forwarder = function(id)
+    M.forwarders[id] = nil
 end
 
 return M

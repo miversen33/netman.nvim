@@ -2264,12 +2264,64 @@ function M.generate_log(output_path)
         assert(handle:flush(), string.format("Unable to save log file %s", output_path))
         assert(handle:close(), string.format("Unable to close log file %s", output_path))
     end
+    local do_tail = true
+    local scroll_to_threshold = 10
+    local handle_cursor_move_event = function()
+        local buffer_window_id = nil
+        for _, win_id in ipairs(vim.api.nvim_list_wins()) do
+            if vim.api.nvim_win_get_buf(win_id) == log_buffer then
+                buffer_window_id = win_id
+                break
+            end
+        end
+        if not buffer_window_id then return end
+        local cursor_position = vim.api.nvim_win_get_cursor(buffer_window_id)
+        if math.abs(cursor_position[1] - vim.api.nvim_buf_line_count(log_buffer)) <= scroll_to_threshold then
+            do_tail = true
+        else
+            do_tail = false
+        end
+    end
+    local nmlogs_forwarder = function(logline)
+        local new_logs = {}
+        for line in logline:gmatch('[^\r\n]+') do
+            table.insert(new_logs, line)
+        end
+        vim.api.nvim_buf_set_option(log_buffer, 'modifiable', true)
+        vim.api.nvim_buf_set_lines(log_buffer, -1, -1, false, new_logs)
+        vim.api.nvim_buf_set_option(log_buffer, 'modifiable', false)
+        vim.api.nvim_buf_set_option(log_buffer, 'modified', false)
+        if not do_tail then return end
+        for _, win_id in ipairs(vim.api.nvim_list_wins()) do
+            if vim.api.nvim_win_get_buf(win_id) == log_buffer then
+                vim.api.nvim_win_set_cursor(win_id, {vim.api.nvim_buf_line_count(log_buffer), 0})
+                break
+            end
+        end
+    end
+    local nmlogs_forwarder_id = require("netman.tools.utils.logger").add_log_forwarder(nmlogs_forwarder)
+    vim.api.nvim_create_autocmd('CursorMoved', {
+        buffer = log_buffer,
+        desc = "Netman Nmlogs autocommand to catch cursor move and stop auto tail",
+        callback = handle_cursor_move_event
+    })
+    vim.api.nvim_create_autocmd('CursorMovedI', {
+        buffer = log_buffer,
+        desc = "Netman Nmlogs autocommand to catch cursor move and stop auto tail",
+        callback = handle_cursor_move_event
+    })
+    vim.api.nvim_create_autocmd('BufDelete', {
+        buffer = log_buffer,
+        desc = "Netman Nmlogs autocommand to disable all the cruft when its log buffer is closed",
+        callback = function()
+            require("netman.tools.utils.logger").remove_log_forwarder(nmlogs_forwarder_id)
+        end
+    })
     vim.api.nvim_buf_set_lines(log_buffer, 0, -1, false, logs)
     vim.api.nvim_command('%s%\\n%\r%g')
     vim.api.nvim_command('%s%\\t%\t%g')
     vim.api.nvim_buf_set_option(log_buffer, 'modifiable', false)
     vim.api.nvim_buf_set_option(log_buffer, 'modified', false)
-    vim.api.nvim_command('0')
 end
 
 -- @param event string
