@@ -11,6 +11,7 @@ return {
         },
         ERRORS = {
             ITEM_DOESNT_EXIST = "ITEM_DOESNT_EXIST"
+            ,PERMISSION_ERROR = "PERMISSION_ERROR"
         }
         ,ATTRIBUTES = {
             DESTINATION = "DESTINATION"
