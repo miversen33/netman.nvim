@@ -8,6 +8,9 @@ return {
             FILE = "FILE"
             ,STREAM = "STREAM"
             ,EXPLORE = "EXPLORE"
+        },
+        ERRORS = {
+            ITEM_DOESNT_EXIST = "ITEM_DOESNT_EXIST"
         }
         ,ATTRIBUTES = {
             DESTINATION = "DESTINATION"
