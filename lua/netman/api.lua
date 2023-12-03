@@ -2181,6 +2181,7 @@ function M.load_provider(provider_path)
         end
     end
 
+    local valid_protocols = {}
     for _, pattern in ipairs(provider.protocol_patterns) do
         local _, _, new_pattern = pattern:find(protocol_pattern_sanitizer_glob)
         logger.trace("Reducing " .. pattern .. " down to " .. new_pattern)
@@ -2213,8 +2214,13 @@ function M.load_provider(provider_path)
                 , version = existing_provider.version
             })
         end
+        table.insert(valid_protocols, new_pattern)
         M._providers.protocol_to_path[new_pattern] = provider_path
     end
+    -- Adding a new attribute to track the protocols that a provider can handle
+    provider.protocols = valid_protocols
+    -- Adding a new attribute to track the provider's path
+    provider.path = provider_path
     M._providers.uninitialized[provider_path] = nil
     M.internal.init_provider_autocmds(provider, provider.protocol_patterns)
     logger.info("Initialized " .. provider_path .. " successfully!")
