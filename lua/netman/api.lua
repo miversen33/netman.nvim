@@ -859,8 +859,8 @@ end
 ---     Just trust me bro.
 --- @return table | nil
 ---     This function has no idea what it's returning. It is going to return 
----     (basically) whatever it gets back from the sanitize callback, or the raw data
----     if no sanitize function is returned. If the call passes ASP, it will 
+---     (basically) whatever it gets back from the response callback, or the raw data
+---     if no response function is returned. If the call passes ASP, it will 
 ---     return a proper netman async handle
 ---     Otherwise this will return nil
 function M.internal.asp(provider, sync_function_name, async_function_name, data, error_callback, response_callback)
@@ -916,7 +916,7 @@ function M.internal.asp(provider, sync_function_name, async_function_name, data,
         return response
     end
     if response_callback then
-        logger.trace("Passing result data to callback", response)
+        logger.trace2("Passing result data to callback", response)
         response_callback(response, true)
         return
     end
@@ -2358,9 +2358,9 @@ function M.emit_event(event, source)
     local callbacks = M.internal.events.event_map[event]
     local message = string.format("Emitting Event: %s", event)
     if source then message = string.format("%s from %s", message , source) end
-    logger.debug(message)
+    logger.trace2(message)
     if callbacks then
-        logger.debugf("Found %s callbacks for event %s", #callbacks, event)
+        logger.tracef("Found %s callbacks for event %s", #callbacks, event)
         for _, id in ipairs(callbacks) do
             -- TODO: Figure out how to make these calls asynchronously
             logger.tracef("Calling callback for %s for event %s", id, event)
