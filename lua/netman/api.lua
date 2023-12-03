@@ -923,6 +923,45 @@ function M.internal.asp(provider, sync_function_name, async_function_name, data,
     return response
 end
 
+function M.internal._process_provider_response(uri, provider, response)
+    if not response then
+        logger.errorf("Provider `%s` did not return a valid response, crafting a jank one now", provider.name)
+        return {
+            success = false,
+            message = {
+                uri = uri
+            }
+        }
+    end
+    if not response.success then
+        logger.infof("Provider `%s` failed to include success in response. Adding 'success=false' to response", provider.name)
+        response.success = false
+    end
+    if not response.message and not response.data then
+        logger.errorf("Provider `%s` didn't return anything useful! Response must include either a message attribute or a data attribute", provider.name)
+        return {
+            success = false,
+            message = {
+                uri = uri
+            }
+        }
+    end
+    if response.message then
+        if not response.message.uri then
+            logger.infof("Provider `%s` didn't include the uri in its message. Adding it now", provider.name)
+            response.message.uri = uri
+        end
+        if response.message.error then
+            logger.tracef("Validating provided error %s", response.message.error)
+            if not netman_options.api.ERRORS[response.message.error] then
+                logger.warnf("Provider `%s` returned an invalid error \"%s\". Stripping it out now. Errors must comply with \"netman.tools.options.api.ERRORS\"", provider.name, response.message.error)
+                response.message.error = nil
+            end
+        end
+    end
+    return response
+end
+
 --- WARN: Do not rely on these functions existing
 --- WARN: Do not use these functions in your code
 --- WARN: If you put an issue in saying anything about using
@@ -1068,7 +1107,9 @@ function M.read(uri, opts, callback)
     if not uri or not provider then
         return {
             success = false,
-            message = string.format("Unable to read %s or unable to find provider for it", orig_uri)
+            message = {
+                message = string.format("Unable to read %s or unable to find provider for it", orig_uri)
+            }
         }
     end
     opts = opts or {}
@@ -1118,12 +1159,7 @@ function M.read(uri, opts, callback)
             protected_callback(nil, complete)
             return
         end
-        if data and data.message then
-            logger.debugf("Logging message provided by %s for consumer: %s", provider, data.message)
-            return_data = data
-        else
-            return_data = M.internal._process_read_result(uri, provider, data)
-        end
+        return_data = M.internal._process_read_result(uri, provider, data)
         protected_callback(return_data, complete)
     end
     local error_callback = function(err)
@@ -1145,9 +1181,13 @@ function M.read(uri, opts, callback)
                 result_callback(raw_handle)
             end
         end
-        protected_callback(return_data)
     end
-    return_handle._handle = M.internal.connect_provider(provider, uri, cache,  connection_callback)
+    return_handle._handle = M.internal.connect_provider(
+        provider,
+        uri,
+        cache,
+        connection_callback
+    )
     if callback then
         return return_handle
     else

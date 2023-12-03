@@ -983,6 +983,7 @@ function SSH:find(location, opts)
         [command_flags.STDERR_JOIN] = '',
         [command_flags.ASYNC] = opts.async,
         [command_flags.STDOUT_CALLBACK] = opts.stdout_callback,
+        [command_flags.STDERR_CALLBACK] = opts.stderr_callback,
         [command_flags.EXIT_CALLBACK] = opts.exit_callback
     }
     if opts.exec then
@@ -1232,7 +1233,7 @@ function SSH:get(location, output_dir, opts)
         if command_output.exit_code ~= 0 and not opts.ignore_errors then
             local _error = string.format("Unable to download %s", location:to_string())
             logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
-            return_details = { error = {message = _error}, success = false }
+            return_details = { error = command_output.stderr, success = false }
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
         end
