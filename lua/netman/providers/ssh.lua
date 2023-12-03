@@ -1821,7 +1821,12 @@ function M.internal.read_directory(uri, host, callback)
     local partial_output = {}
     local children = {}
     local incomplete = false
+    local halted = false
     local stdout_callback = function(data, force)
+        if halted then
+            logger.info("Read directory processing has been forcefully halted, ignoring provided output")
+            return
+        end
         data = table.concat(partial_output, '') .. data
         partial_output = {}
         incomplete = false
@@ -1845,7 +1850,7 @@ function M.internal.read_directory(uri, host, callback)
                     METADATA = metadata
                 }
                 if callback then
-                    callback({type = api_flags.READ_TYPE.EXPLORE, data = {obj}})
+                    callback({type = api_flags.READ_TYPE.EXPLORE, data = {obj}, success = true})
                 else
                     table.insert(children, obj)
                 end
@@ -1862,7 +1867,31 @@ function M.internal.read_directory(uri, host, callback)
         end
         if callback then
             logger.trace("Sending complete signal to callback")
-            callback({type = api_flags.READ_TYPE.EXPLORE, data = {}}, true)
+            callback({type = api_flags.READ_TYPE.EXPLORE, data = {}, success = true}, true)
+        end
+    end
+    local stderr_callback = function(data)
+        local obj = nil
+        if data and data:match('[pP]ermission%s+[dD]enied') then
+            -- Permission issue
+            halted = true
+            logger.warnf("Received permission error when trying to read %s", uri:to_string('remote'))
+            obj = {
+                success = false,
+                message = {
+                    message = "Permission Denied",
+                    error = api_flags.ERRORS.PERMISSION_ERROR
+                }
+            }
+        end
+        if obj then
+            if callback then
+                callback(obj)
+            else
+                children = {obj}
+            end
+        else
+            logger.warn("Received unhandled error", data)
         end
     end
     local async = callback and true or false
@@ -1871,6 +1900,7 @@ function M.internal.read_directory(uri, host, callback)
         exec = find_cmd,
         stdout_callback = stdout_callback,
         exit_callback = exit_callback,
+        stderr_callback = stderr_callback,
         async = async
     }
     local handle = M.internal.find(uri, host, opts)
@@ -1886,9 +1916,14 @@ end
 
 function M.internal.read_file(uri, host, callback)
     logger.tracef("Reading %s as file", uri:to_string('remote'))
-    local process_handle = function(handle)
-        if handle.success then
-            return {
+    local halted = false
+    local async = callback and true or false
+    local _saved_callback = callback
+    callback = function(data)
+        if halted then return end
+        local obj = nil
+        if data.success then
+            obj = {
                 success = true,
                 data = {
                     local_path = string.format("%s%s", local_files, uri.unique_name),
@@ -1896,19 +1931,34 @@ function M.internal.read_file(uri, host, callback)
                 },
                 type = api_flags.READ_TYPE.FILE
             }
-        else
-            return handle
         end
-    end
-    local _saved_callback = callback
-    if callback then
-        callback = function(data)
-            _saved_callback(process_handle(data), true)
+        if data.error then
+            local handled = false
+            if data.error:match('[pP]ermission%s+[dD]enied') then
+                handled = true
+                halted = true
+                obj = {
+                    success = false,
+                    message = {
+                        message = "Permission Denied",
+                        error = api_flags.ERRORS.PERMISSION_ERROR
+                    }
+                }
+            end
+            if not handled then
+                logger.warn("Received unhandled error", data.error)
+            end
+        end
+        if obj then data = obj end
+        if _saved_callback then
+            _saved_callback(data, true)
+        else
+            return data
         end
     end
     local opts = {
         new_file_name = uri.unique_name,
-        async = callback and true or false,
+        async = async,
         finish_callback = callback
     }
     local handle = host:get(uri, local_files, opts)
@@ -1918,9 +1968,8 @@ function M.internal.read_file(uri, host, callback)
             type = api_flags.READ_TYPE.FILE,
             handle = handle
         }
-    else
-        return process_handle(handle)
     end
+    return callback(handle)
 end
 
 --- Exposed endpoints
@@ -1938,10 +1987,15 @@ function M.read_a(uri, cache, callback)
     logger.debugf("Checking type of %s to determine how to read it", uri:to_string('remote'))
     local stat = host:stat(uri, { M.internal.SSH.CONSTANTS.STAT_FLAGS.TYPE})
     if not stat.success then
+        local error = "UNKNOWN_ERROR"
+        if stat.error:match('No such file') then
+            error = api_flags.ERRORS.ITEM_DOESNT_EXIST
+        end
         return {
             success = false,
             message = {
-                message = stat.error
+                message = stat.error,
+                error = error
             }
         }
     end
@@ -1979,6 +2033,7 @@ end
 --- @return table
 ---     @see :help netman.api.read for details on what this returns
 function M.read(uri, cache)
+    -- BUG: There seems to be a bug with the sync version of this. We are returning immediately which is wrong
     -- sleep while we wait?
     local read_return = nil
     local return_cache = {}
@@ -2006,17 +2061,15 @@ function M.read(uri, cache)
     end
     local _ = M.read_a(uri, cache, callback)
     if not _ or not _.handle then
-        -- Something happened, we didn't receive anything useful!
-        if _.error and _.error.message then
-            local message = _.error.message
-            logger.warn(string.format("Received error while trying to read %s: Error ", uri), message)
-            return {
-                success = false,
-                message = {
-                    message = message
-                }
+        local response = {
+            success = false,
+        }
+        if _.message then
+            response.message = {
+                _.message
             }
         end
+        return response
     end
     _type = _.type
     local handle = _.handle
@@ -2048,6 +2101,7 @@ end
 function M.internal.find(uri, host, opts)
     opts = opts or {}
     if not opts.exec then
+        -- TODO: Why is this the default? This should be a variable that we provide when we wish to do opts.exec...
         opts.exec = 'stat -L -c \\|MODE=%f,BLOCKS=\\>%b,BLKSIZE=\\>%B,MTIME_SEC=\\>%X,USER=%U,GROUP=%G,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%s,TYPE=%F,NAME=%n\\|'
     end
     local data_cache = nil
@@ -2389,7 +2443,9 @@ function M.copy(uris, target_uri, cache)
         if __.host ~= validation.host then
             return {
                 success = false,
-                error = string.format("%s and %s are not on the same host!", uri, target_uri)
+                message = {
+                    message = string.format("%s and %s are not on the same host!", uri, target_uri)
+                }
             }
         end
         table.insert(validated_uris, __.uri)
@@ -2411,7 +2467,9 @@ function M.move(uris, target_uri, cache)
         if __.host ~= validation.host then
             return {
                 success = false,
-                error = string.format("%s and %s are not on the same host!", uri, target_uri)
+                message = {
+                    message = string.format("%s and %s are not on the same host!", uri, target_uri)
+                }
             }
         end
         table.insert(validated_uris, __.uri)
