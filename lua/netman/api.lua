@@ -970,25 +970,24 @@ end
 function M.internal._process_read_result(uri, provider, data)
     local provider_name = provider.name or 'nil'
     local processed_data = nil
-    if not data then
-        logger.warnf("No data provided when attempting to read %s", uri)
-        return processed_data
+    local validated_response = M.internal._process_provider_response(uri, provider, data)
+    if not validated_response.success then
+        logger.warn(string.format("There was a potential failure in reading %s", uri), validated_response)
+        return validated_response
     end
-
-    if not netman_options.api.READ_TYPE[data.type] then
-        logger.warnf("Unable to trust data type %s. Sent from provider %s while trying to read %s", data.type or 'nil', provider_name, uri)
-        return processed_data
+    if not netman_options.api.READ_TYPE[validated_response.type] then
+        logger.warnf("Unable to trust data type %s. Sent from provider %s while trying to read %s", validated_response.type or 'nil', provider_name, uri)
+        return validated_response
     end
-    if not data.data then
-        logger.warnf("Provider %s did not pass anything useful as response to requested read of %s", provider_name, uri)
-        return processed_data
+    if not validated_response.data then
+        return validated_response
     end
-    if data.type == netman_options.api.READ_TYPE.EXPLORE then
-        processed_data = M.internal.sanitize_explore_data(data.data)
-    elseif data.type == netman_options.api.READ_TYPE.FILE then
-        processed_data = M.internal.sanitize_file_data(data.data)
+    if validated_response.type == netman_options.api.READ_TYPE.EXPLORE then
+        processed_data = M.internal.sanitize_explore_data(validated_response.data)
+    elseif validated_response.type == netman_options.api.READ_TYPE.FILE then
+        processed_data = M.internal.sanitize_file_data(validated_response.data)
         if not processed_data then
-            logger.warn(string.format("Provider %s did not return valid return data for %s", provider_name, uri), { data = data.data })
+            logger.warn(string.format("Provider %s did not return valid return data for %s", provider_name, uri), { data = validated_response.data })
             return nil
         end
         if not processed_data.error and processed_data.local_path then
@@ -996,9 +995,9 @@ function M.internal._process_read_result(uri, provider, data)
             M._providers.file_cache[uri] = processed_data.local_path
         end
     else
-        processed_data = data.data
+        processed_data = validated_response.data
     end
-    return { data = processed_data, type = data.type, success = data.success }
+    return { data = processed_data , type = validated_response.type, success = validated_response.success }
 end
 
 --- Executes remote read of uri
