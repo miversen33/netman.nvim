@@ -770,11 +770,14 @@ end
 ---     nothing is returned (but we will block until complete)
 function M.internal.connect_provider(provider, uri, cache, callback)
     local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
-    local connection_func = 'connect_host'
     local do_async = callback and provider['connect_host_a'] and true or false
+    local connection_func = do_async and 'connect_host_a' or 'connect_host'
     local connection_finished = false
     local handle = nil
     local connection_callback = function(success)
+        -- We have already been handled, don't
+        -- call again
+        if connection_finished then return end
         if not success then
             logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
         end
@@ -782,13 +785,9 @@ function M.internal.connect_provider(provider, uri, cache, callback)
         if callback then callback() end
     end
     if not is_connected then
-        if provider.connect_host_a and callback then
-            connection_func = 'connect_host_a'
-            do_async = true
-        end
         if not provider[connection_func] then
             logger.debugf("Provider %s does not seem to implement any sort of preconnection logic", provider.name)
-            if callback then callback() end
+            connection_callback(false)
             return
         end
         logger.debugf("Reaching out to `%s.%s` to attempt preconnection", provider.name, connection_func)
@@ -796,10 +795,10 @@ function M.internal.connect_provider(provider, uri, cache, callback)
         if do_async and not handle then
             logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing `%s`", provider.name, connection_func)
             provider.connect_host_a = nil
+            connection_callback(false)
         end
-        if not connection_finished and callback then
-            callback()
-        end
+    else
+        connection_callback(true)
     end
     return handle
 end
