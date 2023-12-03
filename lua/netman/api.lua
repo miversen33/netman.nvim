@@ -203,6 +203,7 @@ end
 --- WARN: If you put an issue in saying anything about using
 --- these functions is not working in your plugin, you will
 --- be laughed at and ridiculed
+--- @return uri, provider, cache, protocol
 function M.internal.validate_uri(uri)
     local provider, cache, protocol = M.internal.get_provider_for_uri(uri)
     if not provider then
@@ -1221,6 +1222,7 @@ function M.write(uri, data, options, callback)
     elseif data.type == 'content' then
         lines = data.data
     end
+    -- TODO: Add support for data.file to upload local files
     local return_handle = M.internal.wrap_shell_handle()
     local return_data = nil
     local protected_callback = function(_data, complete)
