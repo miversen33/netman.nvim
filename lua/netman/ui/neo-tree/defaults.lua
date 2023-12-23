@@ -49,8 +49,6 @@ config.window.mappings = {
     ['p'] = 'paste_node',
     ['m'] = 'mark_node',
     ['y'] = "yank_node",
-    ['Zd'] = 'dump_node',
-    ['Zr'] = 'dump_render_tree'
     -- ['f'] = 'search'
 }
 
