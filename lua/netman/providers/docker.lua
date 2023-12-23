@@ -755,8 +755,8 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested copy
----     - error: string | nil
----         Any errors that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
+---     - message: string | nil
+---         Any messages that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
 ---         get an error, it will not be returned. Ye be warned.
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -787,7 +787,7 @@ function Container:cp(locations, target_location, opts)
     local output = self:run_command(cp_command, command_options)
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
-        return { success = false, error = message }
+        return { success = false, message = message }
     end
     return { success = true }
 end
@@ -807,8 +807,8 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested move
----     - error: string | nil
----         Any errors that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
+---     - message: string | nil
+---         Any messages that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -838,7 +838,7 @@ function Container:mv(locations, target_location, opts)
     local output = self:run_command(mv_command, command_options)
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
-        return { success = false, error = message }
+        return { success = false, message = message }
     end
     return { success = true }
 end
@@ -1612,7 +1612,7 @@ function M.internal.validate(uri, cache)
     -- Is the container running???
     if container:current_status() ~= M.internal.Container.CONSTANTS.STATUS.RUNNING then
         return {
-            error = {
+            message = {
                 message = string.format("%s is not running. Would you like to start it? [Y/n] ", container.name),
                 default = 'Y',
                 callback = function(response)
