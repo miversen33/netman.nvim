@@ -100,7 +100,6 @@ M.internal._root_nodes = {
         name = "Providers",
         id = M.constants.ROOT_IDS.NETMAN_PROVIDERS,
         type = M.constants.TYPES.NETMAN_BOOKMARK,
-        children = {},
         parent_id = nil,
         extra = {
             icon = "",
@@ -222,7 +221,7 @@ local function navigate_root_provider(nui_node)
     else
         nui_node:expand()
         node.extra.nui_node._is_expanded = true
-        if #node.children > 0 then
+        if node.children and #node.children > 0 then
             return nil, true
         end
         -- TODO: Add some sort of auto refresh?
