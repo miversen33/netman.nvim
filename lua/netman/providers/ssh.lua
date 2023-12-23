@@ -2295,10 +2295,10 @@ function M.delete_a(uri, cache, callback)
             local _error =
                 response and response.error
                 or "Unknown error occured during removal"
-            callback({success = false, message = { message = _error }})
+            callback({success = false, message = { message = _error }, true})
             return
         end
-        callback({success = true})
+        callback({success = true}, true)
     end
 
     local handle_stat = function(response)
@@ -2386,11 +2386,11 @@ function M.get_metadata_a(uri, cache, flags, callback)
             local _error = string.format("Unable to get metadata for %s", uri:to_string('remote'))
             logger.warnn(_error)
             logger.error(response)
-            callback({success = false, message = { message = _error }})
+            callback({success = false, message = { message = _error }}, true)
             return
         end
         local _, stat = next(response.data)
-        callback({ success = true, data = stat })
+        callback({ success = true, data = stat }, true)
     end
     return {
         handle = host:stat(uri, flags, { async = true, finish_callback = cb})
