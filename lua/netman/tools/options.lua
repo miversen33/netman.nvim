@@ -8,9 +8,13 @@ return {
             FILE = "FILE"
             ,STREAM = "STREAM"
             ,EXPLORE = "EXPLORE"
+        },
+        ERRORS = {
+            ITEM_DOESNT_EXIST = "ITEM_DOESNT_EXIST"
+            ,PERMISSION_ERROR = "PERMISSION_ERROR"
         }
         ,ATTRIBUTES = {
-            FILE = "FILE"
+            DESTINATION = "DESTINATION"
             ,DIRECTORY = "DIRECTORY"
             ,LINK = "LINK"
         },

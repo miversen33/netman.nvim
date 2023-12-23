@@ -1,9 +1,11 @@
 local logger = require("netman.api").get_system_logger()
 local M = {
     internal = {},
-    get_logger = require("netman.api").get_consumer_logger
 }
 
+function M.get_logger()
+    return require("netman.api").get_consumer_logger()
+end
 --- Reaches into Netman API and provides a table of providers.
 --- Each Key is the provider's display name and the value will be
 --- a table containing relevant keys.
@@ -124,6 +126,49 @@ function M.get_config(consumer)
         consumer_config.save = ui_config.save
     end
     return consumer_config
+end
+
+function M.get_least_common_path(paths)
+    -- Walk through each path list
+    -- Add each path to a flatmap. 
+    -- If the path has a parent, remove the parent from its parent
+    -- Purge all items in flatmap that have no children
+    -- Return the keys remaining
+    local flatmap = {}
+    for _, pathlist in ipairs(paths) do
+        local parent_path = nil
+        for depth, path in ipairs(pathlist) do
+            local parent_node = flatmap[parent_path]
+            if not flatmap[path] then
+                flatmap[path] = {
+                    parent = parent_path,
+                    children = {},
+                    depth = depth,
+                    path = path
+                }
+            end
+            if parent_node then
+                parent_node.children[path] = true
+                if parent_node.parent then
+                    flatmap[parent_node.parent].children[parent_path] = nil
+                end
+            end
+            parent_path = path
+        end
+    end
+    local unsorted_return_keys = {}
+    for _, details in pairs(flatmap) do
+        local parent = flatmap[details.parent]
+        if next(details.children) ~= nil and (not parent or (parent and not next(parent.children))) then
+            table.insert(unsorted_return_keys, details)
+        end
+    end
+    table.sort(unsorted_return_keys, function(a, b) return a.depth < b.depth end)
+    local return_keys = {}
+    for _, details in ipairs(unsorted_return_keys) do
+        table.insert(return_keys, details.path)
+    end
+    return return_keys
 end
 
 function M.render_command_and_clean_buffer(render_command, opts)

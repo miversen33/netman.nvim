@@ -755,8 +755,8 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested copy
----     - error: string | nil
----         Any errors that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
+---     - message: string | nil
+---         Any messages that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
 ---         get an error, it will not be returned. Ye be warned.
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -787,7 +787,7 @@ function Container:cp(locations, target_location, opts)
     local output = self:run_command(cp_command, command_options)
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
-        return { success = false, error = message }
+        return { success = false, message = message }
     end
     return { success = true }
 end
@@ -807,8 +807,8 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested move
----     - error: string | nil
----         Any errors that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
+---     - message: string | nil
+---         Any messages that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -838,7 +838,7 @@ function Container:mv(locations, target_location, opts)
     local output = self:run_command(mv_command, command_options)
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
-        return { success = false, error = message }
+        return { success = false, message = message }
     end
     return { success = true }
 end
@@ -1612,7 +1612,7 @@ function M.internal.validate(uri, cache)
     -- Is the container running???
     if container:current_status() ~= M.internal.Container.CONSTANTS.STATUS.RUNNING then
         return {
-            error = {
+            message = {
                 message = string.format("%s is not running. Would you like to start it? [Y/n] ", container.name),
                 default = 'Y',
                 callback = function(response)
@@ -1642,7 +1642,7 @@ function M.internal.find(uri, container, opts)
     end
     local raw_children = container:find(uri, opts)
     if raw_children.error and not opts.ignore_errors then
-        return {success = false, error = raw_children.error}
+        return {success = false, message = raw_children.error}
     end
 
     local children = container:_stat_parse(raw_children)
@@ -1668,7 +1668,7 @@ function M.internal.read_directory(uri, container)
         if children.error:match('[pP]ermission%s+[dD]enied') then
             return {
                 success = false,
-                error = {
+                message = {
                     message = string.format("Permission Denied when accessing %s", uri:to_string())
                 }
             }
@@ -1676,7 +1676,7 @@ function M.internal.read_directory(uri, container)
         -- Handle other errors as we find them
         return {
             success = false,
-            error = children.error
+            message = children.error
         }
     end
     return {
@@ -1688,8 +1688,9 @@ end
 
 function M.internal.read_file(uri, container)
     local status = container:get(uri, local_files, {new_file_name = uri.unique_name})
+    local obj = nil
     if status.success then
-        return {
+        obj = {
             success = true,
             data = {
                 local_path = string.format("%s%s", local_files, uri.unique_name),
@@ -1697,9 +1698,25 @@ function M.internal.read_file(uri, container)
             },
             type = api_flags.READ_TYPE.FILE
         }
-    else
-        return status
     end
+    if status.error then
+        local handled = false
+        if status.error:match('[pP]ermission%s+[dD]enied') then
+            handled = true
+            obj = {
+                success = false,
+                message = {
+                    message = "Permission Denied",
+                    error = api_flags.ERRORS.PERMISSION_ERROR
+                }
+            }
+        end
+        if not handled then
+            logger.warn("Received unhandled error", status.error)
+        end
+    end
+    if obj then status = obj end
+    return status
 end
 
 function M.search(uri, cache, param, opts)
@@ -1730,8 +1747,9 @@ function M.read(uri, cache)
     if not stat then
         return {
             success = false,
-            error = {
-                message = string.format("%s doesn't exist", uri:to_string())
+            message = {
+                message = string.format("%s doesn't exist", uri:to_string()),
+                error = api_flags.ERRORS.ITEM_DOESNT_EXIST
             }
         }
     end
@@ -1755,13 +1773,13 @@ function M.write(uri, cache, data)
         local _ = container:mkdir(uri)
         if not _.success then
             return {
-                success = false, error = { message = _.error }
+                success = false, message = { message = _.error }
             }
         end
         local _ = container:stat(uri)
         if not _ then
             return {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string())}
+                success = false, message = { message = string.format("Unable to stat newly created %s", uri:to_string())}
             }
         end
         local _, _stat = next(_)
@@ -1773,7 +1791,7 @@ function M.write(uri, cache, data)
     local touch_status = container:touch(uri)
     if not touch_status.success then
         return {
-            success = false, error = { message = touch_status.error or "touch failed with unknown error"}
+            success = false, message = { message = touch_status.error or "touch failed with unknown error"}
         }
     end
     data = data or {}
@@ -1786,7 +1804,7 @@ function M.write(uri, cache, data)
     assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
     local _ = container:put(local_file, uri)
     if not _.success then
-        return { uri = uri.uri, success = false, error = { message = _.error } }
+        return { uri = uri.uri, success = false, message = { message = _.error } }
     end
     return { success = true, uri = uri.uri }
 end
@@ -1805,7 +1823,7 @@ function M.copy(uris, target_uri, cache)
         if __.container ~= validation.container then
             return {
                 success = false,
-                error = {
+                message = {
                     message = string.format("%s and %s are not on the same container!", uri, target_uri)
                 }
         }
@@ -1829,7 +1847,7 @@ function M.move(uris, target_uri, cache)
         if __.container ~= validation.container then
             return {
                 success = false,
-                error = {
+                message = {
                     message = string.format("%s and %s are not on the same container!", uri, target_uri)
                 }
         }

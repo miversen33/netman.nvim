@@ -30,6 +30,14 @@ M.internal.state_map = {
     [netman_host_states.REFRESHING] = {text=M.internal.refresh_icon, highlight=""}
 }
 
+M.action = function(config, node, state)
+    local _icon = { text = '', highlight = '' }
+    local entry = node.extra
+    if not entry then return end
+    _icon.text = node.extra.action or ''
+    return _icon
+end
+
 M.marked = function(config, node, state)
     local _icon = { text = '', highlight = '' }
     local entry = node.extra
@@ -37,6 +45,14 @@ M.marked = function(config, node, state)
         return
     end
     _icon.text = M.internal.marked_icon
+    return _icon
+end
+
+M.expanded = function(config, node, state)
+    local _icon = nil
+    if node:is_expanded() then
+        _icon = { text = '', highlight = '' }
+    end
     return _icon
 end
 
@@ -48,12 +64,13 @@ M.icon = function(config, node, state)
     end
     if entry.refresh then
         _icon.text = M.internal.refresh_icon
+    elseif entry.error then
+        _icon.text = M.internal.state_map.ERROR.text
+    elseif entry.icon then
+        _icon.text = string.format("%s ", entry.icon)
     elseif node.type == 'netman_host' then
         -- Use this as a place to have the OS icon?
         _icon.text = ''
-    end
-    if entry.icon then
-        _icon.text = string.format("%s ", entry.icon)
     end
     _icon.highlight = entry.highlight or _icon.highlight
     return _icon
