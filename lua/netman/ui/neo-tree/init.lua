@@ -240,7 +240,6 @@ local function navigate_root_provider(nui_node)
             create_node(provider_node, node.id)
             table.insert(providers, provider_node.id)
         end
-        logger.debug("Adding provider table to root providers node", providers)
         return tree_to_nui(providers, true)
     end
     return nil, true
@@ -930,7 +929,6 @@ function M.refresh(state, callback)
         M.internal.internally_marked_nodes[raw_target_nodes[1]] = true
     end
     local target_nodes = {}
-    logger.debug("Raw Target Nodes", raw_target_nodes)
     for _, target_node in ipairs(raw_target_nodes) do
         if type(target_node) == 'string' then
             target_node = tree:get_node(target_node)
@@ -972,7 +970,6 @@ function M.delete(state, confirmed, callback)
             table.insert(raw_target_nodes, id)
         end
     end
-    logger.debug("Processing Raw Target Nodes", raw_target_nodes)
     local target_nodes = {}
     -- TODO: Consider adding a `deletable` attribute to 
     -- the node.extra and check for that instead
@@ -1207,7 +1204,6 @@ function M.paste_node(state)
         ::continue::
     end
     local callback = function(data, complete)
-        logger.debug("Data", data, "Complete", complete)
         if data and data.message then
             logger.warnn(data.message)
             -- TODO: implement retry logic
