@@ -1239,6 +1239,7 @@ function M.setup()
     logger.debug("Initializing Neotree Node Type Refresh Map")
     M.internal.refresh_map[M.constants.TYPES.NETMAN_PROVIDER] = refresh_provider
     for _, node in pairs(M.internal._root_nodes) do
+        logger.trace2("Creating nui node for root node", node)
         create_node(node)
         table.insert(M._root, node.id)
     end
