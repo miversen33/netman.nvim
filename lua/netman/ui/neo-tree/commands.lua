@@ -70,8 +70,6 @@ M.paste_node = function(state, callback)
     do_callback(callback)
 end
 
-    do_callback(callback)
-end
 -- -- TODO:
 -- M.open_split = function(state, callback)
 --
