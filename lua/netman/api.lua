@@ -1229,33 +1229,34 @@ function M.copy(uris, target_uri, opts, callback, do_move)
     end
 end
 
---- Attempts to submit a search to the provider of the URI.
---- NOTE: The provider may _not_ support searching, and thus
---- this might just return nil.
---- @param uri string
---- @param param string
---- @param opts table | nil
----     Default: {
----         search = 'filename',
----         case_sensitive = false
----     }
----     If provided, alters both what we search, and how we search. This is (mostly) passed
----     directly to the provider.
----     Valid Key value pairs
----     - async: boolean
----         If provided, indicates to the provider that the search should be performed asynchronously
----     - output_callback: function
----         If provided, we will call this function with each item that is returned from the provider.
----         NOTE: If the provider does not support streaming of output, we will emulate it after the fact
----     - search: string
----         Valid values ('filename', 'contents')
----     - is_regex: boolean
----         If provided, indicates (to the provider) that the param is a regex
----     - case_sensitive: boolean
----         If provided, indicates (to the provider) that the param should (or should not) be case sensitive
----     - max_depth: integer
----         The maximium depth to perform the search
+-- Attempts to submit a search to the provider of the URI.
+-- NOTE: The provider may _not_ support searching, and thus
+-- this might just return nil.
+-- @param uri string
+-- @param param string
+-- @param opts table | nil
+--     Default: {
+--         search = 'filename',
+--         case_sensitive = false
+--     }
+--     If provided, alters both what we search, and how we search. This is (mostly) passed
+--     directly to the provider.
+--     Valid Key value pairs
+--     - async: boolean
+--         If provided, indicates to the provider that the search should be performed asynchronously
+--     - output_callback: function
+--         If provided, we will call this function with each item that is returned from the provider.
+--         NOTE: If the provider does not support streaming of output, we will emulate it after the fact
+--     - search: string
+--         Valid values ('filename', 'contents')
+--     - is_regex: boolean
+--         If provided, indicates (to the provider) that the param is a regex
+--     - case_sensitive: boolean
+--         If provided, indicates (to the provider) that the param should (or should not) be case sensitive
+--     - max_depth: integer
+--         The maximium depth to perform the search
 function M.search(uri, param, opts)
+    -- TODO
     local provider, cache = nil, nil
     uri, provider, cache = M.internal.validate_uri(uri)
     if not provider then
