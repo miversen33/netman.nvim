@@ -62,40 +62,37 @@ M.internal.node_map = {}
 M.internal.navigate_map = {}
 M.internal.refresh_map  = {}
 M.internal._root_nodes = {
-    {
-        name = "Stop",
-        id = M.constants.ROOT_IDS.NETMAN_STOP,
-        type = M.constants.TYPES.NETMAN_STOP,
-        parent_id = nil,
-        children = {},
-        extra = {
-            icon = "",
-            ignore_sort = true,
-            -- skip = true
-        }
-    },
-    {
-        name = "Recents",
-        id = M.constants.ROOT_IDS.NETMAN_RECENTS,
-        type = M.constants.TYPES.NETMAN_BOOKMARK,
-        children = {},
-        parent_id = nil,
-        extra = {
-            icon = "",
-            ignore_sort = true,
-        }
-    },
-    {
-        id = M.constants.ROOT_IDS.NETMAN_FAVORITES,
-        name = "Favorites",
-        type = M.constants.TYPES.NETMAN_BOOKMARK,
-        children = {},
-        parent_id = nil,
-        extra = {
-            icon = "",
-            ignore_sort = true
-        }
-    },
+    -- {
+    --     name = "Stop",
+    --     id = M.constants.ROOT_IDS.NETMAN_STOP,
+    --     type = M.constants.TYPES.NETMAN_STOP,
+    --     parent_id = nil,
+    --     extra = {
+    --         icon = "",
+    --         ignore_sort = true,
+    --         -- skip = true
+    --     }
+    -- },
+    -- {
+    --     name = "Recents",
+    --     id = M.constants.ROOT_IDS.NETMAN_RECENTS,
+    --     type = M.constants.TYPES.NETMAN_BOOKMARK,
+    --     parent_id = nil,
+    --     extra = {
+    --         icon = "",
+    --         ignore_sort = true,
+    --     }
+    -- },
+    -- {
+    --     id = M.constants.ROOT_IDS.NETMAN_FAVORITES,
+    --     name = "Favorites",
+    --     type = M.constants.TYPES.NETMAN_BOOKMARK,
+    --     parent_id = nil,
+    --     extra = {
+    --         icon = "",
+    --         ignore_sort = true
+    --     }
+    -- },
     {
         name = "Providers",
         id = M.constants.ROOT_IDS.NETMAN_PROVIDERS,
