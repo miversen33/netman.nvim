@@ -9,11 +9,11 @@ local compat = require("netman.tools.compat")
 
 local M = {}
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
 M.internal = {
     config = require("netman.tools.configuration"):new(),
     -- This will be used to help track unused configurations
@@ -38,14 +38,14 @@ end
 
 M.get_system_logger = function() return logger end
 
---- Set of tools to communicate directly with provider(s) (in a generic sense).
---- Note, this will not let you talk directly to the provider per say, (meaning you can't
---- talk straight to the ssh provider, but you can talk to api and tell it you want things
---- from or to give to the ssh provider).
+-- Set of tools to communicate directly with provider(s) (in a generic sense).
+-- Note, this will not let you talk directly to the provider per say, (meaning you can't
+-- talk straight to the ssh provider, but you can talk to api and tell it you want things
+-- from or to give to the ssh provider).
 M.providers = {}
 
---- The default function that any provider configuration will have associated with its
---- :save function.
+-- The default function that any provider configuration will have associated with its
+-- :save function.
 M.internal.config.save = function(self)
     local _config = io.open(M.internal.config_path, 'w+')
     if not _config then
@@ -86,11 +86,11 @@ local _provider_required_attributes = {
     , 'get_metadata'
 }
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
 function M.internal.wrap_shell_handle(handle)
     local return_handle = {
         async    = true,
@@ -120,11 +120,11 @@ function M.internal.wrap_shell_handle(handle)
     return return_handle
 end
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
 function M.internal.init_config()
     local _lines = {}
     local _config = io.open(M.internal.config_path, 'r+')
@@ -163,16 +163,16 @@ function M.internal.init_config()
     logger.trace("Loaded Configuration")
 end
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
---- Retrieves the provider and its cache for a protocol
---- @param protocol string
----     The protocol to check against
---- @return any, netman.tools.cache
----     Will return nil if we are unable to find a matching provider
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
+-- Retrieves the provider and its cache for a protocol
+-- @param protocol string
+--     The protocol to check against
+-- @return any, netman.tools.cache
+--     Will return nil if we are unable to find a matching provider
 function M.internal.get_provider_for_protocol(protocol)
     local provider_path = M._providers.protocol_to_path[protocol]
     if not provider_path then return nil end
@@ -180,17 +180,17 @@ function M.internal.get_provider_for_protocol(protocol)
     return provider_details.provider, provider_details.cache
 end
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
---- Retrieves the provider details for a URI
----@param uri string
---- The URI to extract the protocol (and thus the provider) from
----@return any, string/any, string/any
---- Returns the provider, its import path, and the protocol associated with the provider
----@private
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
+-- Retrieves the provider details for a URI
+--@param uri string
+-- The URI to extract the protocol (and thus the provider) from
+--@return any, string/any, string/any
+-- Returns the provider, its import path, and the protocol associated with the provider
+--@private
 function M.internal.get_provider_for_uri(uri)
     uri = uri or ''
     local protocol = uri:match(protocol_from_path_glob)
@@ -198,12 +198,12 @@ function M.internal.get_provider_for_uri(uri)
     return provider, cache, protocol
 end
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
---- @return uri, provider, cache, protocol
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
+-- @return uri, provider, cache, protocol
 function M.internal.validate_uri(uri)
     local provider, cache, protocol = M.internal.get_provider_for_uri(uri)
     if not provider then
@@ -213,14 +213,14 @@ function M.internal.validate_uri(uri)
     return uri, provider, cache, protocol
 end
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
---- @param read_data table
----     A 1 dimensional table
---- @return table
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
+-- @param read_data table
+--     A 1 dimensional table
+-- @return table
 function M.internal.sanitize_explore_data(read_data)
     local sanitized_data = {}
     for _, orig_data in pairs(read_data) do
@@ -263,22 +263,22 @@ function M.internal.sanitize_explore_data(read_data)
     return sanitized_data
 end
 
---- Validates that the data provided in the `read` command for type `READ_FILE` is valid
---- @param table
----     Expects a table that contains the following keys
----     - remote_path  (Required)
----         - Value: String
----     - local_path   (Required)
----         - Value: String
----     - error        (Required if other fields are missing)
----         - TODO: Document this
----         - Value: Function
----         - Note: The expected return of the function is `{retry=bool}` where `bool` is either true/false. If `retry`
----         isn't present in the return of the error, or it if is and its false, we will assume that we shouldn't return
----         the read attempt
----     More details on the expected schema can be found in netman.tools.options.api.READ_RETURN_SCHEMA
---- @return table
----     Returns the validated table of information or (nil) if it cannot be validated
+-- Validates that the data provided in the `read` command for type `READ_FILE` is valid
+-- @param table
+--     Expects a table that contains the following keys
+--     - remote_path  (Required)
+--         - Value: String
+--     - local_path   (Required)
+--         - Value: String
+--     - error        (Required if other fields are missing)
+--         - TODO: Document this
+--         - Value: Function
+--         - Note: The expected return of the function is `{retry=bool}` where `bool` is either true/false. If `retry`
+--         isn't present in the return of the error, or it if is and its false, we will assume that we shouldn't return
+--         the read attempt
+--     More details on the expected schema can be found in netman.tools.options.api.READ_RETURN_SCHEMA
+-- @return table
+--     Returns the validated table of information or (nil) if it cannot be validated
 function M.internal.sanitize_file_data(read_data)
     logger.trace("Validating Read File Data", read_data)
     local REQUIRED_KEYS = { 'local_path', 'origin_path' }
@@ -369,32 +369,32 @@ function M.internal.init_provider_autocmds(provider, protocols)
     end
 end
 
---- Initializes the Netman Augroups, what did you think it does?
+-- Initializes the Netman Augroups, what did you think it does?
 function M.internal.init_augroups()
     vim.api.nvim_create_augroup('Netman', {clear = true})
 end
 
---- Returns the associated config for the config owner.
---- @param config_owner_name string
----     The name of the owner of the config. Name should be the
----     path to the provider/consumer. Note, if there isn't one,
----     already available, **ONE IS NOT CREATED FOR YOU**
----     To get a config created for yourself, you should have registered
----     your provider with netman.api.load_provider. If you're a UI
----     you should be using netman.ui to get your config
---- @return Configuration
+-- Returns the associated config for the config owner.
+-- @param config_owner_name string
+--     The name of the owner of the config. Name should be the
+--     path to the provider/consumer. Note, if there isn't one,
+--     already available, **ONE IS NOT CREATED FOR YOU**
+--     To get a config created for yourself, you should have registered
+--     your provider with netman.api.load_provider. If you're a UI
+--     you should be using netman.ui to get your config
+-- @return Configuration
 function M.internal.get_config(config_owner_name)
     return M.internal.config:get(config_owner_name)
 end
 
---- Validates the information provided by the entry to ensure it
---- matches the defined schema in netman.tools.options.ui.ENTRY_SCHEMA.
---- If there are any invalid keys, they will be logged and stripped out.
---- @param entry table
----     A single entry returned by netman.api.get_hosts
---- @return table
----     A validated/sanitized entry
----     NOTE: If the entry is not validated, this returns nil
+-- Validates the information provided by the entry to ensure it
+-- matches the defined schema in netman.tools.options.ui.ENTRY_SCHEMA.
+-- If there are any invalid keys, they will be logged and stripped out.
+-- @param entry table
+--     A single entry returned by netman.api.get_hosts
+-- @return table
+--     A validated/sanitized entry
+--     NOTE: If the entry is not validated, this returns nil
 function M.internal.validate_entry_schema(provider, entry)
     local schema = require("netman.tools.options").ui.ENTRY_SCHEMA
     local states = require("netman.tools.options").ui.STATES
@@ -425,10 +425,10 @@ function M.internal.validate_entry_schema(provider, entry)
     if not valid_entry then return nil else return return_entry end
 end
 
---- Returns a 1 dimensional table of strings which are registered
---- netman providers. Intended to be used with netman.api.providers.get_hosts (but
---- I'm not the police, you do what you want with this).
---- @return table
+-- Returns a 1 dimensional table of strings which are registered
+-- netman providers. Intended to be used with netman.api.providers.get_hosts (but
+-- I'm not the police, you do what you want with this).
+-- @return table
 function M.providers.get_providers()
     local _providers = {}
     for provider, _ in pairs(M._providers.path_to_provider) do
@@ -437,17 +437,17 @@ function M.providers.get_providers()
     return _providers
 end
 
---- Reaches out to the provided provider and gets a list of
---- the entries it wants displayed
---- @param provider string
----    The string path of the provider in question. This should
----    likely be provided via netman.api.providers.get_providers()
---- @return table/nil
----    Returns a table with data or nil.
----    nil is returned if the provider is not valid or if the provider
----    doesn't have the `get_hosts` function implemented
----    NOTE: Does _not_ validate the schema, you do that yourself, whatever
----    is calling this
+-- Reaches out to the provided provider and gets a list of
+-- the entries it wants displayed
+-- @param provider string
+--    The string path of the provider in question. This should
+--    likely be provided via netman.api.providers.get_providers()
+-- @return table/nil
+--    Returns a table with data or nil.
+--    nil is returned if the provider is not valid or if the provider
+--    doesn't have the `get_hosts` function implemented
+--    NOTE: Does _not_ validate the schema, you do that yourself, whatever
+--    is calling this
 function M.providers.get_hosts(provider)
     local _provider = M._providers.path_to_provider[provider]
     local hosts = nil
@@ -468,17 +468,17 @@ function M.providers.get_hosts(provider)
     return hosts
 end
 
---- Gets details for a specific host
---- @param provider string
----     The path to the provider. For example, `netman.providers.ssh`. This will be provided by netman.api.provider.get_providers
---- @param host string
----     The name of the host. For example `localhost`. This will be provided by the provider via netman.api.providers.get_hosts
---- @return table
----     Returns a 1 dimensional table with the following information
----     - NAME (string)
----     - URI (string)
----     - STATE (string from netman.options.ui.states)
----     - ENTRYPOINT (table of URIs, or a function to call to get said table of URIs)
+-- Gets details for a specific host
+-- @param provider string
+--     The path to the provider. For example, `netman.providers.ssh`. This will be provided by netman.api.provider.get_providers
+-- @param host string
+--     The name of the host. For example `localhost`. This will be provided by the provider via netman.api.providers.get_hosts
+-- @return table
+--     Returns a 1 dimensional table with the following information
+--     - NAME (string)
+--     - URI (string)
+--     - STATE (string from netman.options.ui.states)
+--     - ENTRYPOINT (table of URIs, or a function to call to get said table of URIs)
 function M.providers.get_host_details(provider, host)
     local _provider = M._providers.path_to_provider[provider]
     if not _provider then
@@ -803,20 +803,20 @@ function M.internal.connect_provider(provider, uri, cache, callback)
     return handle
 end
 
---- Attempts to reach out to the provider
---- to verify if the URI has a connected host
---- @param uri: string
----     The string URI to check
---- @param provider: table | nil
----     For internal use only, used to bypass uri validation
---- @param cache: table | nil
----     For internal use only, used to bypass uri validation
---- @return boolean
----     Will return True if (and only if) the provider
----     explicitly informed us that the URI was connected.
----     Failure to connect to the provider for this check,
----     or a false response from the provider will both return
----     false on this call
+-- Attempts to reach out to the provider
+-- to verify if the URI has a connected host
+-- @param uri: string
+--     The string URI to check
+-- @param provider: table | nil
+--     For internal use only, used to bypass uri validation
+-- @param cache: table | nil
+--     For internal use only, used to bypass uri validation
+-- @return boolean
+--     Will return True if (and only if) the provider
+--     explicitly informed us that the URI was connected.
+--     Failure to connect to the provider for this check,
+--     or a false response from the provider will both return
+--     false on this call
 function M.internal.has_connection_to_uri_host(uri, provider, cache)
     local orig_uri = uri
     if not provider or not cache then
@@ -834,34 +834,34 @@ function M.internal.has_connection_to_uri_host(uri, provider, cache)
     return provider.is_connected(uri, cache)
 end
 
---- This might seem a bit convoluted if you don't understand what ASP is in netman.
---- This doc will not be used to go over that. Review `:h netman-asp` or go read the
---- readme on the repo for details.
---- @param provider table
----     The netman provider
---- @param sync_function_name string
----     The name of the synchronous version of the function to call
---- @param async_function_name string
----     The name of the asynchronous version of the function to call
---- @param data table
----     Table wrapped data to pass to the underlying async/sync function.
----     This table will be unpacked for the call
---- @param error_callback function | nil
----     The callback to call if there is any errors that occur during the processing
----     of the request
---- @param response_callback function | nil
----     So this one is a bit weird. This is the function to call when there is a 
----     response. Note, in order to properly perform the "ask" part of ASP, 
----     set this to `nil` if you wish to run synchronously only. Basically, 
----     just pass the consumer callback through to this. I know it seems weird. 
----
----     Just trust me bro.
---- @return table | nil
----     This function has no idea what it's returning. It is going to return 
----     (basically) whatever it gets back from the response callback, or the raw data
----     if no response function is returned. If the call passes ASP, it will 
----     return a proper netman async handle
----     Otherwise this will return nil
+-- This might seem a bit convoluted if you don't understand what ASP is in netman.
+-- This doc will not be used to go over that. Review `:h netman-asp` or go read the
+-- readme on the repo for details.
+-- @param provider table
+--     The netman provider
+-- @param sync_function_name string
+--     The name of the synchronous version of the function to call
+-- @param async_function_name string
+--     The name of the asynchronous version of the function to call
+-- @param data table
+--     Table wrapped data to pass to the underlying async/sync function.
+--     This table will be unpacked for the call
+-- @param error_callback function | nil
+--     The callback to call if there is any errors that occur during the processing
+--     of the request
+-- @param response_callback function | nil
+--     So this one is a bit weird. This is the function to call when there is a 
+--     response. Note, in order to properly perform the "ask" part of ASP, 
+--     set this to `nil` if you wish to run synchronously only. Basically, 
+--     just pass the consumer callback through to this. I know it seems weird. 
+--
+--     Just trust me bro.
+-- @return table | nil
+--     This function has no idea what it's returning. It is going to return 
+--     (basically) whatever it gets back from the response callback, or the raw data
+--     if no response function is returned. If the call passes ASP, it will 
+--     return a proper netman async handle
+--     Otherwise this will return nil
 function M.internal.asp(provider, sync_function_name, async_function_name, data, error_callback, response_callback)
     local func = sync_function_name
     -- Checking to see if we even are supposed to run asynchronously
@@ -962,11 +962,11 @@ function M.internal._process_provider_response(uri, provider, response)
     return response
 end
 
---- WARN: Do not rely on these functions existing
---- WARN: Do not use these functions in your code
---- WARN: If you put an issue in saying anything about using
---- these functions is not working in your plugin, you will
---- be laughed at and ridiculed
+-- WARN: Do not rely on these functions existing
+-- WARN: Do not use these functions in your code
+-- WARN: If you put an issue in saying anything about using
+-- these functions is not working in your plugin, you will
+-- be laughed at and ridiculed
 function M.internal._process_read_result(uri, provider, data)
     local provider_name = provider.name or 'nil'
     local processed_data = nil
@@ -1000,105 +1000,105 @@ function M.internal._process_read_result(uri, provider, data)
     return { data = processed_data , type = validated_response.type, success = validated_response.success }
 end
 
---- Executes remote read of uri
---- NOTE: Read also caches results for a short time, and will
---- return those cached results instead of repeatedly reaching
---- out to the underlying provider for repeat requests.
---- @param uri string
----     The string representation of the remote resource URI
---- @param opts table | nil
----     Default: {}
----     Options to provide to the provider. Valid options include
----     - force: boolean
----         If provided, indicates that we should invalidate any cached
----         instances of the URI before pull
---- @param callback function | nil
----     Default: nil
----     If provided, we will attempt to treate the read request as asynchronous.
----     NOTE: this affects the return value!
---- @return table
----     If the read request is asynchronous, you will recieve the following table
----     {
----         async: boolean,
----         -- A boolean that should be set to true to indicate that
----         -- the read request is asynchronously being completed
----         read: function,
----         -- Takes an optional string parameter that can be
----         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
----         -- Defaults to "STDOUT"
----         write: function,
----         -- Takes a string or table of data to write to the
----         -- underlying handle
----         stop: function
----         -- Takes an optional boolean to indicate the stop should
----         -- be forced
----     }
----     Note, the synchronous output below will be provided to the callback param
----     as a parameter to it instead, with the exception of the following keys
----     - async, success
----     Its pretty obvious that the results are async as they are being streamed to
----     you, and success is also obvious if you are receiving the output
----     
----     If the read request is synchronous, you will receive the following table
----     {
----         async: boolean,
----         -- A boolean that should be set to false to indicate that
----         -- the read request was synchronously completed
----         success: boolean,
----         -- A boolean indicating if the read was successfully completed
----         type: string,
----         -- A string indicating what type of result you will receive. Valid
----         -- types are
----         -- - "EXPLORE"
----         --     -- Indicates a directory style set of data. This
----         --     -- means the `data` key will be a 1 dimensional array
----         --     -- containing a stat table for each item returned
----         -- - "FILE"
----         --     -- Indicates an individual file type of data. This
----         --     -- means that there is a file located somewhere on the host
----         --     -- machine that is the result of whatever was pulled down
----         --     -- from the URI. `data` will be formatted in the following manner
----         --     -- {
----         --            local_path: string,
----         --                -- The local path to the downloaded file
----         --            origin_path: string,
----         --                -- The remote path that was read for this file
----         --     -- }
----         -- - "STREAM"
----         --     -- Indicates a stream of data. This means that there
----         --     -- is no data stored locally and and such `data` will be
----         --     -- a 1 dimensional array of "lines" of output
----         data: table,
----         -- See `type` for details on how this table will be formatted,
----         -- based on the type of data returned by the provider
----         message: table | nil,
----         -- An optional table that may be returned by the provider.
----         -- If this table exists, it will be in the following format
----         -- {
----         --     message: string,
----         --     -- The message to relay to the consumer
----         --     process: function | nil,
----         --     -- If provided, indicates that the provider expects
----         --     -- the message to be an input prompt of some kind.
----         --     -- Call process with the result of the prompt so the
----         --     -- provider can continue with whatever it was doing.
----         --     -- NOTE: This will return a table with the following info
----         --     -- {
----         --     --     retry: boolean,
----         --     --     -- Indicates if you should recall the original function
----         --     --     -- call again. IE, if true, call api.read again
----         --     --     -- with the original params
----         --     --     message: string | nil
----         --     --     -- The message printed during the retry. Usually
----         --     --     -- this indicates a complete failure of the call and
----         --     --     -- retry logic altogether
----         --     -- }
----         --     default: string | nil,
----         --     -- If provided, indicates the default value to put
----         --     -- in for whatever the prompt is that was provided with
----         --     -- the message key
----         -- }
----     }
+-- Executes remote read of uri
+-- NOTE: Read also caches results for a short time, and will
+-- return those cached results instead of repeatedly reaching
+-- out to the underlying provider for repeat requests.
+-- @param uri string
+--     The string representation of the remote resource URI
+-- @param opts table | nil
+--     Default: {}
+--     Options to provide to the provider. Valid options include
+--     - force: boolean
+--         If provided, indicates that we should invalidate any cached
+--         instances of the URI before pull
+-- @param callback function | nil
+--     Default: nil
+--     If provided, we will attempt to treate the read request as asynchronous.
+--     NOTE: this affects the return value!
+-- @return table
+--     If the read request is asynchronous, you will recieve the following table
+--     {
+--         async: boolean,
+--         -- A boolean that should be set to true to indicate that
+--         -- the read request is asynchronously being completed
+--         read: function,
+--         -- Takes an optional string parameter that can be
+--         -- "STDERR", or "STDOUT" to indicate which pipe to read from.
+--         -- Defaults to "STDOUT"
+--         write: function,
+--         -- Takes a string or table of data to write to the
+--         -- underlying handle
+--         stop: function
+--         -- Takes an optional boolean to indicate the stop should
+--         -- be forced
+--     }
+--     Note, the synchronous output below will be provided to the callback param
+--     as a parameter to it instead, with the exception of the following keys
+--     - async, success
+--     Its pretty obvious that the results are async as they are being streamed to
+--     you, and success is also obvious if you are receiving the output
+--     
+--     If the read request is synchronous, you will receive the following table
+--     {
+--         async: boolean,
+--         -- A boolean that should be set to false to indicate that
+--         -- the read request was synchronously completed
+--         success: boolean,
+--         -- A boolean indicating if the read was successfully completed
+--         type: string,
+--         -- A string indicating what type of result you will receive. Valid
+--         -- types are
+--         -- - "EXPLORE"
+--         --     -- Indicates a directory style set of data. This
+--         --     -- means the `data` key will be a 1 dimensional array
+--         --     -- containing a stat table for each item returned
+--         -- - "FILE"
+--         --     -- Indicates an individual file type of data. This
+--         --     -- means that there is a file located somewhere on the host
+--         --     -- machine that is the result of whatever was pulled down
+--         --     -- from the URI. `data` will be formatted in the following manner
+--         --     -- {
+--         --            local_path: string,
+--         --                -- The local path to the downloaded file
+--         --            origin_path: string,
+--         --                -- The remote path that was read for this file
+--         --     -- }
+--         -- - "STREAM"
+--         --     -- Indicates a stream of data. This means that there
+--         --     -- is no data stored locally and and such `data` will be
+--         --     -- a 1 dimensional array of "lines" of output
+--         data: table,
+--         -- See `type` for details on how this table will be formatted,
+--         -- based on the type of data returned by the provider
+--         message: table | nil,
+--         -- An optional table that may be returned by the provider.
+--         -- If this table exists, it will be in the following format
+--         -- {
+--         --     message: string,
+--         --     -- The message to relay to the consumer
+--         --     process: function | nil,
+--         --     -- If provided, indicates that the provider expects
+--         --     -- the message to be an input prompt of some kind.
+--         --     -- Call process with the result of the prompt so the
+--         --     -- provider can continue with whatever it was doing.
+--         --     -- NOTE: This will return a table with the following info
+--         --     -- {
+--         --     --     retry: boolean,
+--         --     --     -- Indicates if you should recall the original function
+--         --     --     -- call again. IE, if true, call api.read again
+--         --     --     -- with the original params
+--         --     --     message: string | nil
+--         --     --     -- The message printed during the retry. Usually
+--         --     --     -- this indicates a complete failure of the call and
+--         --     --     -- retry logic altogether
+--         --     -- }
+--         --     default: string | nil,
+--         --     -- If provided, indicates the default value to put
+--         --     -- in for whatever the prompt is that was provided with
+--         --     -- the message key
+--         -- }
+--     }
 function M.read(uri, opts, callback)
     local orig_uri = uri
     local provider, cache = nil, nil
@@ -1276,18 +1276,18 @@ function M.write(uri, data, options, callback)
     end
 end
 
---- Renames a URI to another URI, on the same provider
---- @param old_uri string
----     The current uri location to be renamed
---- @param new_uri string
----     The new uri name.
----     Note: Both URIs **MUST** share the same provider
---- @return table
----     Returns a table with the following information
----     {
----         success: boolean,
----         message: { message = "Error that occurred during rename "} -- (Optional)
----     }
+-- Renames a URI to another URI, on the same provider
+-- @param old_uri string
+--     The current uri location to be renamed
+-- @param new_uri string
+--     The new uri name.
+--     Note: Both URIs **MUST** share the same provider
+-- @return table
+--     Returns a table with the following information
+--     {
+--         success: boolean,
+--         message: { message = "Error that occurred during rename "} -- (Optional)
+--     }
 function M.rename(old_uri, new_uri)
     local old_provider, new_provider, new_cache
     old_uri, old_provider = M.internal.validate_uri(old_uri)
@@ -1649,14 +1649,14 @@ function M.unload_buffer(uri)
     end
 end
 
---- Unload Provider is a function that is provided to allow a user (developer)
---- to remove a provider from Netman. This is most useful when changes have been
---- made to the provider and you wish to reflect those changes without
---- restarting Neovim
---- @param provider_path string
----    The string path to the provider
----    EG: "netman.provider.ssh"
---- @return nil
+-- Unload Provider is a function that is provided to allow a user (developer)
+-- to remove a provider from Netman. This is most useful when changes have been
+-- made to the provider and you wish to reflect those changes without
+-- restarting Neovim
+-- @param provider_path string
+--    The string path to the provider
+--    EG: "netman.provider.ssh"
+-- @return nil
 function M.unload_provider(provider_path, justification)
     local justified = false
     if justification then justified = true end
@@ -1690,14 +1690,14 @@ function M.unload_provider(provider_path, justification)
     M._providers.uninitialized[provider_path] = justification
 end
 
---- Load Provider is what a provider should call
---- (via require('netman.api').load_provider) to load yourself
---- into netman and be utilized for uri resolution in other
---- netman functions.
---- @param provider_path string
----    The string path to the provider
----    EG: "netman.provider.ssh"
---- @return nil
+-- Load Provider is what a provider should call
+-- (via require('netman.api').load_provider) to load yourself
+-- into netman and be utilized for uri resolution in other
+-- netman functions.
+-- @param provider_path string
+--    The string path to the provider
+--    EG: "netman.provider.ssh"
+-- @return nil
 function M.load_provider(provider_path)
     if M._providers.path_to_provider[provider_path] then
         logger.warn(string.format("%s is already loaded! Consider calling require('netman.api').reload_provider('%s') if you want to reload it"
@@ -1815,11 +1815,11 @@ function M.reload_provider(provider_path)
     M.load_provider(provider_path)
 end
 
---- Loads up the netman logger into a buffer.
---- @param output_path string | nil
----     Default: $HOME/random_string.logger
----     If provided, this will be the file to write to. Note, this will write over whatever the file that is provided.
----     Note, you can provide "memory" to generate this as an in memory logger dump only
+-- Loads up the netman logger into a buffer.
+-- @param output_path string | nil
+--     Default: $HOME/random_string.logger
+--     If provided, this will be the file to write to. Note, this will write over whatever the file that is provided.
+--     Note, you can provide "memory" to generate this as an in memory logger dump only
 function M.generate_log(output_path)
     local neovim_details = vim.version()
     local host_details = vim.loop.os_uname()
