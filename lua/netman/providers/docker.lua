@@ -1722,7 +1722,7 @@ end
 function M.search(uri, cache, param, opts)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     opts = opts or {}
     opts.search_param = param
     uri = validation.uri
@@ -1740,7 +1740,8 @@ end
 function M.read(uri, cache)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    logger.debug("URI", uri, " -- Validation", validation)
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     local _, stat = next(container:stat(uri, {M.internal.Container.CONSTANTS.STAT_FLAGS.TYPE}))
@@ -1766,7 +1767,7 @@ end
 function M.write(uri, cache, data)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
@@ -1812,7 +1813,7 @@ end
 function M.copy(uris, target_uri, cache)
     local container = nil
     local validation = M.internal.validate(target_uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     container = validation.container
     target_uri = validation.uri
     if type(uris) ~= 'table' then uris = {uris} end
@@ -1836,7 +1837,7 @@ end
 function M.move(uris, target_uri, cache)
     local container = nil
     local validation = M.internal.validate(target_uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     container = validation.container
     target_uri = validation.uri
     if type(uris) ~= 'table' then uris = {uris} end
@@ -1860,7 +1861,7 @@ end
 function M.delete(uri, cache)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container:rm(uri, {force = true})
@@ -1869,7 +1870,7 @@ end
 function M.get_metadata(uri, cache)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container:stat(uri)
@@ -1879,7 +1880,7 @@ function M.update_metadata(uri, cache, updates)
     -- TODO:
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
 
@@ -1936,7 +1937,7 @@ function M.archive.get(uris, cache, archive_dump_dir, available_compression_sche
     local __ = {}
     for _, uri in ipairs(uris) do
         local validation = M.internal.validate(uri, cache)
-        if validation.error then return validation end
+        if validation.message then return validation end
         assert(container == nil or validation.container == container, string.format("Container mismatch for archive! %s != %s", container, validation.container))
         table.insert(__, validation.uri)
 
@@ -1950,7 +1951,7 @@ function M.archive.put(uri, cache, archive, compression_scheme)
     assert(archive, string.format("Invalid Archive provided for upload to %s", uri))
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container:extract(archive, uri, compression_scheme, cache)
@@ -1960,7 +1961,7 @@ function M.archive.schemes(uri, cache)
     assert(cache, string.format("No cache provided for archive scheme fetch of %s", uri))
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container.archive_schemes
