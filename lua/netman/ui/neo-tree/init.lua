@@ -416,9 +416,9 @@ local function navigate_uri(nui_node, state, complete_callback)
     end
     local message_callback = function(message)
         logger.trace("Message:", message)
-        if message.error then
+        if message.message then
             -- HANDLE WEIRD RESPONSES FROM PROVIDERS HERE
-            logger.info("Received error:", message.error)
+            logger.info("Received error:", message.message)
             if message.error == netman_errors.ITEM_DOESNT_EXIST then
                 local uri = message.uri
                 local local_name = nui_node.name
@@ -427,10 +427,20 @@ local function navigate_uri(nui_node, state, complete_callback)
                 M.internal.node_map[uri] = nil
                 state.tree:remove_node(uri)
                 neo_tree_renderer.redraw(state)
-            end
-            if message.error == netman_errors.PERMISSION_ERROR then
+            elseif message.error == netman_errors.PERMISSION_ERROR then
                 local warning = message.message or "Permission Denied"
                 logger.warnn(warning)
+            else
+                if message.callback and type(message.callback) == 'function' and message.message then
+                    local _message = message.message
+                    local default = message.default and message.default or ""
+                    local _callback = message.callback
+                    logger.trace("Attempting to prompt the user for information?")
+                    neo_tree_input.input(_message, default, _callback)
+                    return
+                else
+                    logger.warnn("Error received from provider:", message.message)
+                end
             end
         end
     end
