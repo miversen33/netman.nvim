@@ -1604,6 +1604,12 @@ M.name = 'docker'
 M.protocol_patterns = {'docker'}
 M.version = 0.2
 
+function M.connect_host(uri, cache)
+    local validation = M.internal.validate(uri, cache)
+    if validation.message then return validation end
+    return true
+end
+
 function M.internal.validate(uri, cache)
     assert(cache, string.format("No cache provided for read of %s",  uri))
     ---@diagnostic disable-next-line: cast-local-type
