@@ -76,6 +76,14 @@ local _mock_provider = {
         required = false,
         type = 'function'
     },
+    connect_host = {
+        required = false,
+        type = 'function'
+    },
+    connect_host_a = {
+        required = false,
+        type = 'function'
+    },
     ui = {
         required = false,
         type = 'table'

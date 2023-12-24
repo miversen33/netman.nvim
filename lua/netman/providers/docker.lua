@@ -1604,6 +1604,12 @@ M.name = 'docker'
 M.protocol_patterns = {'docker'}
 M.version = 0.2
 
+function M.connect_host(uri, cache)
+    local validation = M.internal.validate(uri, cache)
+    if validation.message then return validation end
+    return true
+end
+
 function M.internal.validate(uri, cache)
     assert(cache, string.format("No cache provided for read of %s",  uri))
     ---@diagnostic disable-next-line: cast-local-type
@@ -1620,13 +1626,14 @@ function M.internal.validate(uri, cache)
                         local started = container:start()
                         if started.success then
                             logger.infon(string.format("%s successfully started!", container.name))
-                            return {retry = true}
+                            return true
                         else
-                            return {retry = false, error=started.error}
+                            -- TODO: We are not passing the error up and that _may_ be and...
+                            return false
                         end
                     else
                         logger.info(string.format("Not starting container %s", container.name))
-                        return {retry = false}
+                        return false
                     end
                 end
             }

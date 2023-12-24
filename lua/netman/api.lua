@@ -563,20 +563,21 @@ function M.internal.connect_provider(provider, uri, cache, callback)
     local connection_func = do_async and 'connect_host_a' or 'connect_host'
     local connection_finished = false
     local handle = nil
-    local connection_callback = function(success)
+    -- Using a boolean as a trinary because why not
+    local connection_callback = function(response)
         -- We have already been handled, don't
         -- call again
         if connection_finished then return end
-        if not success then
-            logger.warnf("Provider %s did not indicate success on connect to host of %s", provider.name, uri)
+        if response and response.success == false then
+            logger.warnf("Provider %s indicated a failure to connect to host of %s", provider.name, uri)
         end
         connection_finished = true
-        if callback then callback() end
+        if callback then callback(response) end
     end
     if not is_connected then
         if not provider[connection_func] then
             logger.debugf("Provider %s does not seem to implement any sort of preconnection logic", provider.name)
-            connection_callback(false)
+            connection_callback()
             return
         end
         logger.debugf("Reaching out to `%s.%s` to attempt preconnection", provider.name, connection_func)
@@ -584,7 +585,9 @@ function M.internal.connect_provider(provider, uri, cache, callback)
         if do_async and not handle then
             logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing `%s`", provider.name, connection_func)
             provider.connect_host_a = nil
-            connection_callback(false)
+            connection_callback()
+        elseif not do_async then
+            connection_callback(handle)
         end
     else
         connection_callback(true)
@@ -953,21 +956,38 @@ function M.read(uri, opts, callback)
     local error_callback = function(err)
         logger.warn(err)
     end
-    local connection_callback = function()
-        local raw_handle = M.internal.asp(
-            provider,
-            'read',
-            'read_a',
-            {uri, cache, result_callback},
-            error_callback,
-            callback and result_callback
-        )
-        if raw_handle then
-            if raw_handle.handle then
-                return_handle._handle = raw_handle
-            elseif not callback then
-                result_callback(raw_handle)
+    local connection_callback = function(connection_response)
+        local next_step = function()
+            local raw_handle = M.internal.asp(
+                provider,
+                'read',
+                'read_a',
+                {uri, cache, result_callback},
+                error_callback,
+                callback and result_callback
+            )
+            if raw_handle then
+                if raw_handle.handle then
+                    return_handle._handle = raw_handle
+                elseif not callback then
+                    result_callback(raw_handle)
+                end
             end
+        end
+        if connection_response and connection_response.message then
+            local cr_callback = connection_response.message.callback
+            if connection_response.message.callback then
+                local wrapped_callback = function(...)
+                    local can_continue = cr_callback(...)
+                    if can_continue then
+                        next_step()
+                    end
+                end
+                connection_response.message.callback = wrapped_callback
+            end
+            result_callback(connection_response)
+        else
+            next_step()
         end
     end
     return_handle._handle = M.internal.connect_provider(
@@ -1040,21 +1060,38 @@ function M.write(uri, data, options, callback)
     local error_callback = function(err)
         logger.warn(err)
     end
-    local connection_callback = function()
-        local raw_handle = M.internal.asp(
-            provider,
-            "write",
-            "write_a",
-            {uri, cache, lines, result_callback},
-            error_callback,
-            result_callback
-        )
-        if raw_handle then
-            if raw_handle.handle then
-                return_handle._handle = raw_handle
-            elseif not callback then
-                result_callback(raw_handle)
+    local connection_callback = function(connection_response)
+        local next_step = function()
+            local raw_handle = M.internal.asp(
+                provider,
+                "write",
+                "write_a",
+                {uri, cache, lines, result_callback},
+                error_callback,
+                result_callback
+            )
+            if raw_handle then
+                if raw_handle.handle then
+                    return_handle._handle = raw_handle
+                elseif not callback then
+                    result_callback(raw_handle)
+                end
             end
+        end
+        if connection_response and connection_response.message then
+            local cr_callback = connection_response.message.callback
+            if connection_response.message.callback then
+                local wrapped_callback = function(...)
+                    local can_continue = cr_callback(...)
+                    if can_continue then
+                        next_step()
+                    end
+                end
+                connection_response.message.callback = wrapped_callback
+            end
+            result_callback(connection_response)
+        else
+            next_step()
         end
     end
     return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
@@ -1078,6 +1115,7 @@ end
 --         message: { message = "Error that occurred during rename "} -- (Optional)
 --     }
 function M.rename(old_uri, new_uri)
+    -- TODO: Add callback support
     local old_provider, new_provider, new_cache
     old_uri, old_provider = M.internal.validate_uri(old_uri)
     new_uri, new_provider, new_cache = M.internal.validate_uri(new_uri)
@@ -1314,23 +1352,41 @@ function M.delete(uri, callback)
     local error_callback = function(err)
         logger.warn(err)
     end
-    local connection_callback = function()
-        local raw_handle = M.internal.asp(
-            provider,
-            'delete',
-            'delete_a',
-            {uri, cache, result_callback},
-            error_callback,
-            result_callback
-        )
-        if raw_handle then
-            if raw_handle.handle then
-                return_handle._handle = raw_handle
-            elseif not callback then
-                result_callback(raw_handle)
+    local connection_callback = function(connection_response)
+        local next_step = function()
+            local raw_handle = M.internal.asp(
+                provider,
+                'delete',
+                'delete_a',
+                {uri, cache, result_callback},
+                error_callback,
+                result_callback
+            )
+            if raw_handle then
+                if raw_handle.handle then
+                    return_handle._handle = raw_handle
+                elseif not callback then
+                    result_callback(raw_handle)
+                end
             end
+            protected_callback(return_data)
         end
-        protected_callback(return_data)
+        if connection_response and connection_response.message then
+            local cr_callback = connection_response.message.callback
+            if connection_response.message.callback then
+                local wrapped_callback = function(...)
+                    local can_continue = cr_callback(...)
+                    if can_continue then
+                        next_step()
+                    end
+                end
+                connection_response.message.callback = wrapped_callback
+            end
+            result_callback(connection_response)
+        else
+            next_step()
+        end
+
     end
     return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
     if callback then
@@ -1400,22 +1456,40 @@ function M.get_metadata(uri, metadata_keys, options, callback)
     local error_callback = function(err)
         logger.warn(err)
     end
-    local connection_callback = function()
-        local raw_handle = M.internal.asp(
-            provider,
-            'get_metadata',
-            'get_metadata_a',
-            {uri, cache, metadata_keys, result_callback},
-            error_callback,
-            callback and result_callback
-        )
-        if raw_handle then
-            if raw_handle.handle then
-                return_handle._handle = raw_handle
-            elseif not callback then
-                result_callback(raw_handle)
+    local connection_callback = function(connection_response)
+        local next_step = function()
+            local raw_handle = M.internal.asp(
+                provider,
+                'get_metadata',
+                'get_metadata_a',
+                {uri, cache, metadata_keys, result_callback},
+                error_callback,
+                callback and result_callback
+            )
+            if raw_handle then
+                if raw_handle.handle then
+                    return_handle._handle = raw_handle
+                elseif not callback then
+                    result_callback(raw_handle)
+                end
             end
         end
+        if connection_response and connection_response.message then
+            local cr_callback = connection_response.message.callback
+            if connection_response.message.callback then
+                local wrapped_callback = function(...)
+                    local can_continue = cr_callback(...)
+                    if can_continue then
+                        next_step()
+                    end
+                end
+                connection_response.message.callback = wrapped_callback
+            end
+            result_callback(connection_response)
+        else
+            next_step()
+        end
+
     end
     return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
     if callback then

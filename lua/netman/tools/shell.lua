@@ -74,7 +74,7 @@ Shell.CONSTANTS = {
         -- alot of output you don't care about or set to 0
         -- if you are using STDERR_CALLBACK
         STDERR_PIPE_LIMIT = "STDERR_PIPE_LIMIT",
-        -- If provided, a function is expected as the key,
+        -- If provided, a function is expected as the value,
         -- and the function will be called the shell
         -- process receives any signals. Expects a return
         -- of true/false, where true indicates that the
@@ -86,7 +86,13 @@ Shell.CONSTANTS = {
         -- @see https://github.com/luvit/luv/blob/master/docs.md#uvspawnpath-options-on_exit
         UID = "UID",
         -- @see https://github.com/luvit/luv/blob/master/docs.md#uvspawnpath-options-on_exit
-        GID = "GID"
+        GID = "GID",
+        -- If provided, expects a boolean to indicate if you want the shell to run in detached mode
+        -- or not. By default, this is set to false. Note, this will only work if @see ASYNC is also
+        -- provided and _will_ throw an error if that option is not set too
+        -- For more details, checkout @see https://github.com/luvit/luv/blob/master/docs.md#uvspawnpath-options-on_exit
+        -- specifically the "detached" option that can be provided here
+        DETACHED = "DETACHED"
     }
 }
 
@@ -333,6 +339,7 @@ function Shell:reset(command, options)
     self._env = options[Shell.CONSTANTS.FLAGS.ENV]
     self._uid = options[Shell.CONSTANTS.FLAGS.UID]
     self._gid = options[Shell.CONSTANTS.FLAGS.GID]
+    self._detached = options[Shell.CONSTANTS.FLAGS.DETACHED]
     self._stdin_pipe = nil
     self._stdin_write_count = 0
     self._attempted_kill = false
@@ -350,6 +357,10 @@ function Shell:reset(command, options)
     self._timeout_timer = nil
     self._start_time = nil
     self._end_time = nil
+
+    if self._detached then
+        assert(self._is_async, "Command cannot be detached and sychronous. Ensure you are specifying the ASYNC flag")
+    end
 
     if type(self._user_exit_callbacks) == 'function' then
         self._user_exit_callbacks = {self._user_exit_callbacks}
@@ -377,7 +388,8 @@ function Shell:_prepare()
         hide = true,
         env = self._env,
         uid = self._uid,
-        gid = self._gid
+        gid = self._gid,
+        detached = self._detached
     }
     if self._stdout_file then
         local flag = 'w+'
