@@ -80,7 +80,7 @@ M.internal.URI = URI
 ---     - host: string
 ---     - user: string | nil
 ---     - port: interger | nil
----     - password: string | nil (not implemented)
+---     - password: string | nil (only implemented for systems that have sshpass installed)
 ---     - key: string | nil (not implemented)
 ---     - passphrase: string | nil (not implemented)
 --- @param provider_cache cache
@@ -90,6 +90,7 @@ function SSH:new(auth_details, provider_cache)
     -- TODO: Add password support????
     assert(auth_details, "No authorization details provided for new ssh object. h: netman.provider.ssh.new")
     assert(provider_cache, "No cache provided for SSH object. h: netman.providers.ssh.new")
+    assert(utils.os_has('ssh'), "SSH not available on this system!")
     if type(auth_details) == 'string' then
         if auth_details:sub(-1, -1) ~= '/' then
             -- A bit of common error correction to ensure that the string is a valid URI
@@ -116,8 +117,10 @@ function SSH:new(auth_details, provider_cache)
     _ssh.protocol = 'ssh'
     _ssh._auth_details = auth_details
     _ssh.host = _ssh._auth_details.host
+    _ssh.pass = _ssh._auth_details.password or ''
     _ssh.user = _ssh._auth_details.user or ''
     _ssh.port = _ssh._auth_details.port or ''
+    _ssh.key  = _ssh._auth_details.key or ''
     _ssh.__type = 'netman_provider_ssh'
     _ssh.cache = CACHE:new(CACHE.FOREVER)
 
@@ -126,17 +129,25 @@ function SSH:new(auth_details, provider_cache)
     -- Intentionally leaving off the command to use for `get` as you could use either sftp or scp.
     -- The flags are the same regardless though
     _ssh._get_command = {}
-    if _ssh._auth_details.port:len() > 0 then
+    if _ssh.pass:len() > 0 then
+        if utils.os_has("sshpass") then
+            _ssh.console_command = {"sshpass", "-p", _ssh.pass, "ssh"}
+            _ssh._put_command = {"sshpass", "-p", _ssh.pass, "scp"}
+        else
+            logger.warn("SSH connection requested using password auth but sshpass is not available on this system!")
+        end
+    end
+    if _ssh.port:len() > 0 then
         table.insert(_ssh.console_command, '-p')
         table.insert(_ssh._put_command, '-P')
-        table.insert(_ssh.console_command, _ssh._auth_details.port)
-        table.insert(_ssh._put_command, _ssh._auth_details.port)
+        table.insert(_ssh.console_command, _ssh.port)
+        table.insert(_ssh._put_command, _ssh.port)
     end
-    if _ssh._auth_details.key:len() > 0 then
+    if _ssh.key:len() > 0 then
         table.insert(_ssh.console_command, '-i')
         table.insert(_ssh._put_command, '-i')
-        table.insert(_ssh.console_command, _ssh._auth_details.key)
-        table.insert(_ssh._put_command, _ssh._auth_details.key)
+        table.insert(_ssh.console_command, _ssh.key)
+        table.insert(_ssh._put_command, _ssh.key)
     end
 
     if utils.os ~= 'windows' then
@@ -158,7 +169,6 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
     end
-    
     if _ssh._auth_details.user:len() > 0 then
         local _ = string.format('%s@%s', _ssh._auth_details.user, _ssh._auth_details.host)
         table.insert(_ssh.console_command, _)
@@ -365,7 +375,7 @@ function SSH:run_command(command, opts)
     local _shell = shell:new(_command, opts)
     ---@diagnostic disable-next-line: missing-parameter
     local _shell_output = _shell:run()
-    logger.trace(_shell:dump_self_to_table())
+    logger.trace2(_shell:dump_self_to_table())
     return _shell_output
 end
 
@@ -2349,7 +2359,7 @@ function M.delete(uri, cache)
 end
 
 function M.connect_host(uri, cache)
-    -- Just run connect__host_a and block until complete
+    -- Just run connect_host_a and block until complete
     local connected = false
     local callback = function(success) connected = success end
     shell.join(M.connect_host_a(uri, cache, callback))
@@ -2703,6 +2713,9 @@ function M.archive.schemes(uri, cache)
 end
 
 function M.init(config)
+    if not utils.os_has('ssh') then
+        return false
+    end
     M.internal.prepare_config(config)
     M.internal.parse_user_sshconfig(config)
     return true

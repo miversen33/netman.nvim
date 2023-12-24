@@ -13,7 +13,7 @@ local M = {
     os_sep = compat.sep,
     os = compat.os,
     deep_copy = nil,
-    deprecation_date = nil
+    deprecation_date = nil,
 }
 
 local function create_dirs()
@@ -244,6 +244,13 @@ function M.deep_copy(in_table)
         copy = in_table
     end
     return copy
+end
+
+-- Checks to see if the OS has a particular program available. Currently
+-- just a shim for vim.fn.executable, but if we decide to branch out into shell
+-- land, we will want to be able to quickly change how we do this check
+function M.os_has(exe)
+    return vim.fn.executable(exe)
 end
 
 if not M._inited then

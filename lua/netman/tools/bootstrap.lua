@@ -172,6 +172,11 @@ function _G.vim.deepcopy(orig)
     return copy
 end
 
+-- There is no need to schedule so we dont
+function _G.vim.schedule(fn)
+    fn()
+end
+
 -- Cheats and uses libuv's readlink (I would bet thats what neovim
 -- is doing anyway
 function _G.vim.fn.resolve(path)
@@ -210,7 +215,7 @@ function _G.vim.ui.input(opts, callback)
 end
 
 function _G.vim.api.nvim_create_autocmd(event, opts)
-    print("Would create aucommand for " .. event, inspect(opts))
+    print("Would create aucommand for ", event, inspect(opts))
 end
 
 function _G.vim.api.nvim_del_augroup_by_name(augroup)
@@ -260,6 +265,17 @@ function _G.reload_packages(packages)
         print("    + reloading " .. reload_package)
         require(reload_package)
     end
+end
+
+function _G.vim.fn.executable(exe)
+    -- Ya this is only going to work in linux. Deal with it
+    local handle = io.popen(string.format('command -v %s', exe))
+    local result = handle:read("*a")
+    handle:close()
+    if not result or result:match('^%s*$') then
+        return false
+    end
+    return true
 end
 
 function _G.clear()
