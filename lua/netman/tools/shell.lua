@@ -731,7 +731,6 @@ function Shell.join(shells, sleep_check)
     end
     local waiting_shells = {}
     for _, shell in ipairs(shells) do
-        require("netman").logger.debug(shell)
         assert(shell.__type == 'netman_shell_handle', string.format("Invalid object type %s. Must be a Netman Shell Handle", shell.__type))
         assert(shell.pid, "Unable to find pid for shell!")
         table.insert(waiting_shells, shell.pid)
