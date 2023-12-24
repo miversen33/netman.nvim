@@ -1626,13 +1626,14 @@ function M.internal.validate(uri, cache)
                         local started = container:start()
                         if started.success then
                             logger.infon(string.format("%s successfully started!", container.name))
-                            return {retry = true}
+                            return true
                         else
-                            return {retry = false, error=started.error}
+                            -- TODO: We are not passing the error up and that _may_ be and...
+                            return false
                         end
                     else
                         logger.info(string.format("Not starting container %s", container.name))
-                        return {retry = false}
+                        return false
                     end
                 end
             }
