@@ -323,6 +323,7 @@ Which would _also_ indicate that the read has finished, except it was **not** su
 ```lua
 message = {
   message = "SOME MESSAGE",
+  default = "" -- This may be provided if the provider has a default value they want you to use for their input
   retry = false -- or true, or a function to call
 }
 ```
@@ -334,6 +335,8 @@ If `retry` is indicated, it will be either `true`, `false`, or a `function`.
 `False` (or nil) means that there is no need to retry, an error occurred and its up to the consumer to bubble that error up to the user.
 
 `function` (a callable) means that the provider needs some information from the user. In this case, `message` should be displayed in an input and whatever string the user replies with should be fed directly into the function. This is a means for the provider to allow the consumer to shape the callbacks within the consumer's UI/UX while still allowing the provider to get whatever information it needs. This will likely be used for "confirmations" and "password" retrieval as an example.
+
+`default` may be provided and will always be a string if it is. This variable is meant to be used as the "default value" in an input that you the consumer are to render to the user
 
 #### Return the Read Data
 
