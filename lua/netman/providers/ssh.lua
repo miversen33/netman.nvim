@@ -129,14 +129,6 @@ function SSH:new(auth_details, provider_cache)
     -- Intentionally leaving off the command to use for `get` as you could use either sftp or scp.
     -- The flags are the same regardless though
     _ssh._get_command = {}
-    if _ssh.pass:len() > 0 then
-        if utils.os_has("sshpass") then
-            _ssh.console_command = {"sshpass", "-p", _ssh.pass, "ssh"}
-            _ssh._put_command = {"sshpass", "-p", _ssh.pass, "scp"}
-        else
-            logger.warn("SSH connection requested using password auth but sshpass is not available on this system!")
-        end
-    end
     if _ssh.port:len() > 0 then
         table.insert(_ssh.console_command, '-p')
         table.insert(_ssh._put_command, '-P')
@@ -212,6 +204,34 @@ function SSH:new(auth_details, provider_cache)
     setmetatable(_ssh, self)
     provider_cache:add_item(cache_key, _ssh)
     return _ssh
+end
+
+function SSH:_set_user_password(new_password)
+    if not new_password then
+        logger.info("Removing saved password for host", self.host)
+        if self.console_command[1] == 'sshpass' then
+            table.remove(self.console_command, 1)
+            table.remove(self.console_command, 1)
+            table.remove(self.console_command, 1)
+        end
+        if self._put_command[1] == 'sshpass' then
+            table.remove(self._put_command, 1)
+            table.remove(self._put_command, 1)
+            table.remove(self._put_command, 1)
+        end
+    else
+        logger.warn("You should really use an ssh key instead of a password...")
+        if utils.os_has("sshpass") then
+            table.insert(self.console_command, 1, new_password)
+            table.insert(self.console_command, 1, "-p")
+            table.insert(self.console_command, 1, "sshpass")
+            table.insert(self._put_command, 1, new_password)
+            table.insert(self._put_command, 1, "-p")
+            table.insert(self._put_command, 1, "sshpass")
+        else
+            logger.warn("SSH connection requested using password auth but sshpass is not available on this system!")
+        end
+    end
 end
 
 function SSH:_get_os()
@@ -1344,8 +1364,9 @@ function SSH:stat(locations, target_flags, opts)
                 or output.stderr:match('Could not resolve hostname')
             then
                 suberror = string.format("Unable to connect to ssh host %s", self.host)
-            end
-            if output.stderr:match('No such file or directory') then
+            elseif output.stderr:match('[pP]assword') then
+                suberror = "Invalid/Missing Password"
+            elseif output.stderr:match('No such file or directory') then
                 suberror = "No such file or directory"
             end
             if suberror then _error = string.format("%s: %s", _error, suberror) end
@@ -2373,7 +2394,24 @@ function M.connect_host_a(uri, cache, exit_callback)
     uri = validation.uri
     host = validation.host
     local callback = function(response)
-        exit_callback(response and response.success)
+        local cleaned_response = {
+            success = response.success,
+            message = response.error and {
+                message = response.error,
+            }
+        }
+        if response.error and response.error:match('Invalid/Missing Password') and utils.os_has('sshpass') then
+            logger.debug("Received invalid password error. Going to try and get one now")
+            local error_callback = function(password)
+                host:_set_user_password(password)
+                return true
+            end
+            cleaned_response.message = {
+                message = string.format("%s Password: ", host.host),
+                callback = error_callback
+            }
+        end
+        exit_callback(cleaned_response)
     end
     return host:stat(uri, nil, {
         async = true,

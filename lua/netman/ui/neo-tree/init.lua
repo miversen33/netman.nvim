@@ -436,7 +436,10 @@ local function navigate_uri(nui_node, state, complete_callback)
                     local default = message.default and message.default or ""
                     local _callback = message.callback
                     logger.trace("Attempting to prompt the user for information?")
-                    neo_tree_input.input(_message, default, _callback)
+                    vim.schedule(function()
+                        -- TODO: We should do a hard check to see if this is password related and if so, prompt to save the password or something
+                        neo_tree_input.input(_message, default, _callback)
+                    end)
                     return
                 else
                     logger.warnn("Error received from provider:", message.message)
@@ -823,7 +826,10 @@ local function add_uri(state, new_name, opts, complete_callback)
             -- Nothing else do to, dun!
             logger.tracef("Remote creation complete, marking %s for auto refresh", current_node_uri)
             M.internal.internally_marked_nodes[current_node_uri] = 1
-            M.refresh(state, navigate_to_new_node)
+            vim.schedule(function()
+                M.refresh(state, navigate_to_new_node)
+                -- If the new node created was a file, prompt requesting if we should open it?
+            end)
         end
     end
     for _, uri in ipairs(path) do
