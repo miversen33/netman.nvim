@@ -335,14 +335,13 @@ local function open_stream(stream)
 
 end
 
-local function open_uri(node, link_callback, dest_callback, message_callback)
+local function open_uri(uri, link_callback, dest_callback, message_callback)
     -- We should really be checking to see if the node has
     -- an entrypoint and calling that
     -- We should temporarily map something globally to cancel the read?
     -- Or add something to the top of the tree to "stop" the handle?
     local _data = {}
     local _type = nil
-    local uri = node.extra.uri
     local render_tree = nil
     logger.tracef("Opening Node: %s", uri)
     M.internal.current_process_handle = netman_api.read(uri, {}, function(data, complete)
@@ -375,7 +374,7 @@ local function open_uri(node, link_callback, dest_callback, message_callback)
                 end
             end
             if complete then
-                render_tree = open_directory(_data, node.id)
+                render_tree = open_directory(_data, uri)
                 link_callback(render_tree)
             end
         elseif _type == netman_types.FILE then
@@ -386,7 +385,7 @@ local function open_uri(node, link_callback, dest_callback, message_callback)
     end)
 end
 
-local function navigate_uri(nui_node, state, complete_callback)
+local function navigate_uri(nui_node, state, complete_callback, remaining_uris, focus_node)
     -- TODO: We need something to prevent accidentally executing "multiple" reads at once
     local node = get_mapped_node(nui_node)
     if nui_node:is_expanded() then
@@ -395,15 +394,45 @@ local function navigate_uri(nui_node, state, complete_callback)
         node.extra.nui_node._is_expanded = false
         return nil, true
     end
-    nui_node:expand()
-    node.extra.nui_node._is_expanded = true
     if nui_node:has_children() then
+        nui_node:expand()
+        node.extra.nui_node._is_expanded = true
         return nil, true
     end
+
+    -- TODO: Kinda ick but honestly not the worst thing I have ever done
+    local wrapped_callback = function(...)
+        nui_node:expand()
+        node.extra.nui_node._is_expanded = true
+        local uris = remaining_uris or {}
+        if node.extra.entrypoint then
+            if type(node.extra.entrypoint) == 'function' then
+                uris = node.extra.entrypoint()
+            else
+                uris = node.extra.entrypoint
+            end
+            logger.debug("Setting entrypoint", uris)
+        end
+        if #uris > 0 then
+            local next_uri = table.remove(uris, 1).uri
+            local new_nui_node = state.tree:get_node(next_uri)
+            if new_nui_node then
+                logger.debug("Following entrypoint. Next item", next_uri)
+                return navigate_uri(new_nui_node, state, complete_callback, uris, next_uri)
+            end
+        end
+        if focus_node then
+            vim.schedule(function()
+                neo_tree_renderer.focus_node(state, focus_node)
+            end)
+        end
+        if complete_callback then complete_callback(...) end
+    end
+
     local link_callback = function(render_tree)
         vim.defer_fn(function()
             logger.debug("Deferred opening of link")
-            M.internal.finish_navigate(state, render_tree, node.id, false, complete_callback)
+            M.internal.finish_navigate(state, render_tree, node.id, false, wrapped_callback)
         end, 1)
     end
     local dest_callback = function(uri)
@@ -411,7 +440,7 @@ local function navigate_uri(nui_node, state, complete_callback)
             logger.debug("Deferred opening of destination")
             neo_tree_renderer.redraw(state)
             neo_tree_utils.open_file(state, uri)
-            if complete_callback then complete_callback() end
+            wrapped_callback()
         end, 1)
     end
     local message_callback = function(message)
@@ -447,7 +476,7 @@ local function navigate_uri(nui_node, state, complete_callback)
             end
         end
     end
-    local handle = open_uri(node, link_callback, dest_callback, message_callback)
+    local handle = open_uri(node.id, link_callback, dest_callback, message_callback)
     -- Returning "true" so we can update to show the "refresh"/"loading" icon
     return nil, true
 end
