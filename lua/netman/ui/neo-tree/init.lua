@@ -50,12 +50,44 @@ M.internal.marked_nodes = {}
 M.internal.internally_marked_nodes = {}
 M.internal.mark_action = nil
 M.internal.sorter = {}
+M.internal.grouper = {}
 
 -- Sorts nodes in ascending order
 M.internal.sorter.ascending = function(a, b) return a.name < b.name end
 
 -- Sorts nodes in descending order
 M.internal.sorter.descending = function(a, b) return a.name > b.name end
+
+-- Groups nodes into directory and file groups
+M.internal.grouper.group = function(groups)
+    local dirs = {}
+    local files = {}
+    for _, item in ipairs(groups) do
+        if item.type == 'directory' then
+            table.insert(dirs, item)
+        else
+            table.insert(files, item)
+        end
+    end
+    return dirs, files
+end
+
+-- Groups nodes by directory first files second
+M.internal.grouper.dir_first = function(groups)
+    local dirs, files = M.internal.grouper.group(groups)
+    return {dirs, files}
+end
+
+-- Groups nodes by files first directory second
+M.internal.grouper.file_first = function(groups)
+    local dirs, files = M.internal.grouper.group(groups)
+    return {files, dirs}
+end
+
+M.internal.defaults = {
+    grouper = M.internal.grouper.file_first,
+    sorter = M.internal.sorter.ascending
+}
 
 M.internal.current_process_handle = nil
 M.internal.node_map = {}
@@ -181,7 +213,7 @@ local function create_node(node_details, parent_id)
     return node
 end
 
-local function tree_to_nui(in_tree, do_sort)
+local function tree_to_nui(in_tree, do_sort, group_by_function)
     -- BUG: There is some weirdness in how expanded nodes are being rendered now...
     -- Occasionally this will determine that a closed node should be open
     -- TODO: I hate that this is recursive...
@@ -197,15 +229,28 @@ local function tree_to_nui(in_tree, do_sort)
             end
             local node = leaf.extra.nui_node
             if leaf.children and #leaf.children > 0 then
-                node.children = tree_to_nui(leaf.children, do_sort)
+                node.children = tree_to_nui(leaf.children, do_sort, group_by_function)
             end
             table.insert(tree, node)
         end
     end
     if do_sort and not ignore_sort then
-        -- We should probably use the 
-        -- neo_tree_utils.sort_by_tree_display function instead
-        table.sort(tree, M.internal.sorter.ascending)
+        local groups = { tree }
+        if group_by_function then
+            groups = group_by_function(tree)
+            logger.debug("Groups", groups)
+        end
+        local new_tree = {}
+        for _, group in ipairs(groups) do
+            table.sort(group, M.internal.defaults.sorter)
+            for _, item in ipairs(group) do
+                table.insert(new_tree, item)
+            end
+        end
+    --     -- We should probably use the 
+    --     -- neo_tree_utils.sort_by_tree_display function instead
+        -- table.sort(new_tree, M.internal.sorter.ascending)
+        tree = new_tree
     end
     return tree
 end
@@ -327,7 +372,7 @@ local function open_directory(directory, parent_id, dont_render)
     end
     if not dont_render then
         local children = parent_node.children
-        return tree_to_nui(children, true)
+        return tree_to_nui(children, true, M.internal.defaults.grouper)
     end
 end
 
@@ -561,7 +606,7 @@ local function delete_uri(nui_nodes, state, complete_callback, internal_only)
             for _, parent_id in ipairs(redraw_nodes) do
                 local parent_node = M.internal.node_map[parent_id]
                 if parent_node then
-                    render_trees[parent_id] = tree_to_nui(parent_node.children, true)
+                    render_trees[parent_id] = tree_to_nui(parent_node.children, true, M.internal.defaults.grouper)
                 end
             end
             vim.defer_fn(function()
@@ -738,7 +783,7 @@ local function refresh_uri(nui_nodes, state, complete_callback, focused_node_id)
                 for _, redraw_node in ipairs(redraw_nodes) do
                     local redraw_id = redraw_node:get_id()
                     if not M.internal.node_map[redraw_id] then goto continue end
-                    local render_tree = tree_to_nui(M.internal.node_map[redraw_id].children, true)
+                    local render_tree = tree_to_nui(M.internal.node_map[redraw_id].children, true, M.internal.defaults.grouper)
                     render_trees[redraw_id] = render_tree
                     ::continue::
                 end
@@ -892,11 +937,6 @@ local function add_uri(state, new_name, opts, complete_callback)
 end
 
 ----------------- /\ URI Helper Functions
-
-function M.internal.render_tree(state)
-    local selected_node = state.tree:get_node()
-    local mapped_node = get_mapped_node(selected_node)
-end
 
 function M.internal.generate_tree(state)
     return tree_to_nui(M._root, true)
