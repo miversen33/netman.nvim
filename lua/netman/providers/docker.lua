@@ -1628,7 +1628,7 @@ M.version = 0.2
 function M.connect_host(uri, cache)
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
-    return true
+    return {success = true}
 end
 
 function M.internal.validate(uri, cache)
