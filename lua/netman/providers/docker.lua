@@ -1116,8 +1116,8 @@ function Container:put(file, location, opts)
         -- Running this in protected mode because `location` may not exist. If it doesn't we will get an error,
         -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
         -- if we get an error. Thus, error == gud
-        if status == true and _stat[location:to_string()].TYPE ~= 'directory' then
-            logger.warn(string.format("Unable to verify that %s is a directory, you might see errors!", location:to_string()))
+        if status == true and _stat[file_name] and _stat[file_name].TYPE ~= 'directory' then
+            logger.warn(string.format("Unable to verify that %s is a directory, you might see errors!", file_name))
             file_name = location:to_string()
             location = location:parent()
         end
@@ -1134,6 +1134,7 @@ function Container:put(file, location, opts)
     if opts.new_file_name then
         file_name = string.format("%s/%s", location:to_string(), opts.new_file_name)
     end
+    local details = self:stat({file_name}, {'USER', 'GROUP', 'PERMISSIONS'})
     local finish_callback = function(command_output)
         logger.trace(command_output)
 
@@ -1143,6 +1144,16 @@ function Container:put(file, location, opts)
             return_details = { error = _error, success = false}
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
+        end
+        if details then
+            local _
+            _, details = next(details)
+        end
+        if details.PERMISSIONS then
+            self:stat_mod(file_name, details.PERMISSIONS)
+        end
+        if details.USER or details.GROUP then
+            self:own_mod(file_name, { user = details.USER, group = details.GROUP })
         end
         return_details = { success = true}
         if opts.finish_callback then opts.finish_callback(return_details) end
@@ -1368,13 +1379,15 @@ end
 --- Executes remote chmod on provided locations
 --- @param locations table
 ---     A table of filesystem string locations
---- @param targets table
+--- @param targets table | string
 ---     A table that can contain any mix of the following strings
 ---     - user
 ---     - group
 ---     - all
 ---     - other
 ---     This will set the `ugao` part of the chmod command
+---
+---     NOTE: You can also pass raw chmod compatible permissions here and leave everything else empty
 --- @param permission_mods table
 ---     A table that can contain any mix of the following strings
 ---     - read
@@ -1395,40 +1408,48 @@ end
 ---     container:stat_mod('/tmp/ubuntu.tar.gz', {'user', 'group'}, {'read'})
 ---     -- This is equivalent to chmod ug-w /tmp/ubuntu.tar.gz
 ---     container:stat_mod('/tmp/ubuntu.tar.gz', {'user', 'group'}, {'write'}, {remove_mod = true})
+---     -- This is equivalent to chmod 664 /tmp/ubuntu.tar.gz
+---     container:stat_mod('/tmp/ubuntu.tar.gz', '0644')
 function Container:stat_mod(locations, targets, permission_mods, opts)
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     assert(targets, "Invalid user/group/nobody target provided")
-    assert(permission_mods, "Invalid permission modification provided")
-    local target = ''
-    for _, _target in ipairs(targets) do
-        -- Might as well give up a bit of memory to avoid
-        -- doing this lower several times over
-        local _lower_target = _target:lower()
-        if _lower_target == 'user' or _lower_target == 'u' then
-            target = target .. 'u'
-        elseif _lower_target == 'group' or _lower_target == 'g' then
-            target = target .. 'g'
-        elseif _lower_target == 'all' or _lower_target == 'a' then
-            target = target .. 'a'
-        elseif _lower_target == 'other' or _lower_target == 'o' then
-            target = target .. 'o'
+    local command = ''
+    if type(targets) == 'string' then
+        logger.debug("I hope you know what you're doing by specifying your own permissions raw. Applying", permission_mods)
+        command = string.format("chmod %s", targets)
+    else
+        assert(permission_mods, "Invalid permission modification provided")
+        local target = ''
+        for _, _target in ipairs(targets) do
+            -- Might as well give up a bit of memory to avoid
+            -- doing this lower several times over
+            local _lower_target = _target:lower()
+            if _lower_target == 'user' or _lower_target == 'u' then
+                target = target .. 'u'
+            elseif _lower_target == 'group' or _lower_target == 'g' then
+                target = target .. 'g'
+            elseif _lower_target == 'all' or _lower_target == 'a' then
+                target = target .. 'a'
+            elseif _lower_target == 'other' or _lower_target == 'o' then
+                target = target .. 'o'
+            end
         end
-    end
-    local permission = ''
-    for _, _permission in ipairs(permission_mods) do
-        local _lower_permission = _permission:lower()
-        if _lower_permission == 'read' or _lower_permission == 'r' then
-            permission = permission .. 'r'
-        elseif _lower_permission == 'write' or _lower_permission == 'w' then
-            permission = permission .. 'w'
-        elseif _lower_permission == 'execute' or _lower_permission == 'x' then
-            permission = permission .. 'x'
+        local permission = ''
+        for _, _permission in ipairs(permission_mods) do
+            local _lower_permission = _permission:lower()
+                if _lower_permission == 'read' or _lower_permission == 'r' then
+                permission = permission .. 'r'
+            elseif _lower_permission == 'write' or _lower_permission == 'w' then
+                permission = permission .. 'w'
+            elseif _lower_permission == 'execute' or _lower_permission == 'x' then
+                permission = permission .. 'x'
+            end
         end
+        local _mod = ''
+        if opts.remove_mod then _mod = '-' else _mod = '+' end
+        command = string.format('chmod %s%s%s', target, _mod, permission)
     end
-    local _mod = ''
-    if opts.remove_mod then _mod = '-' else _mod = '+' end
-    local command = string.format('chmod %s%s%s', target, _mod, permission)
     for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
         command = command .. string.format(" %s", location)
