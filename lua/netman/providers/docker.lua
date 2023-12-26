@@ -1939,23 +1939,26 @@ end
 ---     - NAME
 ---     - URI
 ---     - STATE
+---     - OS
 ---@diagnostic disable-next-line: unused-local
 function M.ui.get_host_details(config, container_name, cache)
     local container = M.internal.Container:new(container_name, cache)
-    local state = container:current_status()
+    local get_state = function()
+        local state = container:current_status()
+        local clean_state = ui_states.UNKNOWN
+        if state == M.internal.Container.CONSTANTS.STATUS.ERROR then
+            clean_state = ui_states.ERROR
+        elseif state == M.internal.Container.CONSTANTS.STATUS.RUNNING then
+            clean_state = ui_states.AVAILABLE
+        end
+        return clean_state
+    end
     local host_details = {
         NAME = container_name,
-        -- OS = container.os,
-        URI = string.format("docker://%s/", container_name)
+        OS = container.os:lower():match('^([a-z]+)'),
+        URI = string.format("docker://%s/", container_name),
+        STATE = get_state
     }
-    if stat == M.internal.Container.CONSTANTS.STATUS.ERROR then
-        host_details.STATE= ui_states.ERROR
-    elseif state == M.internal.Container.CONSTANTS.STATUS.RUNNING then
-        host_details.STATE = ui_states.AVAILABLE
-    else
-        host_details.STATE = ui_states.UNKNOWN
-    end
-    logger.trace(host_details)
     return host_details
 end
 
