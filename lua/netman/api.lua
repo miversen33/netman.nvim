@@ -25,7 +25,9 @@ M.internal = {
         handler_map = {},
         -- Ties events to ids to callback
         event_map = {}
-    }
+    },
+    -- If this is set and there is no callback provided on a read, we will call this instead
+    registered_explore_consumer = nil
 }
 
 M.get_provider_logger = function()
@@ -896,6 +898,9 @@ end
 function M.read(uri, opts, callback)
     local orig_uri = uri
     local provider, cache = nil, nil
+    if not callback and M.internal.registered_explore_consumer then
+        callback = M.internal.registered_explore_consumer
+    end
     uri, provider, cache, _ = M.internal.validate_uri(uri)
     if not uri or not provider then
         return {
