@@ -333,6 +333,7 @@ local function navigate_provider(nui_node)
                     uri = raw_host_details.uri,
                     entrypoint = raw_host_details.entrypoint,
                     last_access = raw_host_details.last_loaded,
+                    get_os = raw_host_details.os
                 }
             }
             create_node(host_details, nui_node:get_id())
@@ -519,6 +520,13 @@ local function navigate_uri(nui_node, state, complete_callback, remaining_uris, 
                     logger.warnn("Error received from provider:", message.message)
                 end
             end
+        end
+    end
+    if node.extra.get_os and not node.extra.os then
+        if type(node.extra.get_os) == 'function' then
+            node.extra.os = node.extra.get_os()
+        else
+            node.extra.os = node.extra.get_os
         end
     end
     if node.extra.get_state and not node.extra.state then

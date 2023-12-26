@@ -1939,6 +1939,7 @@ end
 ---     - NAME
 ---     - URI
 ---     - STATE
+---     - OS
 ---@diagnostic disable-next-line: unused-local
 function M.ui.get_host_details(config, container_name, cache)
     local container = M.internal.Container:new(container_name, cache)
@@ -1954,8 +1955,7 @@ function M.ui.get_host_details(config, container_name, cache)
     end
     local host_details = {
         NAME = container_name,
-        -- OS = container.os,
-        URI = string.format("docker://%s/", container_name)
+        OS = container.os:lower():match('^([a-z]+)'),
         URI = string.format("docker://%s/", container_name),
         STATE = get_state
     }

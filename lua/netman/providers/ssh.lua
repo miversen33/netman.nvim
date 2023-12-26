@@ -1778,6 +1778,7 @@ end
 ---     - NAME
 ---     - URI
 ---     - STATE
+---     - OS
 ---     - ENTRYPOINT
 ---         - Note, ENTRYPOINT may be a function as well, if getting the ENTRYPOINT is "painful" to get
 function M.ui.get_host_details(config, host, provider_cache)
@@ -1798,9 +1799,13 @@ function M.ui.get_host_details(config, host, provider_cache)
         end
         return paths
     end
+    local get_os = function()
+        return connection.os
+    end
     return {
         NAME = host,
         URI = string.format("ssh://%s///", host),
+        OS = get_os,
         ENTRYPOINT = get_path
     }
 end

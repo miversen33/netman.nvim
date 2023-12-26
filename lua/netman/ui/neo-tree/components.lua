@@ -15,6 +15,11 @@ local common = require("neo-tree.sources.common.components")
 local netman = require("netman.ui.neo-tree")
 local netman_host_states = require("netman.tools.options").ui.STATES
 local log = require("netman.tools.utils").log
+local icon_map = function(item) return '' end
+local success, web_devicons = pcall(require, "nvim-web-devicons")
+if success then
+    icon_map = web_devicons.get_icon
+end
 
 local M = {
     internal = {
@@ -69,8 +74,8 @@ M.icon = function(config, node, state)
     elseif entry.icon then
         _icon.text = string.format("%s ", entry.icon)
     elseif node.type == 'netman_host' then
+        _icon.text, _icon.highlight = icon_map(entry.os)
         -- Use this as a place to have the OS icon?
-        _icon.text = ''
     end
     _icon.highlight = entry.highlight or _icon.highlight
     return _icon
