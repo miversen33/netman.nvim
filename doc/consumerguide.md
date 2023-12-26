@@ -109,6 +109,8 @@ If no `provider` is found to match the protocol, the api will fail and the follo
 }
 ```
 
+See [how a provider communicates with you](#how-a-provider-communicates-with-you) for details on these `message tables`.
+
 This is considered a "validation" error and will occur before any sort of processing happens. Validation errors will always return immediately, as the api (at this point) has no idea if the process is async or not. Its effectively the same as throwing an error and dying, however the api tries its absolute best to **not** explode. This is the result of that trying.
 
 **NOTE: Always be sure to check the `success` response from the API, and if there is a message its best to at least log it somewhere. Depending on circumstance, you way wish to pass that up to the user. For more details on api messages, check out [`how providers communicate with you`]()**
@@ -318,25 +320,7 @@ This indicates that the read has finished **and** finished successfully. At any 
 }
 ```
 
-Which would _also_ indicate that the read has finished, except it was **not** successful this time. In a situation where `success = false`, there is **usually** _(but not guaranteed)_ an additional `message` attribute in the table. This attribute will be structured as follows
-
-```lua
-message = {
-  message = "SOME MESSAGE",
-  default = "" -- This may be provided if the provider has a default value they want you to use for their input
-  retry = false -- or true, or a function to call
-}
-```
-
-If `retry` is indicated, it will be either `true`, `false`, or a `function`.
-
-`True` is meant to indicate that the provider ran into some issue that it was able to resolve but still broke the existing call. This is rare but may happen.
-
-`False` (or nil) means that there is no need to retry, an error occurred and its up to the consumer to bubble that error up to the user.
-
-`function` (a callable) means that the provider needs some information from the user. In this case, `message` should be displayed in an input and whatever string the user replies with should be fed directly into the function. This is a means for the provider to allow the consumer to shape the callbacks within the consumer's UI/UX while still allowing the provider to get whatever information it needs. This will likely be used for "confirmations" and "password" retrieval as an example.
-
-`default` may be provided and will always be a string if it is. This variable is meant to be used as the "default value" in an input that you the consumer are to render to the user
+Which would _also_ indicate that the read has finished, except it was **not** successful this time. In a situation where `success = false`, there is **usually** _(but not guaranteed)_ an additional `message` attribute in the table. See [How a provider communicates with you](#how-a-provider-communicates-with-you) for details on these `message tables`.
 
 #### Return the Read Data
 
@@ -553,7 +537,6 @@ So what does all this mean?
       - FIELD_TYPE
         - This will be either `DESTINATION` or `LINK` and is used to indicate if the resource is an endpoint (think like a file) or it contains more resources (think directory). The distinction is made here specifically to handle the fact that Netman generally doesn't know what a "file" or "directory" is, and keeping distinctly different from `file`, and `directory` will make it easier for netman to support "non" filesystems (such as databases).
       - ABSOLUTE_PATH
-        - An array of URIs to follow to "navigate to" this location. This is very useful if you wish to display a sort of "path" leading to the resource. Think along the lines of "tree" displays.
 
 ### Async Get Metadata Example
 
@@ -648,5 +631,40 @@ More details on this can be found with `:h netman.ui.get_provider`, however the 
   uri = URI, -- the URI of the host. Usually the same as ID but not always
   os = OS, -- Optional, A function that can be called to get the OS of the connection. The os will always be lowercase. Useful if you want to display an icon for the OS
   entrypoint = ENTRYPOINT -- Optional, a 1 dimensional table or function that can be called to get the entrypoint for the node. If this is not provided, its safe to assume `uri` is the entrypoint. This is useful for systems where you want to immediately navigate to a user's home directory (for example),
+}
+```
+
+# How a provider communicates with you
+
+Any URI request sent to the API may return (either directly or through an Async handle) with the following table
+```lua
+{
+    success = false,
+    message = {
+        message = "Some message",
+        retry   = <function 1>,
+        default = "Y"
+    }
+}
+```
+
+This table is called (fittingly) a message table and is how a provider will indicate to you the consumer that something happened. This table will not always have a `retry` or `default` attribute, but it will always have `message`. The idea is that the provider encountered something that it thought was so important that it **had** to inform the user. Providers are generally not allowed to talk directly to the user, and thus this is the way a provider will attempt communication with the user. The message table may simply have an error that occured (in which case it is up to you the consumer, what you want to do with it), or it may include additional variables. Below is a breakdown of the signature of this table and what you should do with each variable that is provided.
+
+```lua
+{
+    message = {
+        -- A string message. You should at least log this somewhere
+        message = "Some Message",
+        -- Retry can be any of the below values. If it is a function, you are expected to present the `message` as a prompt, and
+        -- call the retry function with the user's response
+        -- True means that you should try whatever call you attempted before again
+        -- False means that you should very likely display the message to the user as there was some catastrophic error
+        --     that the provider was unable to handle
+        -- nil (or not defined at all) means you don't _need_ to do anything
+        retry = <function 1> | true | false | nil,
+        -- Default is a string to display as the default value in a prompt to the user. You don't need to do this but the prompt
+        -- will probably be confusing to the user if you don't. Note, default should be nil unless retry is a callback
+        default = "Y"
+    }
 }
 ```
