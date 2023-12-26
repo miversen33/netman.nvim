@@ -328,7 +328,6 @@ local function navigate_provider(nui_node)
                 type = M.constants.TYPES.NETMAN_HOST,
                 children = {},
                 extra = {
-                    -- Maybe make this pass a callable?
                     get_state = raw_host_details.state,
                     uri = raw_host_details.uri,
                     entrypoint = raw_host_details.entrypoint,
@@ -354,6 +353,27 @@ end
 ----------------- /\ Provider Helper Functions
 
 ----------------- \/ URI Helper Functions
+
+local function update_state_of_host(host_uri, host_state)
+    local neo_tree_state = require("neo-tree.sources.manager").get_state(M.name)
+    local tree = neo_tree_state.tree
+    if not tree then
+        -- Can't update a host if there is no tree
+        return
+    end
+    local nui_node = neo_tree_state.tree:get_node(host_uri)
+    if not nui_node then
+        -- No reason to update a node that doesn't exist
+        return
+    end
+    nui_node.extra.state = host_state
+    local node = get_mapped_node(nui_node)
+    if not node then
+        return
+    end
+    node.extra.state = host_state
+    neo_tree_renderer.redraw(neo_tree_state)
+end
 
 local function open_directory(directory, parent_id, dont_render)
     local parent_node = M.internal.node_map[parent_id]
@@ -1339,5 +1359,6 @@ function M.setup()
         create_node(node)
         table.insert(M._root, node.id)
     end
+    netman_ui.register_state_update_callback('neo-tree', update_state_of_host)
 end
 return M

@@ -1,13 +1,43 @@
 local logger = require("netman.api").get_system_logger()
+local compat = require("netman.tools.compat")
+
 local M = {
     internal = {},
 }
 
+M.internal.STATE_REFRESH_RATE = 15000
 M.internal.registered_explore_consumer = nil
+M.internal.state_update_callbacks = {}
+M.internal.previous_host_states = {}
 
 function M.get_logger()
     return require("netman.api").get_consumer_logger()
 end
+
+function M.internal.check_states()
+    if not next(M.internal.previous_host_states) then
+        -- Nothing to do here
+        return
+    end
+    for host_uri, host_details in pairs(M.internal.previous_host_states) do
+        local new_state = host_details.checker()
+        logger.debug("Comparing", new_state, "to old state", host_details.state)
+        if new_state ~= host_details.state then
+            host_details.state = new_state
+            for consumer, cb in pairs(M.internal.state_update_callbacks) do
+                -- If you are here because you got an error telling you that you "must not be called in a lua loop callback"
+                -- that is because this is in a lua loop callback
+                vim.schedule(function()
+                    local success, message = pcall(cb, host_uri, host_details.state)
+                    if not success then
+                        logger.info(string.format('Consumer "%s" failed to properly handle the requested state update callback. Error ->', consumer), message)
+                    end
+                end)
+            end
+        end
+    end
+end
+
 --- Reaches into Netman API and provides a table of providers.
 --- Each Key is the provider's display name and the value will be
 --- a table containing relevant keys.
@@ -82,10 +112,22 @@ function M.get_providers()
                         logger.warnf("%s did not return any details for %s", provider_path, host)
                         return nil
                     end
+                    local state_callback = raw_details.STATE
+                    local wrapped_state_callback = function(force)
+                        if M.internal.previous_host_states[host] and not force then
+                            return M.internal.previous_host_states[host].state
+                        end
+                        local new_state = state_callback and state_callback() or ''
+                        M.internal.previous_host_states[raw_details.URI] = {
+                            state = new_state,
+                            checker = state_callback or function() return '' end
+                        }
+                        return new_state
+                    end
                     return {
                         id = raw_details.URI,
                         name = raw_details.NAME,
-                        state = raw_details.STATE,
+                        state = wrapped_state_callback,
                         last_access = raw_details.LAST_ACCESSED,
                         uri = raw_details.URI,
                         os = raw_details.OS,
@@ -218,4 +260,41 @@ function M.register_explorer_consumer(consumer_name, callback)
     require("netman.api").internal.registered_explore_consumer = callback
 end
 
+-- Adds the provided callback to a list of callbacks that will be called whenever _any_ host's state changes
+-- @param consumer_name string
+--  The name of the consumer. This is just an identifier so as long as its unique to you thats good enough
+-- @param callback function
+--  The function you want me to call when a host's state has changed
+--  The signature of this function should be as follows
+--  -- @param host_uri string
+--  --  The uri of the host that changed
+--  -- @param new_state string
+--  --  The new state of the host. This will be one of the states found in netman.tools.options.ui.STATES
+--  function(host_uri, new_state)
+--
+-- @param force boolean
+--  Default: false
+--  If provided, we will ignore any existing callbacks associated with the @param consumer_name and overwrite it
+function M.register_state_update_callback(consumer_name, callback, force)
+    if M.internal.state_update_callbacks[consumer_name] and not force then
+        logger.warnf("%s already has a state update callback associated with it", consumer_name)
+        return
+    end
+    logger.debugf("Setting new state update callback for %s", consumer_name)
+    M.internal.state_update_callbacks[consumer_name] = callback
+end
+
+function M.unregister_state_update_callback(consumer_name)
+    M.internal.state_update_callbacks[consumer_name] = nil
+end
+
+local function setup()
+    if M.internal.__setup then return end
+    M.internal.update_timer = compat.uv.new_timer()
+    -- Runs update check every minute. Maybe we want a lower number?
+    M.internal.update_timer:start(0, M.internal.STATE_REFRESH_RATE, M.internal.check_states)
+    M.internal.__setup = true
+end
+
+setup()
 return M
