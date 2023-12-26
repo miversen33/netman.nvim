@@ -31,6 +31,7 @@ local M = {
 M.internal.state_map = {
     [netman_host_states.UNKNOWN] = {text=" ", highlight=""},
     [netman_host_states.AVAILABLE] = {text=" ", highlight="NeoTreeGitAdded"},
+    [netman_host_states.STOPPED] = {text=" ", highlight="NeoTreeGitDeleted"},
     [netman_host_states.ERROR] = {text="❗", highlight="NeoTreeGitDeleted"},
     [netman_host_states.REFRESHING] = {text=M.internal.refresh_icon, highlight=""}
 }

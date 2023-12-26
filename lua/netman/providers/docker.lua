@@ -1950,6 +1950,8 @@ function M.ui.get_host_details(config, container_name, cache)
             clean_state = ui_states.ERROR
         elseif state == M.internal.Container.CONSTANTS.STATUS.RUNNING then
             clean_state = ui_states.AVAILABLE
+        elseif state == M.internal.Container.CONSTANTS.STATUS.NOT_RUNNING then
+            clean_state = ui_states.STOPPED
         end
         return clean_state
     end
