@@ -464,6 +464,7 @@ end
 --     Returns a 1 dimensional table with the following information
 --     - NAME (string)
 --     - URI (string)
+--     - OS (function returning a string)
 --     - STATE (string from netman.options.ui.states)
 --     - ENTRYPOINT (table of URIs, or a function to call to get said table of URIs)
 function M.providers.get_host_details(provider, host)
