@@ -19,15 +19,15 @@ config.renderers =
     },
     netman_provider = {
         { 'indent'  },
-        { 'icon'    },
         { 'expanded'},
+        { 'icon'    },
         { 'name'    }
     },
     netman_host = {
         { 'indent'  },
+        { 'expanded'},
         { 'state'   },
         { 'icon'    },
-        { 'expanded'},
         { 'name'    }
     },
     netman_bookmark = {
