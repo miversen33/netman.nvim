@@ -104,6 +104,7 @@ return {
         STATES = {
             UNKNOWN = "UNKNOWN",
             AVAILABLE = "AVAILABLE",
+            STOPPED = "STOPPED",
             ERROR = "ERROR",
             REFRESHING = "REFRESHING"
         }
