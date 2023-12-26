@@ -397,9 +397,6 @@ end
 --     NOTE: If the entry is not validated, this returns nil
 function M.internal.validate_entry_schema(provider, entry)
     local schema = require("netman.tools.options").ui.ENTRY_SCHEMA
-    local states = require("netman.tools.options").ui.STATES
-    local host = nil
-    local invalid_state = nil
     local valid_entry = true
     local return_entry = {}
     for key, value in pairs(entry) do
@@ -408,18 +405,8 @@ function M.internal.validate_entry_schema(provider, entry)
             valid_entry = false
             goto continue
         end
-        if key == 'STATE' and value and not states[value] then
-            invalid_state = value
-            valid_entry = false
-            goto continue
-        end
-        if key == 'NAME' then host = value end
         return_entry[key] = value
         ::continue::
-    end
-    if invalid_state then
-        logger.warn(string.format("%s provided invalid state: %s for host: %s", provider, invalid_state, host))
-        valid_entry = false
     end
     ---@diagnostic disable-next-line: return-type-mismatch
     if not valid_entry then return nil else return return_entry end
@@ -498,7 +485,21 @@ function M.providers.get_host_details(provider, host)
     local cache = _provider.cache
     _provider = _provider.provider
     local _data = _provider.ui.get_host_details(config, host, cache)
-    return M.internal.validate_entry_schema(provider, _data)
+    local sanitized_data = M.internal.validate_entry_schema(provider, _data)
+    if sanitized_data and sanitized_data.state then
+        local orig_state_callback = sanitized_data.state
+        local wrapped_state_callback = function()
+            logger.trace2("Requesting current host state for host of", sanitized_data.uri)
+            local new_state = orig_state_callback()
+            if not require("netman.tools.options").ui.STATES[new_state] then
+                logger.warn("Provider", provider.name, "gave an invalid state for host of ", sanitized_data.uri, "->", new_state)
+                return nil
+            end
+            return new_state
+        end
+        sanitized_data.state = wrapped_state_callback
+    end
+    return sanitized_data
 end
 
 function M.internal.remove_config(provider)

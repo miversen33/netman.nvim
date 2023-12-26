@@ -329,7 +329,7 @@ local function navigate_provider(nui_node)
                 children = {},
                 extra = {
                     -- Maybe make this pass a callable?
-                    state = raw_host_details.state,
+                    get_state = raw_host_details.state,
                     uri = raw_host_details.uri,
                     entrypoint = raw_host_details.entrypoint,
                     last_access = raw_host_details.last_loaded,
@@ -520,6 +520,9 @@ local function navigate_uri(nui_node, state, complete_callback, remaining_uris, 
                 end
             end
         end
+    end
+    if node.extra.get_state and not node.extra.state then
+        node.extra.state = node.extra.get_state()
     end
     local handle = open_uri(node.id, link_callback, dest_callback, message_callback)
     -- Returning "true" so we can update to show the "refresh"/"loading" icon

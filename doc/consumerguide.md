@@ -638,4 +638,15 @@ More details on this can be found with `:h netman.ui.get_provider`, however the 
 
 1) The key to each provider is its "display" name
 2) `hosts` is a function that is designed to be lazy called to fetch the available hosts only when you are ready for them. This is because it may be "expensive" for a provider to fetch the available hosts
-
+3) Once called, the output of the `hosts` function is the following table
+```lua
+{
+  id = URI, -- The URI to use to enter this host
+  name = NAME, -- The name to display for the host
+  state = STATE, -- Optional, if provided, this function must return a valid state as described in netman.tools.options.ui.STATES
+  last_access = LAST_ACCESSED, -- Optional, if provided, will be a timestamp of the last time this URI was accessed
+  uri = URI, -- the URI of the host. Usually the same as ID but not always
+  os = OS, -- Optional, A function that can be called to get the OS of the connection. The os will always be lowercase. Useful if you want to display an icon for the OS
+  entrypoint = ENTRYPOINT -- Optional, a 1 dimensional table or function that can be called to get the entrypoint for the node. If this is not provided, its safe to assume `uri` is the entrypoint. This is useful for systems where you want to immediately navigate to a user's home directory (for example),
+}
+```
