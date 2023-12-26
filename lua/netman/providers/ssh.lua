@@ -2083,13 +2083,8 @@ function M.read(uri, cache)
             complete = true
         else
             if data and data.data then
-                -- Guard rail for if there is no URI attribute on the provided data
-                -- This can happen if read is called synchronously as
-                -- data.data will be a 1D table instead of a raw object
-                if data.data.URI then
-                    return_cache[data.data.URI] = data.data
-                else
-                    return_cache = data.data
+                for _, item in ipairs(data.data) do
+                    return_cache[item.URI] = item
                 end
             end
         end

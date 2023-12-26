@@ -11,7 +11,7 @@ local os =
     or vim.loop.os_uname().sysname:lower():match('darwin') and 'macos'
 
 local sep = os == 'windows' and '\\' or '/' -- \ for windows, mac and linux both use \
-if table.unpack then unpack = table.unpack end
+if table.unpack then unpack = table.unpack else table.unpack = unpack end
 if vim and vim.loop then
     uv = vim.loop
 else

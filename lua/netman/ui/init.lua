@@ -3,6 +3,8 @@ local M = {
     internal = {},
 }
 
+M.internal.registered_explore_consumer = nil
+
 function M.get_logger()
     return require("netman.api").get_consumer_logger()
 end
@@ -197,6 +199,23 @@ function M.render_command_and_clean_buffer(render_command, opts)
     if opts.detect_filetype then
         vim.api.nvim_command('sil! filetype detect')
     end
+end
+
+-- Sets the provided callback as an async callback within the netman api.
+-- This means that any read request made that does _not_ provide a callback of their own will instead go here
+-- @param consumer_name string
+--     The name of the consumer. This can be any arbitrary name though convention would be the require path
+-- @param callback function
+--     A function to use as the default callback. This function will trigger reads with no callback in the API
+--     to instead asynchronously pass to this
+function M.register_explorer_consumer(consumer_name, callback)
+    if M.internal.registered_explore_consumer then
+        logger.warnf("A new consumer is replacing the existing explorer consumer!")
+        logger.infof("New Consumer", consumer_name, "-- Old Consumer", M.internal.registered_explore_consumer.name)
+    end
+    logger.infof("Setting netman default explore callback to", consumer_name)
+    M.internal.registered_explore_consumer = { name = consumer_name, callback = callback }
+    require("netman.api").internal.registered_explore_consumer = callback
 end
 
 return M

@@ -18,6 +18,7 @@ If you're trying to figure out how to use netman for your own plugin, this is th
 - [How to get the metadata for that URI](#requesting-metadata-for-uri)
   - [TLDR](#short-get-metadata-example)
 - How to modify the metadata for that URI - Coming Soon
+- [How to set yourself as the default explore consumer](#how-to-set-yourself-as-the-default-explore-consumer)
 - [How to get the available providers within Netman](#getting-list-of-available-providers)
 - [How to get the hosts available on each provider within Netman](#getting-list-of-available-providers)
 - [How a provider communicates with you](#how-a-provider-communicates-with-you)
@@ -668,3 +669,21 @@ This table is called (fittingly) a message table and is how a provider will indi
     }
 }
 ```
+
+# How to set yourself as the default explore consumer
+
+Due to the architectural decisions of netman, it is possible that a user attempts to open a remote URI before you the consumer are setup and able to process that request. This is particularly possible when a user passes the remote URI as part of the startup for Neovim. An example would be
+```shell
+$ nvim docker://myreallycoolcontainer///someapp/
+```
+
+In this situation, netman will (as expected) consume the request to open the docker URI. After opening and processing the results, the results will be discarded and nothing will happen for the end user. Why?? Netman's API has no concept of "consumers". The entire consumer system is built on top of netman's API. But consumers do not register the URIs to watch, the providers do that. This gap is addressed with a special function in `netman.ui`. Specifically `netman.ui.register_explorer_consumer`. The signature of this function is as follows
+```lua
+register_explorer_consumer = function(consumer_name, callback) end
+```
+
+**NOTE: There can only be one registered consumer at a time!**
+
+Some consumers will not care about being the "default" (such as neo-tree), while others may. This function will set the provided callback as asynchronous target for the API's `read` results. This means that any calls to `netman.api.read` that do not specify a callback will result in the data being sent to this callback instead. 
+
+This should be only be needed if you plan on your user's using the neovim startup command file argument. Otherwise it is undeeded.
