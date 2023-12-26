@@ -20,7 +20,7 @@ If you're trying to figure out how to use netman for your own plugin, this is th
 - How to modify the metadata for that URI - Coming Soon
 - [How to get the available providers within Netman](#getting-list-of-available-providers)
 - [How to get the hosts available on each provider within Netman](#getting-list-of-available-providers)
-
+- [How a provider communicates with you](#how-a-provider-communicates-with-you)
 # Requesting Information from a URI
 
 One of the most important things a consumer will want to do is "read" from a URI. That is, to get the contents of whatever is behind the URI. As an example, a user may want to open `ssh://a-really-cool-host///etc/nginx/nginx.conf`. A consumer's job then is to tell Netman to open this URI and render out the contents of it to the User. This is done via the `api.read` function within Netman's [api](https://github.com/miversen33/netman.nvim/wiki/API-Documentation#readuri-opts)
