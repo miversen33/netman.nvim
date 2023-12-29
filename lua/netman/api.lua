@@ -72,7 +72,7 @@ M._providers = {
 
 M._explorers = {}
 
-M.version = 1.02
+M.version = 1.15
 
 local protocol_pattern_sanitizer_glob = '[%%^]?([%w-.]+)[:/]?'
 local protocol_from_path_glob = '^([%w%-.]+)://'
