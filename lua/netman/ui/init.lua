@@ -1,6 +1,6 @@
 local logger = require("netman.api").get_system_logger()
 local compat = require("netman.tools.compat")
-
+local UI_EVENTS = require("netman.tools.options").ui.EVENTS
 local M = {
     internal = {},
 }
@@ -19,21 +19,16 @@ function M.internal.check_states()
         -- Nothing to do here
         return
     end
+    local api = require("netman.api")
     for host_uri, host_details in pairs(M.internal.previous_host_states) do
         local new_state = host_details.checker()
         logger.debug("Comparing", new_state, "to old state", host_details.state)
         if new_state ~= host_details.state then
             host_details.state = new_state
-            for consumer, cb in pairs(M.internal.state_update_callbacks) do
-                -- If you are here because you got an error telling you that you "must not be called in a lua loop callback"
-                -- that is because this is in a lua loop callback
-                vim.schedule(function()
-                    local success, message = pcall(cb, host_uri, host_details.state)
-                    if not success then
-                        logger.info(string.format('Consumer "%s" failed to properly handle the requested state update callback. Error ->', consumer), message)
-                    end
-                end)
-            end
+            api.emit_event(UI_EVENTS.STATE_CHANGED, "netman.ui", {
+                new_state = new_state,
+                uri = host_uri
+            })
         end
     end
 end
@@ -258,34 +253,6 @@ function M.register_explorer_consumer(consumer_name, callback)
     logger.infof("Setting netman default explore callback to", consumer_name)
     M.internal.registered_explore_consumer = { name = consumer_name, callback = callback }
     require("netman.api").internal.registered_explore_consumer = callback
-end
-
--- Adds the provided callback to a list of callbacks that will be called whenever _any_ host's state changes
--- @param consumer_name string
---  The name of the consumer. This is just an identifier so as long as its unique to you thats good enough
--- @param callback function
---  The function you want me to call when a host's state has changed
---  The signature of this function should be as follows
---  -- @param host_uri string
---  --  The uri of the host that changed
---  -- @param new_state string
---  --  The new state of the host. This will be one of the states found in netman.tools.options.ui.STATES
---  function(host_uri, new_state)
---
--- @param force boolean
---  Default: false
---  If provided, we will ignore any existing callbacks associated with the @param consumer_name and overwrite it
-function M.register_state_update_callback(consumer_name, callback, force)
-    if M.internal.state_update_callbacks[consumer_name] and not force then
-        logger.warnf("%s already has a state update callback associated with it", consumer_name)
-        return
-    end
-    logger.debugf("Setting new state update callback for %s", consumer_name)
-    M.internal.state_update_callbacks[consumer_name] = callback
-end
-
-function M.unregister_state_update_callback(consumer_name)
-    M.internal.state_update_callbacks[consumer_name] = nil
 end
 
 local function setup()

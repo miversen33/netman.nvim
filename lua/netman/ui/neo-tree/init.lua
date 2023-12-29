@@ -7,6 +7,7 @@ local netman_types = require("netman.tools.options").api.READ_TYPE
 local netman_errors = require("netman.tools.options").api.ERRORS
 local netman_type_attributes = require("netman.tools.options").api.ATTRIBUTES
 local netman_ui = require("netman.ui")
+local UI_EVENTS = require("netman.tools.options").ui.EVENTS
 local logger = netman_ui.get_logger()
 
 local neo_tree_events = require("neo-tree.events")
@@ -354,25 +355,30 @@ end
 
 ----------------- \/ URI Helper Functions
 
-local function update_state_of_host(host_uri, host_state)
-    local neo_tree_state = require("neo-tree.sources.manager").get_state(M.name)
-    local tree = neo_tree_state.tree
-    if not tree then
-        -- Can't update a host if there is no tree
-        return
-    end
-    local nui_node = neo_tree_state.tree:get_node(host_uri)
-    if not nui_node then
-        -- No reason to update a node that doesn't exist
-        return
-    end
-    nui_node.extra.state = host_state
-    local node = get_mapped_node(nui_node)
-    if not node then
-        return
-    end
-    node.extra.state = host_state
-    neo_tree_renderer.redraw(neo_tree_state)
+local function update_state_of_host(event_data)
+    local data = event_data.data
+    local uri = data.uri
+    local host_state = data.new_state
+    vim.schedule(function()
+        local neo_tree_state = require("neo-tree.sources.manager").get_state(M.name)
+        local tree = neo_tree_state.tree
+        if not tree then
+            -- Can't update a host if there is no tree
+            return
+        end
+        local nui_node = neo_tree_state.tree:get_node(uri)
+        if not nui_node then
+            -- No reason to update a node that doesn't exist
+            return
+        end
+        nui_node.extra.state = host_state
+        local node = get_mapped_node(nui_node)
+        if not node then
+            return
+        end
+        node.extra.state = host_state
+        neo_tree_renderer.redraw(neo_tree_state)
+    end)
 end
 
 local function open_directory(directory, parent_id, dont_render)
@@ -1359,6 +1365,6 @@ function M.setup()
         create_node(node)
         table.insert(M._root, node.id)
     end
-    netman_ui.register_state_update_callback('neo-tree', update_state_of_host)
+    M.internal.state_change_callback_id = netman_api.register_event_callback(UI_EVENTS.STATE_CHANGED, update_state_of_host)
 end
 return M

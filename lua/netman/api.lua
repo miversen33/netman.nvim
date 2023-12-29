@@ -1885,14 +1885,21 @@ function M.unregister_event_callback(id)
 end
 
 -- Emits the event, and will also call any functions that might care about it
+--
+-- NOTE: If you are doing things with the UI or vim functions in your callback, it
+-- is highly advised that you wrap that logic in `vim.schedule` otherwise your callback
+-- will almost certainly fail
 -- @param event string
 --     A valid netman event
 -- @param source string | nil
 --    Default: nil
 --    If provided, this will be the URI source of the event.
+-- @param data table | nil
+--    Default: nil
+--    If provided, we will pass this table to any registered callbacks
 -- @example
 --     require("netman.api").emit_event("netman_provider_load")
-function M.emit_event(event, source)
+function M.emit_event(event, source, data)
     local callbacks = M.internal.events.event_map[event]
     local message = string.format("Emitting Event: %s", event)
     if source then message = string.format("%s from %s", message , source) end
@@ -1901,8 +1908,12 @@ function M.emit_event(event, source)
         logger.tracef("Found %s callbacks for event %s", #callbacks, event)
         for _, id in ipairs(callbacks) do
             -- TODO: Figure out how to make these calls asynchronously
-            logger.tracef("Calling callback for %s for event %s", id, event)
-            M.internal.events.handler_map[id]({event = event, source = source})
+            logger.trace(string.format("Calling callback for %s for event %s. Data:", id, event), data)
+            local callback = M.internal.events.handler_map[id]
+            local success, err = pcall(callback, {event = event, source = source, data = data})
+            if not success then
+                logger.warn(string.format("Callback associated with id `%s` failed to process event `%s` properly. Error:", id, event), err)
+            end
         end
     end
 end
