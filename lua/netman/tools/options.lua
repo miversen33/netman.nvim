@@ -23,6 +23,9 @@ return {
             local_path   = 'local_path',
             display_name = 'display_name',
             error = 'error'
+        },
+        EVENTS = {
+
         }
     }
     ,explorer = {
@@ -107,6 +110,9 @@ return {
             STOPPED = "STOPPED",
             ERROR = "ERROR",
             REFRESHING = "REFRESHING"
+        },
+        EVENTS = {
+            STATE_CHANGED = "STATE_CHANGED"
         }
     }
 }
