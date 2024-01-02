@@ -27,7 +27,6 @@ local OBJDEF = {
    AUTHOR_NOTE  = AUTHOR_NOTE,
 }
 
-
 --
 -- Simple JSON encoding and decoding in pure Lua.
 -- JSON definition: http://www.json.org/

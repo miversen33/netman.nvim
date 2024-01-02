@@ -6,7 +6,7 @@ local logger = require("netman.tools.utils").get_system_logger()
 local rand_string = require("netman.tools.utils").generate_string
 local validator = require("netman.tools.utils.provider_validator").validate
 local compat = require("netman.tools.compat")
-
+local JSON = require("netman.tools.parsers.json")
 local M = {}
 
 -- WARN: Do not rely on these functions existing
@@ -129,23 +129,22 @@ end
 -- be laughed at and ridiculed
 function M.internal.init_config()
     local _lines = {}
-    local _config = io.open(M.internal.config_path, 'r+')
-    if _config then
-        for line in _config:lines() do table.insert(_lines, line) end
-        _config:close()
+    local raw_config = io.open(M.internal.config_path, 'r+')
+    local _config = {}
+    if raw_config then
+        for line in raw_config:lines() do table.insert(_lines, line) end
         if next(_lines) then
+            local config_as_json_string = table.concat(_lines, '')
             logger.trace("Decoding Netman Configuration")
             local success = false
-            success, _config = pcall(vim.fn.json_decode, _lines)
+            success, _config = pcall(JSON.decode, JSON, config_as_json_string)
             if not success then
                 _config = {}
             end
-        else
-            _config = {}
         end
+        raw_config:close()
     else
         logger.infof("No netman configuration found at %s", M.internal.config_path)
-        _config = {}
     end
     ---@diagnostic disable-next-line: need-check-nil
     if not _config['netman.ui'] then _config['netman.ui'] = {} end
@@ -1608,7 +1607,7 @@ function M.load_provider(provider_path)
     local provider_config = M.internal.config:get(provider_path)
     if not provider_config then
         provider_config = require("netman.tools.configuration"):new()
-        provider_config.save = function(_) M.internal.config:save() end
+        provider_config.save = function() M.internal.config:save() end
         M.internal.config:set(provider_path, provider_config)
     end
     provider_config:set('_last_loaded', vim.loop.now())
