@@ -390,7 +390,6 @@ function Shell:run(timeout)
             self:close()
         end)
     end
-    ::do_return::
     if not self._is_async then
         while self._running do
             uv.run('once')
@@ -400,6 +399,7 @@ function Shell:run(timeout)
         return self:dump_self_to_table()
     ---@diagnostic disable-next-line: missing-return
     end
+    ::do_return::
     return {pid=self._pid, handle=self.handle}
 end
 
