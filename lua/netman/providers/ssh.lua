@@ -2400,16 +2400,23 @@ function M.connect_host_a(uri, cache, exit_callback)
                 message = response.error,
             }
         }
-        if response.error and response.error:match('Invalid/Missing Password') and utils.os_has('sshpass') then
-            logger.debug("Received invalid password error. Going to try and get one now")
-            local error_callback = function(password)
-                host:_set_user_password(password)
-                return true
+        if response.error then
+            if response.error:match('Invalid/Missing Password') and utils.os_has('sshpass') then
+                logger.debug("Received invalid password error. Going to try and get one now")
+                local error_callback = function(password)
+
+                    host:_set_user_password(password)
+                    return true
+                end
+                cleaned_response.message = {
+                    message = string.format("%s Password: ", host.host),
+                    callback = error_callback
+                }
+            elseif response.error:match('[Nn]o%ssuch') then
+                -- We do not care if the file doesnt' exist, we got an error from the underlying remote filesystem. Good enough
+                -- to prove we are connected
+                cleaned_response = { success = true }
             end
-            cleaned_response.message = {
-                message = string.format("%s Password: ", host.host),
-                callback = error_callback
-            }
         end
         exit_callback(cleaned_response)
     end
