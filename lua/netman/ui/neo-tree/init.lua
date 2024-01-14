@@ -239,7 +239,6 @@ local function tree_to_nui(in_tree, do_sort, group_by_function)
         local groups = { tree }
         if group_by_function then
             groups = group_by_function(tree)
-            logger.debug("Groups", groups)
         end
         local new_tree = {}
         for _, group in ipairs(groups) do
@@ -250,7 +249,6 @@ local function tree_to_nui(in_tree, do_sort, group_by_function)
         end
     --     -- We should probably use the 
     --     -- neo_tree_utils.sort_by_tree_display function instead
-        -- table.sort(new_tree, M.internal.sorter.ascending)
         tree = new_tree
     end
     return tree
@@ -976,7 +974,7 @@ end
 ----------------- /\ URI Helper Functions
 
 function M.internal.generate_tree(state)
-    return tree_to_nui(M._root, true)
+    return tree_to_nui(M._root, true, M.internal.defaults.grouper)
 
 end
 
@@ -1159,7 +1157,7 @@ function M.navigate(state, target_node)
                 return
             end
             render_tree, do_redraw_only = mapped_node.navigate(target_node, state)
-        if render_tree then
+            if render_tree then
                 render_parent = target_node:get_id()
             end
         end
