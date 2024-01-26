@@ -65,17 +65,30 @@ function M.read(...)
     end
 end
 
-function M.write(uri, callback)
+function M.write(uri, opts, callback)
     uri = uri or vim.fn.expand('%')
+    opts = opts or {}
     if uri == nil then
         logger.errorn("Write Incomplete! Unable to parse uri for buffer!")
         return
     end
-    local buffer_index = vim.fn.bufnr(uri)
     local cb = function(status)
+        -- TODO: Needs to properly handle callbacks
         if not status.success then
-            logger.warnn(status.message.message)
-            logger.error(status)
+            local message = status.message
+            if message.callback then
+                if message.default then
+                    vim.schedule(function()
+                        vim.ui.input({ prompt = message.message, default = message.default }, function(response)
+                            message.callback(response)
+                        end)
+                    end)
+                    return
+                else
+                    message.callback()
+                    return
+                end
+            end
             if callback then callback({ success = false}) end
             return
         end
@@ -84,7 +97,10 @@ function M.write(uri, callback)
         end, 1)
         if callback then callback({ success = true}) end
     end
-    local data = {type = 'buffer', index = buffer_index}
+    local data = {
+        type = 'buffer',
+        index = opts.index or 0
+    }
     api.write(uri, data, nil, cb)
 end
 

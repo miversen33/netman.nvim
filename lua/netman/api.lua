@@ -321,7 +321,7 @@ function M.internal.write_au_callback(callback_details)
     local uri = callback_details.match
     if M.internal.get_provider_for_uri(uri) then
         logger.trace(string.format("Writing contents of buffer to %s", uri))
-        require("netman").write(uri)
+        require("netman").write(uri, {index = callback_details.buf})
         return
     end
     logger.warn(string.format("Cannot find provider match for %s | Unable to write to %s", uri, uri))
