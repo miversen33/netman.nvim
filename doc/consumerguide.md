@@ -643,28 +643,27 @@ Any URI request sent to the API may return (either directly or through an Async 
     success = false,
     message = {
         message = "Some message",
-        retry   = <function 1>,
+        callback   = <function 1>,
         default = "Y"
     }
 }
 ```
 
-This table is called (fittingly) a message table and is how a provider will indicate to you the consumer that something happened. This table will not always have a `retry` or `default` attribute, but it will always have `message`. The idea is that the provider encountered something that it thought was so important that it **had** to inform the user. Providers are generally not allowed to talk directly to the user, and thus this is the way a provider will attempt communication with the user. The message table may simply have an error that occured (in which case it is up to you the consumer, what you want to do with it), or it may include additional variables. Below is a breakdown of the signature of this table and what you should do with each variable that is provided.
+This table is called (fittingly) a message table and is how a provider will indicate to you the consumer that something happened. This table will not always have a `callback` or `default` attribute, but it will always have `message`. The idea is that the provider encountered something that it thought was so important that it **had** to inform the user. Providers are generally not allowed to talk directly to the user, and thus this is the way a provider will attempt communication with the user. The message table may simply have an error that occured (in which case it is up to you the consumer, what you want to do with it), or it may include additional variables. Below is a breakdown of the signature of this table and what you should do with each variable that is provided.
 
 ```lua
 {
     message = {
         -- A string message. You should at least log this somewhere
         message = "Some Message",
-        -- Retry can be any of the below values. If it is a function, you are expected to present the `message` as a prompt, and
-        -- call the retry function with the user's response
-        -- True means that you should try whatever call you attempted before again
-        -- False means that you should very likely display the message to the user as there was some catastrophic error
-        --     that the provider was unable to handle
-        -- nil (or not defined at all) means you don't _need_ to do anything
-        retry = <function 1> | true | false | nil,
+        -- Callback will be a function and is meant to be used in conjuction with `default`.
+        -- The idea with callback is that you (as the consumer) should dispaly the `message`
+        -- to the user in an input of some kind, use the `default` as the default value (if its provided)
+        -- in said input, and call the callback with whatever response the user gave.
+        -- Often times this will be for things like confirmation or password fields.
+        callback = function | nil,
         -- Default is a string to display as the default value in a prompt to the user. You don't need to do this but the prompt
-        -- will probably be confusing to the user if you don't. Note, default should be nil unless retry is a callback
+        -- will probably be confusing to the user if you don't. Note, default should be nil unless `callback` is also not nil
         default = "Y"
     }
 }
