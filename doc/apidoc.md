@@ -106,9 +106,9 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
             - **NOTE: Netman does _not_ prevent overriding of 3rd party providers by other 3rd party providers. Netman operates providers on "most recent provider" basis. This means that the most recent provider to register as the provider for a protocol will be used**
         - Register `autocommands` that link the providers [`protocols`](#protocol) to `Netman` to be handled by the [`API`](#api)
 
-## read(uri, opts)
+## read(uri, opts, callback)
 - Version Added: 0.1
-- Updated      : 1.01
+- Updated      : 1.02
 - `uri`
     - Type: [String](http://www.lua.org/pil/2.4.html)
     - Details: The uri to open. This is passed directly to the associated provider for this uri
@@ -117,7 +117,12 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
     - Details: Table containing read options. Valid options are
         - force: boolean
             - If provided, we will remove any cached version of the uri and call the provider to re-read the uri
+    - `callback`
+        - Type: function (optional)
+        - Details: A function to call during the processing of `read`. Any data that would be returned will instead be streamed 
+        - NOTE: Providing a callback indicates to the API that you want the process to run asynchronously. This will change the return value to a process_handle. Detailed in the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example)
 - Returns
+    - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use read asynchronously.
     - [`read`](#readuri-opts) returns a table that will have the following key/value pairs (some
       are optional)
         - success: boolean
@@ -181,12 +186,16 @@ The process of interfacing with the [`api`](#api) is outlined more in the [Devel
 Notes
     - read is accessible via the `:Nmread` command which is made available by `netman.init`. It is also automatically called on `FileReadCmd` and `BufReadCmd` vim events. The end user should _not_ have to directly interface with `netman.api.read`, instead preferring to let vim handle that via the above listed events.
 
-## delete(uri)
+## delete(uri, callback)
 - Version Added: 0.1
-- Updated      : 1.01
+- Updated      : 1.02
 - `uri`
   - Type: [String](http://www.lua.org/pil/2.4.html)
   - Details: The string [`URI`](#uri) to delete.
+- `callback`
+  - Type: function (optional)
+  - Details: A function to call during the processing of `delete`. 
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use delete asynchronously.
 - Returns: nil
 - Throws
     - "Unable to delete: " error
@@ -196,9 +205,10 @@ Notes
   -  [`delete`](#deleteuri) does **_not_** require the URI to be a loaded buffer, _however_ it does require a provider be loaded (via load_provider that can handle the protocol of the URI that is being requested to delete
     - [`delete`](#deleteuri) is available to be called via the `:Nmdelete` vim command
     - [`delete`](#deleteuri) does **_not_** require the URI to be a loaded buffer, _however_ it does require a provider be loaded (via [`load_provider`](#loadproviderproviderpath)) that can handle the protocol of the [`URI`](#uri) that is being requested to delete
-## write(buffer_index, uri, opts)
+
+## write(buffer_index, uri, opts, callback)
 - Version Added: 0.1
-- Updated      : 1.01
+- Updated      : 1.02
 - `buffer_index` (optional)
     - Type: [Integer](https://www.lua.org/pil/2.3.html)
     - Details: The buffer index associated with the write path. If provided, we will use the index to pull the buffer content and provide that to the provider. Otherwise, the provider will be given an empty array to write out to the file NOTE: this will almost certainly be destructive, be sure you know what you are doing if you are sending an empty write!
@@ -208,7 +218,12 @@ Notes
 - `opts`
   - Type: Table
   - Details: Reserved for later use
+- `callback`
+  - Type: function (optional)
+  - Details: A function to call during the processing of `write`. 
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use write asynchronously.
 - Returns: Table
+    - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
   - A table that contains the following key/value pairs
         - success: boolean
             A boolean indicating if the provider was successful in its write
@@ -219,29 +234,36 @@ Notes
 - Notes
     - [`write`](#writebufferindex-writepath) is available to be called via the `:Nmwrite` vim command
 
-## rename(old_uri, new_uri)
+## rename(old_uri, new_uri, callback)
 - Version Added: 1.01
+- Updated      : 1.02
 - `old_uri`
     - Type: [String](http://www.lua.org/pil/2.4.html)
     - Details: The (current) uri path to rename
 - `new_uri`
     - Type: [String](http://www.lua.org/pil/2.4.html)
     - Details: The (new) uri path. The path to rename _to_
+- `callback`
+  - Type: function (optional)
+  - Details: A function to call during the processing of `rename`. 
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use rename asynchronously.
 Returns: Table
+    - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
     Returns a table that contains the following key/value pairs
         - success: boolean
             A boolean indicating if the provider was successful in its write
-        - error: table (Optional)
+        - message: table (Optional)
             - If provided, a message to be relayed to the user, usually given
               by the provider. Should be a table that has a single attribute
               (message) within. An example
-              > {error = { message = "Something bad happened!"}}
+              > {message = { message = "Something bad happened!"}}
 Notes
     - The [`api`](#api) will prevent rename from "functioning" if the **old_uri** and
       **new_uri** do not share the same provider.
 
-## copy(uris, target_uri, opts)
+## copy(uris, target_uri, opts, callback)
 - Version Added: 1.01
+- Updated      : 1.02
 - `uris`
     - Type: table
     - Details: The table of string URIs to copy
@@ -249,6 +271,10 @@ Notes
     - Type: [String](http://www.lua.org/pil/2.4.html)
     - Details: The string location to move the URIs to. Consider this a
         "parent" location to copy into
+- `callback`
+  - Type: function (optional)
+  - Details: A function to call during the processing of `copy`. 
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use copy asynchronously.
 - `opts`
     - Type: table
     - Details: A table of options that can be provided to the provider.
@@ -258,6 +284,7 @@ Notes
           (remove) the originating file after copy is complete. Consider
           this the "move" option
 - Returns: table
+    - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
     - Details
         - A table should be returned with the following key/value pairs
           (**some are optional**)
@@ -271,10 +298,11 @@ Notes
                     EG: `error = { message = "SOMETHING CATASTROPHIC HAPPENED!" }`
 
 ## move(uris, target_uri, opts)
-Version Added: 1.01
+- Version Added: 1.01
+- Updated      : 1.02
 See [`copy`](#copyuris-target_uri-cache---table) as this definition is the exact same (with the exception being that it tells copy to clean up after its complete)
 
-## get_metadata(uri, metadata_keys)
+## get_metadata(uri, metadata_keys, callback)
 - Version Added: 0.95
 - Updated      : 1.01
 - `uri`
@@ -283,13 +311,19 @@ See [`copy`](#copyuris-target_uri-cache---table) as this definition is the exact
 - `metadata_keys`
     - Type: Table
     - Details: A 1 dimensional table of metadata keys as found in [netman.options.metadata](#options)
+- `callback`
+  - Type: function (optional)
+  - Details: A function to call during the processing of `get_metadata`. 
+  - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See the [the consumer guide: Async Example](https://github.com/miversen33/netman.nvim/blob/async-1/doc/consumerguide.md#asynchronous-example) for details on how to use get_metadata asynchronously.
 - Returns
+    - NOTE: If this is being called asynchronously (via the `callback` parameter), these results may be streamed to the callback instead. See [netman.api.process_handle](#process_handle) for details on this process
     - `key`, `value` pairs table where the key is each item in `metadata_keys` and the `value` is what was returned by the provider
 
 ## version
 - Version Added: 0.1
 - Notes
     - It's a version tag, what notes do you need?
+
 ## unload_provider(provider_path, justification)
 - Version Added: 0.95
 - Updated      : 1.01
@@ -328,26 +362,23 @@ See [`copy`](#copyuris-target_uri-cache---table) as this definition is the exact
 
 ## get_provider_logger()
 - Version Added: 1.01
-- Returns
-    logger
-        - Type: table
-        - Details: Returns a logger object that will log out to the provider
+- Returns: table
+    - Type: table
+    - Details: Returns a logger object that will log out to the provider
           logs (located at `$XDG_DATA_HOME/netman/logs/provider`)
 
 ## get_consumer_logger()
 - Version Added: 1.01
-- Returns
-    logger
-        - Type: table
-        - Details: Returns a logger object that will log out to the provider
+- Returns: table
+    - Type: table
+    - Details: Returns a logger object that will log out to the provider
           logs (located at `$XDG_DATA_HOME/netman/logs/consumer`)
 
 ## get_system_logger()
 - Version Added: 1.01
-- Returns
-    logger
-        - Type: table
-        - Details: Returns a logger object that will log out to the provider
+- Returns: table
+    - Type: table
+    - Details: Returns a logger object that will log out to the provider
           logs (located at `$XDG_DATA_HOME/netman/logs/system`)
 
 ## clear_unused_configs(assume_yes)
@@ -393,7 +424,7 @@ See [`copy`](#copyuris-target_uri-cache---table) as this definition is the exact
                 [`emit_event`](#emit_eventevent-source) and thus may be nil
 - Returns: `id`
     - An id that is used to associated the provided callback with the event
-Throws
+- Throws
     - `INVALID_EVENT_ERROR`
       - An error that is thrown if the requested event is nil
     - `INVALID_EVENT_CALLBACK_ERROR`
@@ -405,8 +436,8 @@ Throws
     - Type: string
     - Details: The id of the callback to unregister. This id is provided
       by |netman.api.register_event_callback|
-Returns: nil
-Throws
+- Returns: nil
+- Throws
     - `INVALID_ID_ERROR`
       - An error that is thrown if the id is nil
 
@@ -420,10 +451,44 @@ Throws
     - Details: The name of the caller. Usually this would be the require
       path of the caller but you can technically use whatever you want
       here
-Returns: nil
-Note:
+- Returns: nil
+- Note:
     - This is (currently) a synchronous call, so your callback needs to
       process the event quickly as it _will_ hold up the rest of neovim
+
+## provider.get_providers()
+- Version Added: 1.02
+- Returns: table
+    - A 1 dimensional table with the path to each provider currently active in Netman
+- Note:
+    - This is intended to be used by consumers to show the currently active providers
+    within Netman. This path can be used to pull the module and extract UI information
+    from it. Details on the valid UI elements a provider can return can be found in
+    [Provider UI Table]()
+
+## provider.get_hosts(provider)
+- Version Added: 1.02
+- `provider`
+    - Type: string
+    - Details: The path to the provider. This can be retrieved via [provider.get_providers](#providerget_providers)
+- Returns: table
+    - A 1 dimensional table containing strings with the name of each host the
+    provider knows about
+
+## provider.get_host_details(provider, host)
+- Version Added: 1.02
+- `provider`
+    - Type: string
+    - Details: The string path to the provider. Retrieved via [provider.get_providers](#providerget_providers)
+- `host`
+    - Type: string
+    - Details: The name of the host to get details for. Retrieved via [provider.get_hosts](#providerget_hosts)
+- Returns: table
+    - A 1 dimensional table containing each hosts "details". Valid key/value pairs for details are
+        - NAME (string)
+        - URI (string)
+        - STATE (Optional | string from [netman.options.ui.states](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/tools/options.lua#L100-L104)
+        - ENTRYPOINT (Optional| table of URIs, or a single function to call to get said table of URIs. Used to determine what directory to "start" the host at when displaying to the user)
 
 # Providers
 A [`provider`](#providers) is a program (`Neovim` plugin in the case of `Netman`) that acts as a middle man between [`api`](#api) and external programs. The [`providers`](#providers) job is to communicate with said external programs and return consistently formatted data to the [`api`](#api) so it can be returned to the user to be handled.
@@ -699,3 +764,4 @@ Term used to indicate method of network communication to use. EG: `ssh`, `rsync`
 Program that integrates with `Netman` to provide a bridge between a program that supports a [protocol](#protocol) and `vim`
 ## URI: 
 A string representation of a path to a stream/file. EG: `sftp://host/file` or `ftp://ip_address/file`. A more technical definition can be found [on wikipedia](https://en.wikipedia.org/wiki/Uniform_Resource_Identifier)
+

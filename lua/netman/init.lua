@@ -41,7 +41,7 @@ function M.read(...)
                     )
                     return
                 else
-                    logger.errorn(string.format("Netman Error: %s", data.error.message))
+                    logger.warnn(string.format("Netman Error: %s", data.error.message))
                     logger.infon("See netman logs for more details. :h Nmlogs")
                 end
             end
@@ -59,35 +59,70 @@ function M.read(...)
             -- Create a buffer
             local buffer = vim.fn.bufnr(file)
             vim.api.nvim_set_current_buf(buffer)
-            vim.api.nvim_buf_set_name(0, file)
         end
         require("netman.ui").render_command_and_clean_buffer(command)
         ::continue::
     end
 end
 
-function M.write(uri)
+function M.write(uri, opts, callback)
     uri = uri or vim.fn.expand('%')
+    opts = opts or {}
     if uri == nil then
         logger.errorn("Write Incomplete! Unable to parse uri for buffer!")
         return
     end
-    local buffer_index = vim.fn.bufnr(uri)
-    local status = api.write(buffer_index, uri)
-    if not status.success then
-        logger.errorn(status.error.message)
-        logger.error(status)
-        return
+    local cb = function(status)
+        -- TODO: Needs to properly handle callbacks
+        if not status.success then
+            local message = status.message
+            if message.callback then
+                if message.default then
+                    vim.schedule(function()
+                        vim.ui.input({ prompt = message.message, default = message.default }, function(response)
+                            message.callback(response)
+                        end)
+                    end)
+                    return
+                else
+                    message.callback()
+                    return
+                end
+            end
+            if callback then callback({ success = false}) end
+            return
+        end
+        vim.defer_fn(function()
+            vim.api.nvim_command('sil! set nomodified')
+        end, 1)
+        if callback then callback({ success = true}) end
     end
-    vim.api.nvim_command('sil! set nomodified')
+    local data = {
+        type = 'buffer',
+        index = opts.index or 0
+    }
+    api.write(uri, data, nil, cb)
 end
 
-function M.delete(uri)
+function M.delete(uri, callback)
     if uri == nil then
         logger.warnn("No uri provided to delete!")
         return
     end
-    api.delete(uri)
+    local cb = function(status)
+        if not status.success then
+            logger.warnn(status.message.message)
+            logger.error(status)
+            if callback then callback({success = false}) end
+            return
+        end
+        if callback then
+            callback({success = true})
+        else
+            logger.infonf("Successfully deleted %s", uri)
+        end
+    end
+    api.delete(uri, cb)
 end
 
 function M.init()

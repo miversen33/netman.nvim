@@ -8,9 +8,13 @@ return {
             FILE = "FILE"
             ,STREAM = "STREAM"
             ,EXPLORE = "EXPLORE"
+        },
+        ERRORS = {
+            ITEM_DOESNT_EXIST = "ITEM_DOESNT_EXIST"
+            ,PERMISSION_ERROR = "PERMISSION_ERROR"
         }
         ,ATTRIBUTES = {
-            FILE = "FILE"
+            DESTINATION = "DESTINATION"
             ,DIRECTORY = "DIRECTORY"
             ,LINK = "LINK"
         },
@@ -19,6 +23,9 @@ return {
             local_path   = 'local_path',
             display_name = 'display_name',
             error = 'error'
+        },
+        EVENTS = {
+
         }
     }
     ,explorer = {
@@ -100,8 +107,12 @@ return {
         STATES = {
             UNKNOWN = "UNKNOWN",
             AVAILABLE = "AVAILABLE",
+            STOPPED = "STOPPED",
             ERROR = "ERROR",
             REFRESHING = "REFRESHING"
+        },
+        EVENTS = {
+            STATE_CHANGED = "STATE_CHANGED"
         }
     }
 }

@@ -41,7 +41,11 @@ local CONSTANTS = {
 
 local DEFAULTS = {
     level = CONSTANTS.LEVELS.WARN.real_level,
-    name = 'root'
+    name = 'root',
+    -- The maximium that is kept in the log queue internally
+    -- This means the last 2000 logs are kept in memory regardless of level
+    -- NOTE: This does _not_ affect the backing store, only the in memory store
+    internal_limit = 2000,
 }
 
 -- store for loggers.
@@ -51,6 +55,7 @@ local _session_logs = {}
 
 local M = {
     LEVELS = CONSTANTS.LEVELS,
+    forwarders = {},
 }
 
 --- Creates a new logging object to write logs to
@@ -216,6 +221,7 @@ M.new = function(opts)
             stack_info.short_src, stack_info.name, stack_info.currentline
         )
         if type(message) == 'table' then message = vim.inspect(message, {newline = '\n'}) end
+        if type(message) == 'function' then message = '<function>' end
         local log_parts = { message }
         if _opts.details then
             for _, detail in ipairs(_opts.details) do
@@ -233,6 +239,10 @@ M.new = function(opts)
         if not _session_logs[session_id] then _session_logs[session_id] = {} end
         local _generated_log = table.concat(log_parts, '\t')
         table.insert(_session_logs[session_id], header .. '\t' .. _generated_log)
+        while #_session_logs[session_id] > opts.internal_limit do
+            -- Keep popping the head off the internal log queue until we at the limit
+            table.remove(_session_logs[session_id], 1)
+        end
         if not _opts.filtered and logger._log_file_handle then
             logger._log_file_handle:write(header .. '\t' .. _generated_log .. '\n')
             -- I wonder if we actually need to flush??
@@ -257,6 +267,16 @@ M.new = function(opts)
             end)
             _:send()
         end
+        local _ = nil
+        _= vim.loop.new_async(function()
+            vim.schedule(function()
+                for _, forwarder in pairs(M.forwarders) do
+                    forwarder(header .. '\t' .. _generated_log)
+                end
+            end)
+            _:close()
+        end)
+        _:send()
     end
 
     local _max_level_string_length = 0
@@ -365,6 +385,25 @@ end
 --- Note: This does _not_ read from the filestore
 M.get_session_logs = function(session_id)
     return _session_logs[session_id] or _session_logs
+end
+
+M.add_log_forwarder = function(callback)
+    local new_forwarder_id = nil
+    while new_forwarder_id == nil do
+        -- Shitty way to ensure we have "unique" ids for forwarders
+        -- Realistically we should only have this "loop" once pretty much
+        -- always
+        new_forwarder_id = string.format("%s", math.random(1, 10000))
+        if M.forwarders[new_forwarder_id] then
+            new_forwarder_id = nil
+        end
+    end
+    M.forwarders[new_forwarder_id] = callback
+    return new_forwarder_id
+end
+
+M.remove_log_forwarder = function(id)
+    M.forwarders[id] = nil
 end
 
 return M

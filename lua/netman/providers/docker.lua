@@ -97,7 +97,7 @@ function Container:new(container_name, provider_cache)
         logger.trace(__)
         if __.exit_code ~= 0 then
             local _error = "Unable to verify docker is available to run"
-            logger.warn(_error, { exit_code = __.exit_code, stderr = __.stderr })
+            logger.info(_error, { exit_code = __.exit_code, stderr = __.stderr })
             return {}
         end
         if __.stdout:match('Got permission denied while trying to connect to the Docker daemon socket at') then
@@ -236,7 +236,7 @@ end
 --- Runs the provided command inside the container
 --- @param command string/table
 ---     Command can be either a string or table or strings
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {STDOUT_JOIN = '', STDERR_JOIN = ''}
 ---     A table of command options. @see netman.tools.shell for details. Additional key/value options
 ---     - no_shell
@@ -329,7 +329,7 @@ function Container:current_status()
 end
 
 --- Starts the container
---- @param opts table | Optional
+--- @param opts table | nil
 ---     If provided, this table will contain key value pairs that will modify how start is ran
 ---     Valid Key Value Pairs
 ---     - async: boolean
@@ -343,7 +343,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if starting the container was successful
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during start. May not be present
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -395,7 +395,7 @@ function Container:start(opts)
 end
 
 --- Stops the container
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, the following key value pairs are acceptable options
 ---     - async: boolean
@@ -413,7 +413,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if stopping the container was successful
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during stop. May not be present
 ---     NOTE: This table is _only_ provided to opts.finish_callback.
 ---     As this function performs asychronously, nothing is returned until its complete
@@ -494,7 +494,7 @@ end
 ---     what are you even doing with your life?
 --- @param provider_cache table
 ---     The table that netman.api provides to you
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A 2D table that can contain any of the following key, value pairs
 ---     - async: boolean
@@ -517,7 +517,7 @@ end
 ---         - If opts.remote_dump is provided, archive_path will be the URI to access the archive
 ---     - success boolean
 ---         - A boolean (t/f) of if the archive succedded or not
----     - error string | Optional
+---     - error string | nil
 ---         - Any errors that need to be displayed to the user
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -610,7 +610,7 @@ end
 ---     The scheme the archive is compressed with
 --- @param provider_cache table
 ---     The cache that netman.api provided you
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of options to be used when extracting. Available key/values are
 ---         - async: boolean
@@ -629,7 +629,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false to indicate if the extraction was a success
----     - error: string | Optional
+---     - error: string | nil
 ---         The string error that was encountered during extraction. May not be present
 --- @example
 ---     -- This example assumes that you have received your cache from netman.api.
@@ -745,7 +745,7 @@ end
 ---     A table of string locations to move. Can be files or directories
 --- @param target_location string
 ---     The location to copy to. Must be a directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how cp works
 ---     Valid Options:
@@ -755,8 +755,8 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested copy
----     - error: string | Optional
----         Any errors that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
+---     - message: string | nil
+---         Any messages that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
 ---         get an error, it will not be returned. Ye be warned.
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -787,7 +787,7 @@ function Container:cp(locations, target_location, opts)
     local output = self:run_command(cp_command, command_options)
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
-        return { success = false, error = message }
+        return { success = false, message = message }
     end
     return { success = true }
 end
@@ -797,7 +797,7 @@ end
 ---     The a table of string locations to move. Can be a files or directories
 --- @param target_location string
 ---     The location to move to. Can be a file or directory
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table of options that can be used to modify how mv works
 ---     Valid Options
@@ -807,8 +807,8 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested move
----     - error: string | Optional
----         Any errors that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
+---     - message: string | nil
+---         Any messages that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -838,7 +838,7 @@ function Container:mv(locations, target_location, opts)
     local output = self:run_command(mv_command, command_options)
     if output.exit_code ~= 0 and not opts.ignore_errors then
         local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
-        return { success = false, error = message }
+        return { success = false, message = message }
     end
     return { success = true }
 end
@@ -846,7 +846,7 @@ end
 --- Touches a file in the container
 --- @param locations table
 ---     A table of filesystem locations (as strings) touch
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - ignore_errors: boolean
@@ -855,7 +855,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -884,7 +884,7 @@ end
 --- Creates a directory in the container
 --- @param locations table
 ---     A table of filesystem locations (as strings) create
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - ignore_errors: boolean
@@ -893,7 +893,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -924,7 +924,7 @@ end
 
 --- @param locations table
 ---     A table of netman uris to remove
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
 ---     - force: boolean
@@ -935,7 +935,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         A true/false on if we successfully created the directory
----     - error: string | Optional
+---     - error: string | nil
 ---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
 ---         it will not be returned. Ye be warned
 --- @example
@@ -977,7 +977,7 @@ end
 ---     The location to find from
 --- @param search_param string
 ---     The string to search for
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {
 ---         pattern_type = 'iname',
 ---         follow_symlinks = true,
@@ -1007,7 +1007,7 @@ end
 ---         - If provided, used to specify the minimum depth to traverse our search
 ---     - filesystems: boolean
 ---         - If provided, tells us to descend (or not) into other filesystems
----     - exec: string or function | Optional
+---     - exec: string or function | nil
 ---         - If provided, will be used as the `exec` flag with find.
 ---         Note: the `string` form of this needs to be a find compliant shell string. @see man find for details
 ---         Alternatively, you can provide a function that will be called with every match that find gets. Note, this will be significantly slower
@@ -1075,7 +1075,7 @@ end
 ---     The string file location on the host
 --- @param location URI
 ---     The location to put the file
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table containing options to alter the effect of `put`. Valid key/value pairs are
 ---     - new_file_name: string
@@ -1116,8 +1116,8 @@ function Container:put(file, location, opts)
         -- Running this in protected mode because `location` may not exist. If it doesn't we will get an error,
         -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
         -- if we get an error. Thus, error == gud
-        if status == true and _stat[location:to_string()].TYPE ~= 'directory' then
-            logger.warn(string.format("Unable to verify that %s is a directory, you might see errors!", location:to_string()))
+        if status == true and _stat[file_name] and _stat[file_name].TYPE ~= 'directory' then
+            logger.warn(string.format("Unable to verify that %s is a directory, you might see errors!", file_name))
             file_name = location:to_string()
             location = location:parent()
         end
@@ -1134,6 +1134,7 @@ function Container:put(file, location, opts)
     if opts.new_file_name then
         file_name = string.format("%s/%s", location:to_string(), opts.new_file_name)
     end
+    local details = self:stat({file_name}, {'USER', 'GROUP', 'PERMISSIONS'})
     local finish_callback = function(command_output)
         logger.trace(command_output)
 
@@ -1143,6 +1144,16 @@ function Container:put(file, location, opts)
             return_details = { error = _error, success = false}
             if opts.finish_callback then opts.finish_callback(return_details) end
             return
+        end
+        if details then
+            local _
+            _, details = next(details)
+        end
+        if details.PERMISSIONS then
+            self:stat_mod(file_name, details.PERMISSIONS)
+        end
+        if details.USER or details.GROUP then
+            self:own_mod(file_name, { user = details.USER, group = details.GROUP })
         end
         return_details = { success = true}
         if opts.finish_callback then opts.finish_callback(return_details) end
@@ -1167,7 +1178,7 @@ end
 ---     A netman URI of the location to download
 --- @param output_dir string
 ---     The string filesystem path to download to
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     A table of key/value pairs that modify how get operates. Valid key/value pairs are
 ---     - async: boolean
@@ -1192,7 +1203,7 @@ end
 ---     Returns a table that contains the following key/value pairs
 ---     - success: boolean
 ---         - A true/false indicating if the get was successful
----     - error: string | Optional
+---     - error: string | nil
 ---         - A string of errors that occured during the get
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -1248,7 +1259,7 @@ end
 --- Takes a table of filesystem locations and returns the stat of them
 --- @param locations table
 ---     - A table of filesystem locations
---- @param target_flags table | Optional
+--- @param target_flags table | nil
 ---     Default: Values from @see Container.CONSTANTS.STAT_FLAGS
 ---     - If provided, will return a table with only these keys and their respective values
 ---     - NOTE: You will _always_ get `NAME` back, even if you explicitly tell us not to return
@@ -1368,20 +1379,22 @@ end
 --- Executes remote chmod on provided locations
 --- @param locations table
 ---     A table of filesystem string locations
---- @param targets table
+--- @param targets table | string
 ---     A table that can contain any mix of the following strings
 ---     - user
 ---     - group
 ---     - all
 ---     - other
 ---     This will set the `ugao` part of the chmod command
+---
+---     NOTE: You can also pass raw chmod compatible permissions here and leave everything else empty
 --- @param permission_mods table
 ---     A table that can contain any mix of the following strings
 ---     - read
 ---     - write
 ---     - execute
 ---     This is the `rwx` part of the chmod command
---- @param opts table | Optional
+--- @param opts table | nil
 ---     Default: {}
 ---     If provided, a table that can alter how stat_mod operates. Valid Key Value Pairs are
 ---     - remove_mod: boolean
@@ -1395,40 +1408,48 @@ end
 ---     container:stat_mod('/tmp/ubuntu.tar.gz', {'user', 'group'}, {'read'})
 ---     -- This is equivalent to chmod ug-w /tmp/ubuntu.tar.gz
 ---     container:stat_mod('/tmp/ubuntu.tar.gz', {'user', 'group'}, {'write'}, {remove_mod = true})
+---     -- This is equivalent to chmod 664 /tmp/ubuntu.tar.gz
+---     container:stat_mod('/tmp/ubuntu.tar.gz', '0644')
 function Container:stat_mod(locations, targets, permission_mods, opts)
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     assert(targets, "Invalid user/group/nobody target provided")
-    assert(permission_mods, "Invalid permission modification provided")
-    local target = ''
-    for _, _target in ipairs(targets) do
-        -- Might as well give up a bit of memory to avoid
-        -- doing this lower several times over
-        local _lower_target = _target:lower()
-        if _lower_target == 'user' or _lower_target == 'u' then
-            target = target .. 'u'
-        elseif _lower_target == 'group' or _lower_target == 'g' then
-            target = target .. 'g'
-        elseif _lower_target == 'all' or _lower_target == 'a' then
-            target = target .. 'a'
-        elseif _lower_target == 'other' or _lower_target == 'o' then
-            target = target .. 'o'
+    local command = ''
+    if type(targets) == 'string' then
+        logger.debug("I hope you know what you're doing by specifying your own permissions raw. Applying", permission_mods)
+        command = string.format("chmod %s", targets)
+    else
+        assert(permission_mods, "Invalid permission modification provided")
+        local target = ''
+        for _, _target in ipairs(targets) do
+            -- Might as well give up a bit of memory to avoid
+            -- doing this lower several times over
+            local _lower_target = _target:lower()
+            if _lower_target == 'user' or _lower_target == 'u' then
+                target = target .. 'u'
+            elseif _lower_target == 'group' or _lower_target == 'g' then
+                target = target .. 'g'
+            elseif _lower_target == 'all' or _lower_target == 'a' then
+                target = target .. 'a'
+            elseif _lower_target == 'other' or _lower_target == 'o' then
+                target = target .. 'o'
+            end
         end
-    end
-    local permission = ''
-    for _, _permission in ipairs(permission_mods) do
-        local _lower_permission = _permission:lower()
-        if _lower_permission == 'read' or _lower_permission == 'r' then
-            permission = permission .. 'r'
-        elseif _lower_permission == 'write' or _lower_permission == 'w' then
-            permission = permission .. 'w'
-        elseif _lower_permission == 'execute' or _lower_permission == 'x' then
-            permission = permission .. 'x'
+        local permission = ''
+        for _, _permission in ipairs(permission_mods) do
+            local _lower_permission = _permission:lower()
+                if _lower_permission == 'read' or _lower_permission == 'r' then
+                permission = permission .. 'r'
+            elseif _lower_permission == 'write' or _lower_permission == 'w' then
+                permission = permission .. 'w'
+            elseif _lower_permission == 'execute' or _lower_permission == 'x' then
+                permission = permission .. 'x'
+            end
         end
+        local _mod = ''
+        if opts.remove_mod then _mod = '-' else _mod = '+' end
+        command = string.format('chmod %s%s%s', target, _mod, permission)
     end
-    local _mod = ''
-    if opts.remove_mod then _mod = '-' else _mod = '+' end
-    local command = string.format('chmod %s%s%s', target, _mod, permission)
     for _, location in ipairs(locations) do
         if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
         command = command .. string.format(" %s", location)
@@ -1449,7 +1470,7 @@ end
 ---     - user
 ---     - group
 ---     The value associated with each key should be the string for that key. EG { user = 'root', group = 'nogroup'}
---- @param opts table | Optional
+--- @param opts table | nil
 ---     - Default: {}
 ---     If provided, a table that can alter how own_mod operates. Valid Key Value Paris are
 ---     - ignore_errors: boolean
@@ -1551,7 +1572,7 @@ function URI:new(uri, cache)
 end
 
 --- Returns ourselves in string form
---- @param type string | Optional
+--- @param type string | nil
 ---     Default: 'local'
 ---     Specifies the type of uri to return. Valid options are
 ---     - 'local'
@@ -1604,6 +1625,12 @@ M.name = 'docker'
 M.protocol_patterns = {'docker'}
 M.version = 0.2
 
+function M.connect_host(uri, cache)
+    local validation = M.internal.validate(uri, cache)
+    if validation.message then return validation end
+    return {success = true}
+end
+
 function M.internal.validate(uri, cache)
     assert(cache, string.format("No cache provided for read of %s",  uri))
     ---@diagnostic disable-next-line: cast-local-type
@@ -1612,7 +1639,7 @@ function M.internal.validate(uri, cache)
     -- Is the container running???
     if container:current_status() ~= M.internal.Container.CONSTANTS.STATUS.RUNNING then
         return {
-            error = {
+            message = {
                 message = string.format("%s is not running. Would you like to start it? [Y/n] ", container.name),
                 default = 'Y',
                 callback = function(response)
@@ -1620,13 +1647,14 @@ function M.internal.validate(uri, cache)
                         local started = container:start()
                         if started.success then
                             logger.infon(string.format("%s successfully started!", container.name))
-                            return {retry = true}
+                            return true
                         else
-                            return {retry = false, error=started.error}
+                            -- TODO: We are not passing the error up and that _may_ be and...
+                            return false
                         end
                     else
                         logger.info(string.format("Not starting container %s", container.name))
-                        return {retry = false}
+                        return false
                     end
                 end
             }
@@ -1642,7 +1670,7 @@ function M.internal.find(uri, container, opts)
     end
     local raw_children = container:find(uri, opts)
     if raw_children.error and not opts.ignore_errors then
-        return {success = false, error = raw_children.error}
+        return {success = false, message = raw_children.error}
     end
 
     local children = container:_stat_parse(raw_children)
@@ -1668,7 +1696,7 @@ function M.internal.read_directory(uri, container)
         if children.error:match('[pP]ermission%s+[dD]enied') then
             return {
                 success = false,
-                error = {
+                message = {
                     message = string.format("Permission Denied when accessing %s", uri:to_string())
                 }
             }
@@ -1676,7 +1704,7 @@ function M.internal.read_directory(uri, container)
         -- Handle other errors as we find them
         return {
             success = false,
-            error = children.error
+            message = children.error
         }
     end
     return {
@@ -1688,8 +1716,9 @@ end
 
 function M.internal.read_file(uri, container)
     local status = container:get(uri, local_files, {new_file_name = uri.unique_name})
+    local obj = nil
     if status.success then
-        return {
+        obj = {
             success = true,
             data = {
                 local_path = string.format("%s%s", local_files, uri.unique_name),
@@ -1697,15 +1726,31 @@ function M.internal.read_file(uri, container)
             },
             type = api_flags.READ_TYPE.FILE
         }
-    else
-        return status
     end
+    if status.error then
+        local handled = false
+        if status.error:match('[pP]ermission%s+[dD]enied') then
+            handled = true
+            obj = {
+                success = false,
+                message = {
+                    message = "Permission Denied",
+                    error = api_flags.ERRORS.PERMISSION_ERROR
+                }
+            }
+        end
+        if not handled then
+            logger.warn("Received unhandled error", status.error)
+        end
+    end
+    if obj then status = obj end
+    return status
 end
 
 function M.search(uri, cache, param, opts)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     opts = opts or {}
     opts.search_param = param
     uri = validation.uri
@@ -1723,15 +1768,17 @@ end
 function M.read(uri, cache)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    logger.debug("URI", uri, " -- Validation", validation)
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     local _, stat = next(container:stat(uri, {M.internal.Container.CONSTANTS.STAT_FLAGS.TYPE}))
     if not stat then
         return {
             success = false,
-            error = {
-                message = string.format("%s doesn't exist", uri:to_string())
+            message = {
+                message = string.format("%s doesn't exist", uri:to_string()),
+                error = api_flags.ERRORS.ITEM_DOESNT_EXIST
             }
         }
     end
@@ -1748,20 +1795,20 @@ end
 function M.write(uri, cache, data)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     if uri.type == api_flags.ATTRIBUTES.DIRECTORY then
         local _ = container:mkdir(uri)
         if not _.success then
             return {
-                success = false, error = { message = _.error }
+                success = false, message = { message = _.error }
             }
         end
         local _ = container:stat(uri)
         if not _ then
             return {
-                success = false, error = { message = string.format("Unable to stat newly created %s", uri:to_string())}
+                success = false, message = { message = string.format("Unable to stat newly created %s", uri:to_string())}
             }
         end
         local _, _stat = next(_)
@@ -1773,7 +1820,7 @@ function M.write(uri, cache, data)
     local touch_status = container:touch(uri)
     if not touch_status.success then
         return {
-            success = false, error = { message = touch_status.error or "touch failed with unknown error"}
+            success = false, message = { message = touch_status.error or "touch failed with unknown error"}
         }
     end
     data = data or {}
@@ -1786,7 +1833,7 @@ function M.write(uri, cache, data)
     assert(fh:close(), string.format("Unable to close local file %s for %s", local_file, uri:to_string('remote')))
     local _ = container:put(local_file, uri)
     if not _.success then
-        return { uri = uri.uri, success = false, error = { message = _.error } }
+        return { uri = uri.uri, success = false, message = { message = _.error } }
     end
     return { success = true, uri = uri.uri }
 end
@@ -1794,7 +1841,7 @@ end
 function M.copy(uris, target_uri, cache)
     local container = nil
     local validation = M.internal.validate(target_uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     container = validation.container
     target_uri = validation.uri
     if type(uris) ~= 'table' then uris = {uris} end
@@ -1805,7 +1852,7 @@ function M.copy(uris, target_uri, cache)
         if __.container ~= validation.container then
             return {
                 success = false,
-                error = {
+                message = {
                     message = string.format("%s and %s are not on the same container!", uri, target_uri)
                 }
         }
@@ -1818,7 +1865,7 @@ end
 function M.move(uris, target_uri, cache)
     local container = nil
     local validation = M.internal.validate(target_uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     container = validation.container
     target_uri = validation.uri
     if type(uris) ~= 'table' then uris = {uris} end
@@ -1829,7 +1876,7 @@ function M.move(uris, target_uri, cache)
         if __.container ~= validation.container then
             return {
                 success = false,
-                error = {
+                message = {
                     message = string.format("%s and %s are not on the same container!", uri, target_uri)
                 }
         }
@@ -1842,7 +1889,7 @@ end
 function M.delete(uri, cache)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container:rm(uri, {force = true})
@@ -1851,7 +1898,7 @@ end
 function M.get_metadata(uri, cache)
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container:stat(uri)
@@ -1861,7 +1908,7 @@ function M.update_metadata(uri, cache, updates)
     -- TODO:
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
 
@@ -1892,23 +1939,28 @@ end
 ---     - NAME
 ---     - URI
 ---     - STATE
+---     - OS
 ---@diagnostic disable-next-line: unused-local
 function M.ui.get_host_details(config, container_name, cache)
     local container = M.internal.Container:new(container_name, cache)
-    local state = container:current_status()
+    local get_state = function()
+        local state = container:current_status()
+        local clean_state = ui_states.UNKNOWN
+        if state == M.internal.Container.CONSTANTS.STATUS.ERROR then
+            clean_state = ui_states.ERROR
+        elseif state == M.internal.Container.CONSTANTS.STATUS.RUNNING then
+            clean_state = ui_states.AVAILABLE
+        elseif state == M.internal.Container.CONSTANTS.STATUS.NOT_RUNNING then
+            clean_state = ui_states.STOPPED
+        end
+        return clean_state
+    end
     local host_details = {
         NAME = container_name,
-        -- OS = container.os,
-        URI = string.format("docker://%s/", container_name)
+        OS = container.os:lower():match('^([a-z]+)'),
+        URI = string.format("docker://%s/", container_name),
+        STATE = get_state
     }
-    if stat == M.internal.Container.CONSTANTS.STATUS.ERROR then
-        host_details.STATE= ui_states.ERROR
-    elseif state == M.internal.Container.CONSTANTS.STATUS.RUNNING then
-        host_details.STATE = ui_states.AVAILABLE
-    else
-        host_details.STATE = ui_states.UNKNOWN
-    end
-    logger.trace(host_details)
     return host_details
 end
 
@@ -1918,7 +1970,7 @@ function M.archive.get(uris, cache, archive_dump_dir, available_compression_sche
     local __ = {}
     for _, uri in ipairs(uris) do
         local validation = M.internal.validate(uri, cache)
-        if validation.error then return validation end
+        if validation.message then return validation end
         assert(container == nil or validation.container == container, string.format("Container mismatch for archive! %s != %s", container, validation.container))
         table.insert(__, validation.uri)
 
@@ -1932,7 +1984,7 @@ function M.archive.put(uri, cache, archive, compression_scheme)
     assert(archive, string.format("Invalid Archive provided for upload to %s", uri))
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container:extract(archive, uri, compression_scheme, cache)
@@ -1942,7 +1994,7 @@ function M.archive.schemes(uri, cache)
     assert(cache, string.format("No cache provided for archive scheme fetch of %s", uri))
     local container = nil
     local validation = M.internal.validate(uri, cache)
-    if validation.error then return validation end
+    if validation.message then return validation end
     uri = validation.uri
     container = validation.container
     return container.archive_schemes

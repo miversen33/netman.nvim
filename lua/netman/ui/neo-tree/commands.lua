@@ -20,32 +20,38 @@ M.open_with_window_picker = M.open
 
 -- TODO:
 M.add_directory = function(state, callback)
-    ui.add_node(state, {force_dir=true})
+    ui.add(state, {force_dir = true})
     do_callback(callback)
 end
 
 M.add = function(state, callback)
-    ui.create_node(state)
+    ui.add(state)
     do_callback(callback)
 end
 
 M.refresh = function(state, callback)
-    ui.perform_mark_action(state,'refresh')
+    ui.refresh(state)
     do_callback(callback)
 end
 
-M.rename_node = function(state, callback)
-    ui.rename_node(state)
+M.rename = function(state, callback)
+    ui.rename(state)
     do_callback(callback)
 end
 
-M.delete_node = function(state, callback)
-    ui.perform_mark_action(state, 'delete')
+M.delete = function(state, callback)
+    ui.delete(state)
+    do_callback(callback)
+end
+
+M.yank_node = function(state, callback)
+    ui.set_mark_action('copy')
+    -- TODO: Add copying the node(s) names to a register?
     do_callback(callback)
 end
 
 M.move_node = function(state, callback)
-    ui.perform_mark_action(state, 'move')
+    ui.set_mark_action('move')
     do_callback(callback)
 end
 
@@ -59,10 +65,11 @@ M.mark_node = function(state, callback)
     do_callback(callback)
 end
 
-M.copy_node = function(state, callback)
-    ui.perform_mark_action(state, 'copy')
+M.paste_node = function(state, callback)
+    ui.paste_node(state)
     do_callback(callback)
 end
+
 -- -- TODO:
 -- M.open_split = function(state, callback)
 --

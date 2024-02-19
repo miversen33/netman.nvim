@@ -5,45 +5,50 @@ local config = {
 config.renderers =
 {
     file = {
-        { 'indent' },
-        { 'marked' },
-        { 'icon' },
-        { 'name' }
+        { 'indent'  },
+        { 'marked'  },
+        { 'icon'    },
+        { 'name'    }
     },
     directory = {
-        { 'indent' },
-        { 'marked' },
-        { 'icon' },
-        { 'name' }
+        { 'indent'  },
+        { 'marked'  },
+        { 'icon'    },
+        { 'expanded'},
+        { 'name'    }
     },
     netman_provider = {
-        { 'icon' },
-        { 'name' }
+        { 'indent'  },
+        { 'expanded'},
+        { 'icon'    },
+        { 'name'    }
     },
     netman_host = {
-        { 'indent' },
-        { 'state' },
-        { 'name' }
+        { 'indent'  },
+        { 'expanded'},
+        { 'state'   },
+        { 'icon'    },
+        { 'name'    }
     },
     netman_bookmark = {
         { 'indent' },
-        { 'icon' },
-        { 'name' }
+        { 'icon'   },
+        { 'name'   }
     },
-    netman_refresh = {
+    netman_stop    = {
         { 'indent' },
-        { 'icon' },
-        { 'name' }
+        { 'icon'   },
+        { 'name'   },
+        { 'action' }
     },
 }
 
 config.window.mappings = {
     -- ['g'] = "toggle_favorite",
-    ['r'] = 'rename_node',
-    ['d'] = 'delete_node',
     ['x'] = 'move_node',
-    ['p'] = 'copy_node',
+    ['p'] = 'paste_node',
     ['m'] = 'mark_node',
+    ['y'] = "yank_node",
     -- ['f'] = 'search'
 }
 

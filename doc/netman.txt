@@ -336,22 +336,37 @@ See Also: |:Nmdelete| |netman.providers.delete|
                                                               *netman.api.write*
 netman.api.write ~
 Version Added: 0.1
-Updated      : 1.01
+Updated      : 1.02
 Definition
-    write(buffer_index, uri, options)
-    - buffer_index (Optional)
-        - Type: integer
-        - Details: The buffer index associated with the write path.
-          If provided, we will use the index to pull the buffer content
-          and provide that to the provider. Otherwise, the provider will
-          be given an empty array to write out to the file
-          NOTE: this will almost certainly be destructive, be sure you know
-          what you are doing if you are sending an empty write!
+    write(uri, data, options)
     - uri
         - Type: String
         - Details: The string uri to create
+    - data (Optional)
+        - Type: Table
+        - Details: This table (if provided) should match any of the below
+        input tables
+        >
+            {
+                type = 'buffer',
+                index = $VALID_VIM_BUFFER_INDEX
+            }
+        < OR >
+            {
+                type = 'content',
+                data = { $TABLE_CONTAINING STRINGS }
+            }
+        <
+        This table is _not_ passed through to the underlying provider
+        and thus data to write must be added properly to this table.
+        **Failure to provide a valid table (or no table) will result
+        in a table of 0 lines being provided to the provider, and likely
+        the data behind your URI being truncated.**
+        
+        NOTE: this will almost certainly be destructive, be sure you know
+          what you are doing if you are sending an empty write!
 Returns: Table
-    Returns a table taht contains the following key/value pairs
+    Returns a table that contains the following key/value pairs
         - success: boolean
             A boolean indicating if the provider was successful in its write
         - uri: string

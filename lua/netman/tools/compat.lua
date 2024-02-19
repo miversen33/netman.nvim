@@ -5,7 +5,13 @@ local unpack = unpack
 local uv     = nil
 local mkdir  = nil
 local delete = nil
-if table.unpack then unpack = table.unpack end
+local os =
+    vim.loop.os_uname().sysname:lower():match('windows') and 'windows'
+    or vim.loop.os_uname().sysname:lower():match('linux') and 'linux'
+    or vim.loop.os_uname().sysname:lower():match('darwin') and 'macos'
+
+local sep = os == 'windows' and '\\' or '/' -- \ for windows, mac and linux both use \
+if table.unpack then unpack = table.unpack else table.unpack = unpack end
 if vim and vim.loop then
     uv = vim.loop
 else
@@ -18,7 +24,6 @@ else
     mkdir  = function(name, path, prot)
 
         -- Probably should make this also work on windows but I don't care right now
-        local sep = '/'
         -- If prot is provided, lop off the leading 0o, we don't care about it
         if prot then prot = prot:match('0o(.*)') else prot = "755" end
         -- convert the prot to an octal
@@ -52,5 +57,7 @@ return {
     unpack = unpack,
     uv     = uv,
     mkdir  = mkdir,
-    delete = delete
+    delete = delete,
+    sep    = sep,
+    os     = os
 }
