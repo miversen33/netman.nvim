@@ -606,6 +606,7 @@ function Shell:run(timeout)
         return self:dump_self_to_table()
     ---@diagnostic disable-next-line: missing-return
     end
+    ::do_return::
     return Shell.new_async_handler('manual', self.handle)
 end
 
