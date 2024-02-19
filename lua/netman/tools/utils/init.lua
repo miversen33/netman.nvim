@@ -13,7 +13,7 @@ local M = {
     os_sep = compat.sep,
     os = compat.os,
     deep_copy = nil,
-    deprecation_date = nil,
+    deprecation_date = "2024-04-01",
 }
 
 local function create_dirs()
