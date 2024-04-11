@@ -2418,7 +2418,9 @@ function M.connect_host_a(uri, cache, exit_callback)
                 cleaned_response = { success = true }
             end
         end
-        exit_callback(cleaned_response)
+        if exit_callback then
+            exit_callback(cleaned_response)
+        end
     end
     return host:stat(uri, nil, {
         async = true,
