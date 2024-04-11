@@ -542,62 +542,6 @@ function M.clear_unused_configs(assume_yes)
     if not ran then print("There are currently no unused netman provider configurations") end
 end
 
--- This will attempt to establish the connection with the provider
--- for the provided URI. If callback is provided, it will
--- be called after the connection event finishes.
--- @param provider table
---     The netman provider
--- @param uri string
---     The string URI to have the provider connect to
--- @param cache "netman.tools.cache"
---     The provider cache
--- @param callback function | nil
---     If provided, we will call this function (with no arguments) after
---     the connection event completes.
---     NOTE: Completion does not mean success or fail. Just done.
--- @return table | nil
---     If a callback is provided and we are able to get an async handle
---     on the connection event, we will return the handle. If no callback
---     is provided, or if we cannot asynchronously connect to the provider,
---     nothing is returned (but we will block until complete)
-function M.internal.connect_provider(provider, uri, cache, callback)
-    local is_connected = M.internal.has_connection_to_uri_host(uri, provider, cache)
-    local do_async = callback and provider['connect_host_a'] and true or false
-    local connection_func = do_async and 'connect_host_a' or 'connect_host'
-    local connection_finished = false
-    local handle = nil
-    -- Using a boolean as a trinary because why not
-    local connection_callback = function(response)
-        -- We have already been handled, don't
-        -- call again
-        if connection_finished then return end
-        if response and response.success == false then
-            logger.warnf("Provider %s indicated a failure to connect to host of %s", provider.name, uri)
-        end
-        connection_finished = true
-        if callback then callback(response) end
-    end
-    if not is_connected then
-        if not provider[connection_func] then
-            logger.debugf("Provider %s does not seem to implement any sort of preconnection logic", provider.name)
-            connection_callback()
-            return
-        end
-        logger.debugf("Reaching out to `%s.%s` to attempt preconnection", provider.name, connection_func)
-        handle = provider[connection_func](uri, cache, connection_callback)
-        if do_async and not handle then
-            logger.warnf("Provider %s did not provide a proper async handle for asynchronous connection event. Removing `%s`", provider.name, connection_func)
-            provider.connect_host_a = nil
-            connection_callback()
-        elseif not do_async then
-            connection_callback(handle)
-        end
-    else
-        connection_callback(true)
-    end
-    return handle
-end
-
 -- Attempts to reach out to the provider
 -- to verify if the URI has a connected host
 -- @param uri: string
@@ -996,10 +940,12 @@ function M.read(uri, opts, callback)
             next_step()
         end
     end
-    return_handle._handle = M.internal.connect_provider(
+    return_handle._handle = M.internal.asp(
         provider,
-        uri,
-        cache,
+        'connect_host',
+        'connect_host_a',
+        {uri, cache},
+        error_callback,
         connection_callback
     )
     if callback then
@@ -1100,7 +1046,14 @@ function M.write(uri, data, options, callback)
             next_step()
         end
     end
-    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    return_handle._handle = M.internal.asp(
+        provider,
+        'connect_host',
+        'connect_host_a',
+        {uri, cache},
+        error_callback,
+        connection_callback
+    )
     if callback then
         return return_handle
     else
@@ -1259,13 +1212,14 @@ function M.copy(uris, target_uri, opts, callback, do_move)
             end
         end
     end
-    return_handle._handle = M.internal.connect_provider(
+    return_handle._handle = M.internal.asp(
         target_provider,
-        target_uri,
-        target_cache,
+        'connect_host',
+        'connect_host_a',
+        {target_uri, target_cache},
+        error_callback,
         connection_callback
     )
-
     if callback then
        return return_handle
     else
@@ -1394,7 +1348,14 @@ function M.delete(uri, callback)
         end
 
     end
-    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    return_handle._handle = M.internal.asp(
+        provider,
+        'connect_host',
+        'connect_host_a',
+        {uri, cache},
+        error_callback,
+        connection_callback
+    )
     if callback then
         return return_handle
     else
@@ -1497,7 +1458,14 @@ function M.get_metadata(uri, metadata_keys, options, callback)
         end
 
     end
-    return_handle._handle = M.internal.connect_provider(provider, uri, cache, connection_callback)
+    return_handle._handle = M.internal.asp(
+        provider,
+        'connect_host',
+        'connect_host_a',
+        {uri, cache},
+        error_callback,
+        connection_callback
+    )
     if callback then
         return return_handle
     else
