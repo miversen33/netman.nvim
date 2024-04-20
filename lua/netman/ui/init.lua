@@ -240,7 +240,6 @@ end
 function M.render_command_and_clean_buffer(render_command, opts)
     opts = opts or {}
     -- Probably should just let vim do this?
-    opts.nomod = opts.nomod or 1
     opts.detect_filetype = opts.detect_filetype or 1
     opts.file_name = opts.file_name or ""
     opts.buffer = opts.buffer or vim.api.nvim_get_current_buf()
