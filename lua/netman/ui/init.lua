@@ -244,6 +244,13 @@ function M.render_command_and_clean_buffer(render_command, opts)
     opts.detect_filetype = opts.detect_filetype or 1
     opts.file_name = opts.file_name or ""
     opts.buffer = opts.buffer or vim.api.nvim_get_current_buf()
+    local function run_cmd(cmd)
+        logger.trace2('Running command "', cmd, '"')
+        local success, err = pcall(vim.api.nvim_command, cmd)
+        if not success then
+            logger.trace("Encountered potential error", success, err)
+        end
+    end
     -- If there is no buffer provided we should check to see if we can use the current or not
     -- instead of assuming we can
     if not is_buffer_free(opts.buffer) then
@@ -262,25 +269,32 @@ function M.render_command_and_clean_buffer(render_command, opts)
     if opts.file_name and vim.api.nvim_buf_get_name(opts.buffer) ~= opts.file_name then
         vim.api.nvim_buf_set_name(opts.buffer, opts.file_name)
     end
+    local focus_buffer = opts.buffer ~= vim.api.nvim_get_current_buf()
+    local undo_levels = vim.api.nvim_get_option_value('undolevels', {buf = opts.buffer})
     vim.api.nvim_command('keepjumps sil! 0')
-    -- Addresses #133, basically saying "ya we don't care if the read event has an
-    -- error, deal with it and move on"
-    local _, err pcall(vim.api.nvim_command, 'keepjumps sil! setlocal ul=-1 | ' .. render_command)
-    if err then
-        logger.tracef("Encountered potential error while trying to execute %s: -> %s", render_command, err)
+    local normalized_command = render_command:gsub('[ ]+', ' '):gsub('([^\\])[ ]', '%1\\ ')
+    local buffer_commands = {
+        'keepjumps\\ setlocal\\ ul=-1',
+        normalized_command,
+        'keepjumps\\ setlocal\\ ul=' .. undo_levels,
+        '0'
+    }
+    local silent = '+silent!\\ '
+    -- Reducing extra spaces to a single space and then escaping unescaped spaces
+    for _, raw_command in ipairs(buffer_commands) do
+        local _command = string.format("buffer %s%s %s", silent, raw_command, opts.buffer)
+        run_cmd(_command)
     end
-    -- if opts.filetype then
-    --     vim.api.nvim_command(string.format('set filetype=%s', opts.filetype))
-    -- end
-    -- TODO: (Mike): This actually adds the empty line to the default register. consider a way to get
-    -- 0"_dd to work instead?
-    vim.api.nvim_command('keepjumps sil! 0d')
-    vim.api.nvim_command('keepjumps sil! setlocal ul=' .. undo_levels .. '| 0')
+    vim.fn.deletebufline(opts.buffer, 1)
+    vim.api.nvim_set_option_value('modified', false, { buf = opts.buffer })
     if opts.nomod then
-        vim.api.nvim_command('sil! set nomodified')
+        vim.api.nvim_set_option_value('modifiable', false, { buf = opts.buffer })
+    end
+    if focus_buffer then
+        vim.api.nvim_set_current_buf(opts.buffer)
     end
     if opts.detect_filetype then
-        vim.api.nvim_command('sil! filetype detect')
+        run_cmd('silent! filetype detect')
     end
 end
 
