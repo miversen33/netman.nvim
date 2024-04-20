@@ -210,6 +210,33 @@ function M.get_least_common_path(paths)
     return return_keys
 end
 
+local function is_buffer_free(buffer, file_name)
+    buffer = buffer or 0
+    -- Does the buffer have a name?
+    local buffer_name = vim.api.nvim_buf_get_name(buffer)
+    -- Does the buffer have a filetype?
+    local buffer_filetype = vim.api.nvim_get_option_value('filetype', {
+        buf = buffer
+    })
+    -- Does buffer have literally any modifications done to it?
+    local buffer_modified = vim.api.nvim_get_option_value('modified', { buf = buffer })
+    -- Does the buffer have anything in it?
+    local buffer_content = vim.api.nvim_buf_get_lines(buffer, 1, 3, false)
+    -- Assume there is content
+    local buffer_has_content = #buffer_content > 0
+    -- If we don't have a buffer name or filetype _or_ we do but they are just empty strings
+    -- because empty string is not false in lua :(
+    if
+        (not buffer_name or buffer_name:match('^[%s]*$'))
+        and (not buffer_filetype or buffer_filetype:match('^[%s]*$'))
+        and not buffer_modified
+        and not buffer_has_content then
+        return true
+    end
+    -- Make a new one
+    return false
+end
+
 function M.render_command_and_clean_buffer(render_command, opts)
     opts = opts or {}
     -- Probably should just let vim do this?
@@ -217,6 +244,24 @@ function M.render_command_and_clean_buffer(render_command, opts)
     opts.detect_filetype = opts.detect_filetype or 1
     opts.file_name = opts.file_name or ""
     opts.buffer = opts.buffer or vim.api.nvim_get_current_buf()
+    -- If there is no buffer provided we should check to see if we can use the current or not
+    -- instead of assuming we can
+    if not is_buffer_free(opts.buffer) then
+        -- Check to see if there is already a buffer created for us?
+        if opts.file_name then
+            for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+                if vim.api.nvim_buf_get_name(buffer) == opts.file_name then
+                    opts.buffer = buffer
+                    goto continue
+                end
+            end
+        end
+        opts.buffer = vim.api.nvim_create_buf(true, false)
+        ::continue::
+    end
+    if opts.file_name and vim.api.nvim_buf_get_name(opts.buffer) ~= opts.file_name then
+        vim.api.nvim_buf_set_name(opts.buffer, opts.file_name)
+    end
     vim.api.nvim_command('keepjumps sil! 0')
     -- Addresses #133, basically saying "ya we don't care if the read event has an
     -- error, deal with it and move on"
