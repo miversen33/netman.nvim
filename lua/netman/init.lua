@@ -60,7 +60,7 @@ function M.read(...)
             local buffer = vim.fn.bufnr(file)
             vim.api.nvim_set_current_buf(buffer)
         end
-        require("netman.ui").render_command_and_clean_buffer(command)
+        require("netman.ui").render_command_and_clean_buffer(command, { file_name = file })
         ::continue::
     end
 end
