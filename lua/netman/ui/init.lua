@@ -211,11 +211,12 @@ function M.get_least_common_path(paths)
 end
 
 function M.render_command_and_clean_buffer(render_command, opts)
-    opts = {
-        nomod = 1,
-        detect_filetype = 1
-    } or opts
-    local undo_levels = vim.api.nvim_get_option('undolevels')
+    opts = opts or {}
+    -- Probably should just let vim do this?
+    opts.nomod = opts.nomod or 1
+    opts.detect_filetype = opts.detect_filetype or 1
+    opts.file_name = opts.file_name or ""
+    opts.buffer = opts.buffer or vim.api.nvim_get_current_buf()
     vim.api.nvim_command('keepjumps sil! 0')
     -- Addresses #133, basically saying "ya we don't care if the read event has an
     -- error, deal with it and move on"
