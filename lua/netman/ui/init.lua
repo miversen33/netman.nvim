@@ -268,6 +268,7 @@ function M.render_command_and_clean_buffer(render_command, opts)
     if opts.file_name and vim.api.nvim_buf_get_name(opts.buffer) ~= opts.file_name then
         vim.api.nvim_buf_set_name(opts.buffer, opts.file_name)
     end
+    vim.api.nvim_buf_set_lines(opts.buffer, 0, -1, true, {})
     local focus_buffer = opts.buffer ~= vim.api.nvim_get_current_buf()
     local undo_levels = vim.api.nvim_get_option_value('undolevels', {buf = opts.buffer})
     vim.api.nvim_command('keepjumps sil! 0')
