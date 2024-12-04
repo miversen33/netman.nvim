@@ -23,7 +23,7 @@ local find_pattern_globs = {
     '^(INODE)=(>?)([%d]+),',
     '^(PERMISSIONS)=(>?)([%d]+),',
     '^(SIZE)=(>?)([%d]+),',
-    '^(TYPE)=(>?)([%u%l%s]+),',
+    '^(TYPE)=(>?)([%l%s]+),',
     '^(NAME)=(>?)(.*)$'
 }
 
@@ -56,14 +56,6 @@ local SSH = {
             TYPE = 'TYPE',
             NAME = 'NAME',
             URI = 'URI'
-        },
-        STAT_COMMAND_FLAGS = {
-            FREEBSD = {'-L', '-f', 'MODE=%Xp,BLOCKS=%b,BLKSIZE=%k,MTIME_SEC=%m,USER=%Su,GROUP=%Sg,INODE=%i,PERMISSIONS=%OLp,SIZE=%z,TYPE=%HT,NAME=%N'},
-            LINUX = {'-L','-c','MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'},
-        },
-        FIND_COMMAND_FLAGS = {
-            FREEBSD = {'-L', '-f', '\\|MODE=%Xp,BLOCKS=\\>%b,BLKSIZE=\\>%k,MTIME_SEC=\\>%m,USER=%Su,GROUP=%Sg,INODE=\\>%i,PERMISSIONS=\\>%OLp,SIZE=\\>%z,TYPE=%HT,NAME=%N\\|'},
-            LINUX = {'-L', '-c', '\\|MODE=%f,BLOCKS=\\>%b,BLKSIZE=\\>%B,MTIME_SEC=\\>%X,USER=%U,GROUP=%G,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%s,TYPE=%F,NAME=%n\\|'},
         },
         SSH_CONNECTION_TIMEOUT = 10,
         SSH_SOCKET_FILE_NAME = '%C', -- Much more compressed way to represent the "same" connection details
@@ -156,10 +148,14 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh.console_command, 'ControlMaster=auto')
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, 'ControlMaster=auto')
-        table.insert(_ssh.console_command, '-o')
-        table.insert(_ssh.console_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
-        table.insert(_ssh._put_command, '-o')
-        table.insert(_ssh._put_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+
+    table.insert(_ssh.console_command, '-o')
+    table.insert(_ssh.console_command,
+        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+    table.insert(_ssh._put_command, '-o')
+    table.insert(_ssh._put_command,
+        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+
         table.insert(_ssh.console_command, '-o')
         table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
         table.insert(_ssh._put_command, '-o')
@@ -250,24 +246,6 @@ function SSH:_get_os()
         return "Unknown"
     end
     return output.stdout:gsub('["\']', '')
-end
-
-function SSH:_get_stat_flags()
-    -- Check to see if we are on 'nix or bsd?
-    logger.trace(string.format("Checking Available Stat Type for %s", self.host))
-    local output = self:run_command('stat --version', { [command_flags.STDOUT_JOIN] = ''})
-    if output.exit_code ~= 0 then
-        logger.warn(string.format("Unable to find stat coammnd for %s", self.name))
-    end
-    if self.os:match('BSD') then
-        -- This is a BSD system
-        self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.FREEBSD
-        -- TODO: This should probably be its own method as well
-        self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.FREEBSD
-    else
-        self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.LINUX
-        self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.LINUX
-    end
 end
 
 function SSH:_get_archive_availability_details()
@@ -1411,11 +1389,13 @@ function SSH:stat(locations, target_flags, opts)
         }
         if callback then callback(return_details) end
     end
+    local stat_flags = {
+        '-L',
+        '-c',
+        'MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
+    }
     local stat_command = { 'stat' }
-    if not self.stat_flags then
-        self:_get_stat_flags()
-    end
-    for _, flag in ipairs(self.stat_flags) do
+    for _, flag in ipairs(stat_flags) do
         table.insert(stat_command, flag)
     end
     local __ = {}
@@ -1872,11 +1852,7 @@ end
 
 function M.internal.read_directory(uri, host, callback)
     logger.tracef("Reading %s as directory", uri:to_string("remote"))
-    
-    if not host.find_flags then
-        host:_get_stat_flags()
-    end
-    local find_cmd = 'stat ' .. table.concat(host.find_flags, ' ')
+    local find_cmd = 'stat -L -c \\|MODE=%f,BLOCKS=\\>%b,BLKSIZE=\\>%B,MTIME_SEC=\\>%X,USER=%U,GROUP=%G,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%s,TYPE=%F,NAME=%n\\|'
 
     local partial_output = {}
     local children = {}
@@ -2070,7 +2046,7 @@ function M.read_a(uri, cache, callback)
         }
     end
     -- If the container is running there is no reason we can't quickly stat the file in question...
-    if stat.FIELD_TYPE == metadata_options.LINK then
+    if stat.TYPE == 'directory' then
         return {
             type = api_flags.READ_TYPE.EXPLORE,
             handle = M.internal.read_directory(uri, host, callback)
@@ -2157,10 +2133,7 @@ function M.internal.find(uri, host, opts)
     opts = opts or {}
     if not opts.exec then
         -- TODO: Why is this the default? This should be a variable that we provide when we wish to do opts.exec...
-        if not host.find_flags then
-            host:_get_stat_flags()
-        end
-        opts.exec= 'stat ' .. table.concat(host.find_flags, ' ')
+        opts.exec = 'stat -L -c \\|MODE=%f,BLOCKS=\\>%b,BLKSIZE=\\>%B,MTIME_SEC=\\>%X,USER=%U,GROUP=%G,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%s,TYPE=%F,NAME=%n\\|'
     end
     local data_cache = nil
     if opts.callback then
