@@ -170,6 +170,10 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
         table.insert(_ssh.console_command, '-o')
+        table.insert(_ssh.console_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        table.insert(_ssh._put_command, '-o')
+        table.insert(_ssh._put_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        table.insert(_ssh.console_command, '-o')
         table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
@@ -293,6 +297,24 @@ end
 function SSH:_get_stat_flags()
     if self.os:match('BSD') or self.os:match('macos') then
         self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.FREEBSD
+        self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.FREEBSD
+    else
+        self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.LINUX
+        self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.LINUX
+    end
+end
+
+function SSH:_get_stat_flags()
+    -- Check to see if we are on 'nix or bsd?
+    logger.trace(string.format("Checking Available Stat Type for %s", self.host))
+    local output = self:run_command('stat --version', { [command_flags.STDOUT_JOIN] = ''})
+    if output.exit_code ~= 0 then
+        logger.warn(string.format("Unable to find stat coammnd for %s", self.name))
+    end
+    if self.os:match('BSD') then
+        -- This is a BSD system
+        self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.FREEBSD
+        -- TODO: This should probably be its own method as well
         self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.FREEBSD
     else
         self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.LINUX
