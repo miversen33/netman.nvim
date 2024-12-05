@@ -239,30 +239,51 @@ function SSH:_set_user_password(new_password)
 end
 
 function SSH:_get_os()
-    logger.trace(string.format("Checking OS For Host %s", self.host))
-    local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
+    local result = "Unknown"
+
+    local _get_os_command = "uname" -- Portable (POSIX) way to get the OS
     local output = self:run_command(_get_os_command, {
         [command_flags.STDOUT_JOIN] = '',
         [command_flags.STDERR_JOIN] = ''
     })
-    if output.exit_code ~= 0 then
-        logger.warn(string.format("Unable to identify operating system for %s", self.host))
-        return "Unknown"
+
+    if output.exit_code ~= 0 or not output.stdout or output.stdout == "" then
+        -- Workaround to detect Windows:
+        -- Check if the path separator is backslash
+        if package.config:sub(1, 1) == "\\" then
+            result = "windows"
+        end
+    else
+        result = output.stdout:gsub('^%s+',""):gsub("%s+$", "") -- Remove surrounding whitespace
+        if result == "Linux" then
+            result = "linux"
+
+            -- Get Distribution
+            local cmd = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
+            local distro_output = self:run_command(cmd, {
+                [command_flags.STDOUT_JOIN] = '',
+                [command_flags.STDERR_JOIN] = ''
+            })
+            logger.debug("Distro Output", distro_output)
+            if distro_output.exit_code == 0 and distro_output.stdout:len() > 0 then
+                result = distro_output.stdout:gsub('^%s+',""):gsub("%s+$", "") -- Remove surrounding whitespace
+                result = result:gsub('["\']', '') -- Remove extra quotes
+            end
+        elseif result == "Darwin" then
+            result = "macos"
+        elseif result:find("BSD") then
+            result = result:match("%w+BSD")
+        else
+            result = "Unknown"
+        end
     end
-    return output.stdout:gsub('["\']', '')
+    logger.debug("Result", result)
+    return result
 end
 
 function SSH:_get_stat_flags()
-    -- Check to see if we are on 'nix or bsd?
-    logger.trace(string.format("Checking Available Stat Type for %s", self.host))
-    local output = self:run_command('stat --version', { [command_flags.STDOUT_JOIN] = ''})
-    if output.exit_code ~= 0 then
-        logger.warn(string.format("Unable to find stat coammnd for %s", self.name))
-    end
-    if self.os:match('BSD') then
-        -- This is a BSD system
+    if self.os:match('BSD') or self.os:match('macos') then
         self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.FREEBSD
-        -- TODO: This should probably be its own method as well
         self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.FREEBSD
     else
         self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.LINUX
