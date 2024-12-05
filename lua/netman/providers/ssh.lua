@@ -241,6 +241,7 @@ end
 function SSH:_get_os()
     local result = "Unknown"
 
+    logger.trace(string.format("Checking OS For Host %s", self.host))
     local _get_os_command = "uname" -- Portable (POSIX) way to get the OS
     local output = self:run_command(_get_os_command, {
         [command_flags.STDOUT_JOIN] = '',
@@ -273,6 +274,7 @@ function SSH:_get_os()
         elseif result:find("BSD") then
             result = result:match("%w+BSD")
         else
+            logger.warn(string.format("Unable to identify operating system for %s", self.host))
             result = "Unknown"
         end
     end
