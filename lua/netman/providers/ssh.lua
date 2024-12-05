@@ -264,7 +264,6 @@ function SSH:_get_os()
                 [command_flags.STDOUT_JOIN] = '',
                 [command_flags.STDERR_JOIN] = ''
             })
-            logger.debug("Distro Output", distro_output)
             if distro_output.exit_code == 0 and distro_output.stdout:len() > 0 then
                 result = distro_output.stdout:gsub('^%s+',""):gsub("%s+$", "") -- Remove surrounding whitespace
                 result = result:gsub('["\']', '') -- Remove extra quotes
@@ -277,7 +276,6 @@ function SSH:_get_os()
             result = "Unknown"
         end
     end
-    logger.debug("Result", result)
     return result
 end
 
