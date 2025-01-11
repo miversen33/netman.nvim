@@ -115,14 +115,14 @@ function SSH:new(auth_details, provider_cache)
         return provider_cache:get_item(cache_key)
     end
     local _ssh = {}
+    local ssh_config = require("netman.api").internal.get_config('netman.providers.ssh'):get('hosts')[auth_details.host]
     _ssh.protocol = 'ssh'
     _ssh._auth_details = auth_details
     _ssh.host = _ssh._auth_details.host
-    _ssh.pass = _ssh._auth_details.password or ''
-    _ssh.user = _ssh._auth_details.user or ''
-    _ssh.port = _ssh._auth_details.port or ''
-    _ssh.key  = _ssh._auth_details.key or ''
-    _ssh.__type = 'netman_provider_ssh'
+    _ssh.pass = _ssh._auth_details.password or ssh_config.password or ''
+    _ssh.user = _ssh._auth_details.user or ssh_config.user or ''
+    _ssh.port = _ssh._auth_details.port or ssh_config.port or ''
+    _ssh.key  = _ssh._auth_details.key or ssh_config.identityfile or ''    _ssh.__type = 'netman_provider_ssh'
     _ssh.cache = CACHE:new(CACHE.FOREVER)
 
     _ssh.console_command = { 'ssh' }
@@ -141,6 +141,14 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh._put_command, '-i')
         table.insert(_ssh.console_command, _ssh.key)
         table.insert(_ssh._put_command, _ssh.key)
+    end
+    if ssh_config.proxyjump then
+        table.insert(_ssh.console_command, '-J')
+        table.insert(_ssh.console_command, ssh_config.proxyjump)
+        table.insert(_ssh._put_command, '-J')
+        table.insert(_ssh._put_command, ssh_config.proxyjump)
+        table.insert(_ssh._get_command, '-J')
+        table.insert(_ssh._get_command, ssh_config.proxyjump)
     end
 
     if utils.os ~= 'windows' then
