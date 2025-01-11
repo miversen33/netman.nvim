@@ -12,6 +12,7 @@ local utils = require("netman.tools.utils")
 local logger = require("netman.tools.utils").get_provider_logger()
 
 local HOST_MATCH_GLOB = "^[%s]*Host[%s=](.*)"
+local HOST_ITEM_GLOB = "^[%s]*([^%s]+)[%s]*(.*)$"
 
 local find_pattern_globs = {
     '^(MODE)=(>?)([%d%a]+),',
@@ -114,14 +115,14 @@ function SSH:new(auth_details, provider_cache)
         return provider_cache:get_item(cache_key)
     end
     local _ssh = {}
+    local ssh_config = require("netman.api").internal.get_config('netman.providers.ssh'):get('hosts')[auth_details.host]
     _ssh.protocol = 'ssh'
     _ssh._auth_details = auth_details
     _ssh.host = _ssh._auth_details.host
-    _ssh.pass = _ssh._auth_details.password or ''
-    _ssh.user = _ssh._auth_details.user or ''
-    _ssh.port = _ssh._auth_details.port or ''
-    _ssh.key  = _ssh._auth_details.key or ''
-    _ssh.__type = 'netman_provider_ssh'
+    _ssh.pass = _ssh._auth_details.password or ssh_config.password or ''
+    _ssh.user = _ssh._auth_details.user or ssh_config.user or ''
+    _ssh.port = _ssh._auth_details.port or ssh_config.port or ''
+    _ssh.key  = _ssh._auth_details.key or ssh_config.identityfile or ''    _ssh.__type = 'netman_provider_ssh'
     _ssh.cache = CACHE:new(CACHE.FOREVER)
 
     _ssh.console_command = { 'ssh' }
@@ -141,6 +142,14 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh.console_command, _ssh.key)
         table.insert(_ssh._put_command, _ssh.key)
     end
+    if ssh_config.proxyjump then
+        table.insert(_ssh.console_command, '-J')
+        table.insert(_ssh.console_command, ssh_config.proxyjump)
+        table.insert(_ssh._put_command, '-J')
+        table.insert(_ssh._put_command, ssh_config.proxyjump)
+        table.insert(_ssh._get_command, '-J')
+        table.insert(_ssh._get_command, ssh_config.proxyjump)
+    end
 
     if utils.os ~= 'windows' then
         -- Sorry Windows users, windows doesn't support ssh multiplexing :(
@@ -149,12 +158,12 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, 'ControlMaster=auto')
 
-    table.insert(_ssh.console_command, '-o')
-    table.insert(_ssh.console_command,
+        table.insert(_ssh.console_command, '-o')
+        table.insert(_ssh.console_command,
         string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
-    table.insert(_ssh._put_command, '-o')
-    table.insert(_ssh._put_command,
-        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        table.insert(_ssh._put_command, '-o')
+        table.insert(_ssh._put_command,
+            string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
 
         table.insert(_ssh.console_command, '-o')
         table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
@@ -1828,15 +1837,31 @@ function M.internal.parse_user_sshconfig(config, ssh_config)
     end
 
     local hosts = config:get('hosts')
+
+    local current_host = {}
     for line in _config:lines() do
-        local host = line:match(HOST_MATCH_GLOB)
-        if host then
-            -- Removing any trailing padding
-            host = host:gsub('[%s]*$', '')
-            logger.trace(string.format("Processing SSH host: %s", host))
-            if host ~= '*' and not hosts[host] then
-                hosts[host] = {}
+        local host_line = line:match(HOST_MATCH_GLOB)
+        if host_line then
+            logger.trace(string.format("Processing SSH host: %s", host_line))
+            if current_host.Host then
+                local previous_hostname = current_host.Host
+                current_host.Host = nil
+                hosts[previous_hostname] = current_host
+                logger.trace(string.format("Saving SSH Host: %s", previous_hostname), current_host)
             end
+            local hostname = host_line:gsub('[%s]*$', '')
+            current_host = { Host = hostname }
+            -- We found a new host line
+        end
+        local key, value = line:match(HOST_ITEM_GLOB)
+        if key then
+            key = key:lower()
+            if key == 'port' then
+                value = tonumber(value)
+            else
+                value = value:lower()
+            end
+            current_host[key:lower()] = value
         end
     end
     config:save()
@@ -1846,6 +1871,7 @@ function M.internal.validate(uri, cache)
     assert(cache, string.format("No cache provided for read of %s", uri))
     ---@diagnostic disable-next-line: cast-local-type
     uri = M.internal.URI:new(uri, cache)
+
     local host = M.internal.SSH:new(uri, cache)
     return { uri = uri, host = host }
 end
