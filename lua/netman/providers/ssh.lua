@@ -150,12 +150,12 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, 'ControlMaster=auto')
 
-    table.insert(_ssh.console_command, '-o')
-    table.insert(_ssh.console_command,
+        table.insert(_ssh.console_command, '-o')
+        table.insert(_ssh.console_command,
         string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
-    table.insert(_ssh._put_command, '-o')
-    table.insert(_ssh._put_command,
-        string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
+        table.insert(_ssh._put_command, '-o')
+        table.insert(_ssh._put_command,
+            string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
 
         table.insert(_ssh.console_command, '-o')
         table.insert(_ssh.console_command, string.format('ControlPersist=%s', SSH.CONSTANTS.SSH_CONNECTION_TIMEOUT))
@@ -1863,6 +1863,7 @@ function M.internal.validate(uri, cache)
     assert(cache, string.format("No cache provided for read of %s", uri))
     ---@diagnostic disable-next-line: cast-local-type
     uri = M.internal.URI:new(uri, cache)
+
     local host = M.internal.SSH:new(uri, cache)
     return { uri = uri, host = host }
 end
