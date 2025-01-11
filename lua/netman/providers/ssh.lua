@@ -12,6 +12,7 @@ local utils = require("netman.tools.utils")
 local logger = require("netman.tools.utils").get_provider_logger()
 
 local HOST_MATCH_GLOB = "^[%s]*Host[%s=](.*)"
+local HOST_ITEM_GLOB = "^[%s]*([^%s]+)[%s]*(.*)$"
 
 local find_pattern_globs = {
     '^(MODE)=(>?)([%d%a]+),',
@@ -1828,15 +1829,31 @@ function M.internal.parse_user_sshconfig(config, ssh_config)
     end
 
     local hosts = config:get('hosts')
+
+    local current_host = {}
     for line in _config:lines() do
-        local host = line:match(HOST_MATCH_GLOB)
-        if host then
-            -- Removing any trailing padding
-            host = host:gsub('[%s]*$', '')
-            logger.trace(string.format("Processing SSH host: %s", host))
-            if host ~= '*' and not hosts[host] then
-                hosts[host] = {}
+        local host_line = line:match(HOST_MATCH_GLOB)
+        if host_line then
+            logger.trace(string.format("Processing SSH host: %s", host_line))
+            if current_host.Host then
+                local previous_hostname = current_host.Host
+                current_host.Host = nil
+                hosts[previous_hostname] = current_host
+                logger.trace(string.format("Saving SSH Host: %s", previous_hostname), current_host)
             end
+            local hostname = host_line:gsub('[%s]*$', '')
+            current_host = { Host = hostname }
+            -- We found a new host line
+        end
+        local key, value = line:match(HOST_ITEM_GLOB)
+        if key then
+            key = key:lower()
+            if key == 'port' then
+                value = tonumber(value)
+            else
+                value = value:lower()
+            end
+            current_host[key:lower()] = value
         end
     end
     config:save()
