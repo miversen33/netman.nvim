@@ -115,7 +115,8 @@ function SSH:new(auth_details, provider_cache)
         return provider_cache:get_item(cache_key)
     end
     local _ssh = {}
-    local ssh_config = require("netman.api").internal.get_config('netman.providers.ssh'):get('hosts')[auth_details.host]
+    local ssh_config = require("netman.api").internal.get_config("netman.providers.ssh"):get("hosts")[auth_details.host]
+        or self:get_config_with_g(auth_details.host)
     _ssh.protocol = 'ssh'
     _ssh._auth_details = auth_details
     _ssh.host = _ssh._auth_details.host
@@ -213,6 +214,36 @@ function SSH:new(auth_details, provider_cache)
     setmetatable(_ssh, self)
     provider_cache:add_item(cache_key, _ssh)
     return _ssh
+end
+
+--- Retrieves the SSH configuration for a given host using `ssh -G`.
+--- This command outputs the configuration in a key-value format.
+--- The function parses this output into a Lua table.
+---
+--- @param host string The host for which to retrieve the SSH configuration.
+--- @return table A table containing the parsed SSH configuration,
+---                where keys are lowercase configuration items (e.g., 'port', 'hostname')
+---                and values are their corresponding string or number values.
+function SSH:get_config_with_g(host)
+    local _shell = shell:new({'ssh', '-G', host}, {
+        [command_flags.STDERR_JOIN] = ''
+    })
+    local _shell_output = _shell:run()
+
+    local _config = {}
+    for _,line in ipairs(_shell_output.stdout) do
+        local key, value = line:match(HOST_ITEM_GLOB)
+        if key then
+            key = key:lower()
+            if key == 'port' then
+                value = tonumber(value)
+            else
+                value = value:lower()
+            end
+            _config[key:lower()] = value
+        end
+    end
+    return _config
 end
 
 function SSH:_set_user_password(new_password)
