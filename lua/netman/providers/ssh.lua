@@ -19,12 +19,12 @@ local find_pattern_globs = {
     '^(BLOCKS)=(>?)([%d]+),',
     '^(BLKSIZE)=(>?)([%d]+),',
     '^(MTIME_SEC)=(>?)([%d]+),',
-    '^(USER)=(>?)([%w%-._]+),',
+    '^(USER)=(>?)([^,]+),',
     '^(GROUP)=(>?)([%w%s%-._]+),',
     '^(INODE)=(>?)([%d]+),',
     '^(PERMISSIONS)=(>?)([%d]+),',
     '^(SIZE)=(>?)([%d]+),',
-    '^(TYPE)=(>?)([%l%s]+),',
+    '^(TYPE)=(>?)([%a%s]+),',
     '^(NAME)=(>?)(.*)$'
 }
 
@@ -244,17 +244,36 @@ function SSH:_set_user_password(new_password)
 end
 
 function SSH:_get_os()
+    if self.os then
+        return self.os
+    end
     logger.trace(string.format("Checking OS For Host %s", self.host))
-    local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
-    local output = self:run_command(_get_os_command, {
-        [command_flags.STDOUT_JOIN] = '',
-        [command_flags.STDERR_JOIN] = ''
-    })
-    if output.exit_code ~= 0 then
-        logger.warn(string.format("Unable to identify operating system for %s", self.host))
+
+    local uname_output = self:run_command('uname -s')
+    if uname_output.exit_code ~= 0 or not uname_output.stdout or uname_output.stdout:len() == 0 then
+        logger.warn(string.format("Unable to run uname on %s", self.host))
         return "Unknown"
     end
-    return output.stdout:gsub('["\']', '')
+    local kernel = vim.trim(uname_output.stdout)
+
+    if kernel == 'Darwin' then
+        -- 'apple' works better for nvim-web-devicons
+        self.os = "Apple"
+    elseif kernel == 'Linux' then
+        local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
+        local output = self:run_command(_get_os_command, {
+            [command_flags.STDOUT_JOIN] = '',
+            [command_flags.STDERR_JOIN] = ''
+        })
+        if output.exit_code ~= 0 then
+            logger.warn(string.format("Unable to identify operating system for %s", self.host))
+            return "Unknown"
+        end
+        self.os = output.stdout:gsub('["\']', '')
+    else
+        self.os = kernel
+    end
+    return self.os
 end
 
 function SSH:_get_archive_availability_details()
@@ -1399,10 +1418,19 @@ function SSH:stat(locations, target_flags, opts)
         if callback then callback(return_details) end
     end
     local stat_flags = {
-        '-L',
-        '-c',
-        'MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
+        Apple = {
+            '-L',
+            '-f',
+            'MODE=%p,BLOCKS=%b,BLKSIZE=%k,MTIME_SEC=%m,USER=%Su,GROUP=%Sg,INODE=%i,PERMISSIONS=%a,SIZE=%z,TYPE=%HT,NAME=%N'
+        },
+        Linux = {
+            '-L',
+            '-c',
+            'MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n'
+        },
     }
+    local os = self:_get_os()
+    stat_flags = stat_flags[os] or stat_flags.Linux
     local stat_command = { 'stat' }
     for _, flag in ipairs(stat_flags) do
         table.insert(stat_command, flag)
@@ -1458,6 +1486,9 @@ function SSH:_stat_parse(stat_output, target_flags)
             line = line:gsub(pattern, '')
             if is_number:len() > 0 then
                 value = tonumber(value)
+            end
+            if key:upper() == 'TYPE' and value then
+                value = value:lower()
             end
             if target_flags[key:upper()] then
                 item[key:upper()] = value
@@ -1879,6 +1910,9 @@ end
 function M.internal.read_directory(uri, host, callback)
     logger.tracef("Reading %s as directory", uri:to_string("remote"))
     local find_cmd = 'stat -L -c \\|MODE=%f,BLOCKS=\\>%b,BLKSIZE=\\>%B,MTIME_SEC=\\>%X,USER=%U,GROUP=%G,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%s,TYPE=%F,NAME=%n\\|'
+    if host.os == 'Apple' then
+        find_cmd = 'stat -L -f \\|MODE=%p,BLOCKS=\\>%b,BLKSIZE=\\>%k,MTIME_SEC=\\>%m,USER=%Su,GROUP=%Sg,INODE=\\>%i,PERMISSIONS=\\>%a,SIZE=\\>%z,TYPE=%HT,NAME=%N\\|'
+    end
 
     local partial_output = {}
     local children = {}
