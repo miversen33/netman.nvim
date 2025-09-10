@@ -283,7 +283,7 @@ function SSH:_get_os()
                 result = result:gsub('["\']', '') -- Remove extra quotes
             end
         elseif result == "Darwin" then
-            result = "macos"
+            result = "apple"
         elseif result:find("BSD") then
             result = result:match("%w+BSD")
         else
