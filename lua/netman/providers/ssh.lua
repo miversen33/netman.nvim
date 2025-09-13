@@ -19,7 +19,7 @@ local find_pattern_globs = {
     '^(BLOCKS)=(>?)([%d]+),',
     '^(BLKSIZE)=(>?)([%d]+),',
     '^(MTIME_SEC)=(>?)([%d]+),',
-    '^(USER)=(>?)([^,]+)',
+    '^(USER)=(>?)([^,]+),',
     '^(GROUP)=(>?)([%w%s%-._]+),',
     '^(INODE)=(>?)([%d]+),',
     '^(PERMISSIONS)=(>?)([%d]+),',
@@ -130,7 +130,8 @@ function SSH:new(auth_details, provider_cache)
     _ssh.pass = _ssh._auth_details.password or ssh_config.password or ''
     _ssh.user = _ssh._auth_details.user or ssh_config.user or ''
     _ssh.port = _ssh._auth_details.port or ssh_config.port or ''
-    _ssh.key  = _ssh._auth_details.key or ssh_config.identityfile or ''    _ssh.__type = 'netman_provider_ssh'
+    _ssh.key  = _ssh._auth_details.key or ssh_config.identityfile or ''
+    _ssh.__type = 'netman_provider_ssh'
     _ssh.cache = CACHE:new(CACHE.FOREVER)
 
     _ssh.console_command = { 'ssh' }
@@ -165,10 +166,6 @@ function SSH:new(auth_details, provider_cache)
         table.insert(_ssh.console_command, 'ControlMaster=auto')
         table.insert(_ssh._put_command, '-o')
         table.insert(_ssh._put_command, 'ControlMaster=auto')
-        table.insert(_ssh.console_command, '-o')
-        table.insert(_ssh.console_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
-        table.insert(_ssh._put_command, '-o')
-        table.insert(_ssh._put_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
         table.insert(_ssh.console_command, '-o')
         table.insert(_ssh.console_command, string.format('ControlPath="%s%s"', socket_files, SSH.CONSTANTS.SSH_SOCKET_FILE_NAME))
         table.insert(_ssh._put_command, '-o')
@@ -295,26 +292,8 @@ function SSH:_get_os()
 end
 
 function SSH:_get_stat_flags()
-    if self.os:match('BSD') or self.os:match('macos') then
+    if self.os:match('BSD') or self.os:match('apple') then
         self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.FREEBSD
-        self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.FREEBSD
-    else
-        self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.LINUX
-        self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.LINUX
-    end
-end
-
-function SSH:_get_stat_flags()
-    -- Check to see if we are on 'nix or bsd?
-    logger.trace(string.format("Checking Available Stat Type for %s", self.host))
-    local output = self:run_command('stat --version', { [command_flags.STDOUT_JOIN] = ''})
-    if output.exit_code ~= 0 then
-        logger.warn(string.format("Unable to find stat coammnd for %s", self.name))
-    end
-    if self.os:match('BSD') then
-        -- This is a BSD system
-        self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.FREEBSD
-        -- TODO: This should probably be its own method as well
         self.find_flags = SSH.CONSTANTS.FIND_COMMAND_FLAGS.FREEBSD
     else
         self.stat_flags = SSH.CONSTANTS.STAT_COMMAND_FLAGS.LINUX
@@ -1398,7 +1377,7 @@ end
 ---             the results, instead just calling this with the same big table as we would return synchronously
 --- @return table
 ---     The output of this function depends on if `opts.async` is defined or not.
----     If it is, this function will return 
+---     If it is, this function will return
 ---     - Returns a table where each key is the uri's _local_ name, and its value is a stat table
 ---     containing at most, the following keys
 ---         - mode
@@ -1941,7 +1920,7 @@ end
 
 function M.internal.read_directory(uri, host, callback)
     logger.tracef("Reading %s as directory", uri:to_string("remote"))
-    
+
     if not host.find_flags then
         host:_get_stat_flags()
     end
@@ -2525,7 +2504,7 @@ function M.connect_host_a(uri, cache, exit_callback)
 end
 
 function M.close_connection(uri, cache)
-    
+
 end
 
 function M.get_metadata_a(uri, cache, flags, callback)
