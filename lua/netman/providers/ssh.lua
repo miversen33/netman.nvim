@@ -123,7 +123,7 @@ function SSH:new(auth_details, provider_cache)
         return provider_cache:get_item(cache_key)
     end
     local _ssh = {}
-    local ssh_config = require("netman.api").internal.get_config('netman.providers.ssh'):get('hosts')[auth_details.host]
+    local ssh_config = require("netman.api").internal.get_config('netman.providers.ssh'):get('hosts')[auth_details.host] or {}
     _ssh.protocol = 'ssh'
     _ssh._auth_details = auth_details
     _ssh.host = _ssh._auth_details.host
