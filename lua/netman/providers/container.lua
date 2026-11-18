@@ -66,19 +66,19 @@ function M:new(provider_name, container_name, provider_cache)
     end
 
     local _container = {}
-    self.__index = function(_table, _key)
-        if _key == 'os' then
-            return M._get_os(_table)
+    self.__index = function(table, key)
+        if key == 'os' then
+            return M._get_os(table)
         end
 
-        if _key == 'archive_schemes' or _key == '_archive_commands' or _key == '_extract_commands' then
-            local details = M._get_archive_availability_details(_table)
-            _table.archive_schemes = details.archive_schemes
-            _table._extract_commands = details.extract_commands
-            _table._archive_commands = details.archive_commands
-            return _table[_key]
+        if key == 'archive_schemes' or key == '_archive_commands' or key == '_extract_commands' then
+            local details = M._get_archive_availability_details(table)
+            table.archive_schemes = details.archive_schemes
+            table._extract_commands = details.extract_commands
+            table._archive_commands = details.archive_commands
+            return table[key]
         end
-        return self[_key]
+        return self[key]
     end
 
     setmetatable(_container, self)
@@ -457,7 +457,7 @@ end
 ---     Default: {}
 ---     A 2D table that can contain any of the following key, value pairs
 ---     - async: boolean
----         - If provided, we will perform the archive asychronously. It is recommended that 
+---         - If provided, we will perform the archive asychronously. It is recommended that
 ---         this is used with finish_callback
 ---     - remote_dump: boolean
 ---         - If provided, indicates that the archive_dir is remote (on the container)
@@ -485,7 +485,7 @@ end
 ---     local cache = cache
 ---     local container = Container:new('ubuntu')
 ---     container:archive('/tmp', '/tmp/', {'tar.gz'}, cache)
-function M:archive(locations, archive_dir, compatible_scheme_list, provider_cache, opts)
+function M:archive(locations, archive_dir, compatible_scheme_list, _provider_cache, opts)
     opts = opts or {}
     local return_details = {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
@@ -596,7 +596,7 @@ end
 ---     -- or :help netman.api.providers
 ---     local cache = cache
 ---     -- Additionally, it assumes that `/tmp/some.tar.gz` exists on the local machine
----     local container = Contaier:new('ubuntu')
+---     local container = Container:new('ubuntu')
 ---     container:extract('/tmp/some.tar.gz', '/tmp/', 'tar.gz', cache)
 ---     -- TODO: Add an example of how to do an extract with a Pipe...
 function M:extract(archive, target_dir, scheme, provider_cache, opts)
@@ -624,7 +624,7 @@ function M:extract(archive, target_dir, scheme, provider_cache, opts)
     assert(target_dir.__type and target_dir.__type == 'netman_uri',
         string.format("%s is not a valid netman uri", target_dir))
     -- If the archive isn't remote, we will want to craft a different command to extract it.
-    local extract_command = nil
+    local extract_command
     local cleanup = nil
     local mkdir_status = self:mkdir(target_dir, { force = true })
     if not mkdir_status or not mkdir_status.success then
@@ -673,7 +673,7 @@ function M:extract(archive, target_dir, scheme, provider_cache, opts)
         end
         local command = shell:new(extract_command, command_options)
         command:run()
-        local stream = nil
+        local stream
         while true do
             -- NOTE:
             -- We will probably want to tweak this a bit to get better
@@ -715,7 +715,7 @@ end
 ---     - success: boolean
 ---         A true/false on if we successfully executed the requested copy
 ---     - message: string | nil
----         Any messages that occured during the copy. Note, if opts.ignore_errors was provided, even if we 
+---         Any messages that occured during the copy. Note, if opts.ignore_errors was provided, even if we
 ---         get an error, it will not be returned. Ye be warned.
 --- @example
 ---     local container = Container:new('ubuntu')
@@ -931,7 +931,7 @@ function M:rm(locations, opts)
     return { success = true }
 end
 
---- 
+---
 --- @param location string or URI
 ---     The location to find from
 --- @param search_param string
@@ -1016,8 +1016,6 @@ function M:find(location, opts)
         elseif type(opts.exec) == 'function' then
             command_options[command_flags.STDOUT_CALLBACK] = opts.exec
             command_options[command_flags.STDOUT_PIPE_LIMIT] = 0
-        else
-            -- complain about invalid exec type?
         end
     end
     local output =  self:run_command(table.concat(find_command, ' '), command_options)
@@ -1193,7 +1191,7 @@ function M:get(location, output_dir, opts)
         return_details = { success = true }
         if opts.finish_callback then opts.finish_callback(return_details) end
     end
-    local copy_command = nil
+    local copy_command
     local command_options = {
         [command_flags.STDERR_JOIN] = '',
         [command_flags.EXIT_CALLBACK] = finish_callback
@@ -1373,7 +1371,7 @@ function M:stat_mod(locations, targets, permission_mods, opts)
     opts = opts or {}
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     assert(targets, "Invalid user/group/nobody target provided")
-    local command = ''
+    local command
     if type(targets) == 'string' then
         logger.debug("I hope you know what you're doing by specifying your own permissions raw. Applying", permission_mods)
         command = string.format("chmod %s", targets)
@@ -1405,7 +1403,7 @@ function M:stat_mod(locations, targets, permission_mods, opts)
                 permission = permission .. 'x'
             end
         end
-        local _mod = ''
+        local _mod
         if opts.remove_mod then _mod = '-' else _mod = '+' end
         command = string.format('chmod %s%s%s', target, _mod, permission)
     end
@@ -1441,8 +1439,7 @@ end
 ---     container:own_mod('/tmp/', { user = 'root', group = 'root' })
 ---     -- This will modify the group of /tmp/somedir and /tmp/somedir2 to be nogroup
 ---     container:own_mod({'/tmp/somedir', '/tmp/somedir2'}, { group = 'nogroup' })
-function M:own_mod(locations, ownership, opts)
-    opts = opts or {}
+function M:own_mod(locations, ownership, _opts)
     if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
     assert(ownership, "Invalid ownership provided")
     local command = {'chown'}
@@ -1527,7 +1524,7 @@ end
 ---     - docker://container/bin/sh
 function URI:to_string(type)
     if not type then type = 'local' end
-    local _path = ''
+    local _path
     if type == 'local' then
         _path = table.concat(self.path, '/')
         if not _path then _path = '/' end

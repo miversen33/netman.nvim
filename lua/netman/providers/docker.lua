@@ -171,7 +171,7 @@ function M.internal.read_file(uri, container)
 end
 
 function M.search(uri, cache, param, opts)
-    local container = nil
+    local container
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
     opts = opts or {}
@@ -189,7 +189,7 @@ end
 --- @return table
 ---     @see :help netman.api.read for details on what this returns
 function M.read(uri, cache)
-    local container = nil
+    local container
     local validation = M.internal.validate(uri, cache)
     logger.debug("URI", uri, " -- Validation", validation)
     if validation.message then return validation end
@@ -216,7 +216,7 @@ function M.read(uri, cache)
 end
 
 function M.write(uri, cache, data)
-    local container = nil
+    local container
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
     uri = validation.uri
@@ -262,7 +262,7 @@ function M.write(uri, cache, data)
 end
 
 function M.copy(uris, target_uri, cache)
-    local container = nil
+    local container
     local validation = M.internal.validate(target_uri, cache)
     if validation.message then return validation end
     container = validation.container
@@ -286,7 +286,7 @@ function M.copy(uris, target_uri, cache)
 end
 
 function M.move(uris, target_uri, cache)
-    local container = nil
+    local container
     local validation = M.internal.validate(target_uri, cache)
     if validation.message then return validation end
     container = validation.container
@@ -310,7 +310,7 @@ function M.move(uris, target_uri, cache)
 end
 
 function M.delete(uri, cache)
-    local container = nil
+    local container
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
     uri = validation.uri
@@ -319,7 +319,7 @@ function M.delete(uri, cache)
 end
 
 function M.get_metadata(uri, cache)
-    local container = nil
+    local container
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
     uri = validation.uri
@@ -327,14 +327,10 @@ function M.get_metadata(uri, cache)
     return container:stat(uri)
 end
 
-function M.update_metadata(uri, cache, updates)
+function M.update_metadata(uri, cache, _updates)
     -- TODO:
-    local container = nil
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
-    uri = validation.uri
-    container = validation.container
-
     -- TODO:
 end
 
@@ -359,12 +355,11 @@ function M.get_all_containers()
 end
 
 --- Returns the various containers that are currently available on the system
---- @param config Configuration
---- @param cache Cache
+--- @param _config Configuration
 --- @return table
 ---     Returns a 1 dimensional table containing the name of each available container
 ---@diagnostic disable-next-line: unused-local
-function M.ui.get_hosts(config)
+function M.ui.get_hosts(_config)
     local containers = M.get_all_containers()
     local hosts = {}
     for _, container in ipairs(containers) do
@@ -374,7 +369,7 @@ function M.ui.get_hosts(config)
 end
 
 --- Returns a list of details for a container.
---- @param config Configuration
+--- @param _config Configuration
 --- @param container_name string
 --- @param cache Cache
 --- @return table
@@ -384,7 +379,7 @@ end
 ---     - STATE
 ---     - OS
 ---@diagnostic disable-next-line: unused-local
-function M.ui.get_host_details(config, container_name, cache)
+function M.ui.get_host_details(_config, container_name, cache)
     local container = M.internal.Container:new(container_name, cache)
     local get_state = function()
         local state = container:current_status()
@@ -425,7 +420,7 @@ end
 
 function M.archive.put(uri, cache, archive, compression_scheme)
     assert(archive, string.format("Invalid Archive provided for upload to %s", uri))
-    local container = nil
+    local container
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
     uri = validation.uri
@@ -435,15 +430,14 @@ end
 
 function M.archive.schemes(uri, cache)
     assert(cache, string.format("No cache provided for archive scheme fetch of %s", uri))
-    local container = nil
+    local container
     local validation = M.internal.validate(uri, cache)
     if validation.message then return validation end
-    uri = validation.uri
     container = validation.container
     return container.archive_schemes
 end
 
-function M.close_connection(uri, cache)
+function M.close_connection(_uri, _cache)
 
 end
 
