@@ -15,6 +15,7 @@ Notable functions within the [`api`](#api) are
 The [`Provider`](#providers) is the bridge between the [`api`](#api) and external data sources. Examples of providers are
 - [`netman.providers.ssh`](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/providers/ssh.lua)
 - [`netman.providers.docker`](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/providers/docker.lua)
+- [`netman.providers.podman`](https://github.com/miversen33/netman.nvim/blob/main/lua/netman/providers/podman.lua)
 
 Notable functions within a [`provider`](#providers) are
 - [`read`](#readuri-cache)
