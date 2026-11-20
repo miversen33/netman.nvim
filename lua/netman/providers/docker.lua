@@ -25,7 +25,7 @@ M.internal.Container = Container
 M.internal.URI = Container.URI
 M.name = 'docker'
 M.protocol_patterns = {'docker'}
-M.version = 0.2
+M.version = 0.3
 
 function M.init()
     -- Check if docker is installed??
