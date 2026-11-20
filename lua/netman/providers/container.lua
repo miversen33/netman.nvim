@@ -1,0 +1,1563 @@
+-- TODO: Implement a container capabilities mechanic so we can take advantage of
+-- certain distro traits if they exist
+local logger = require("netman.tools.utils").get_provider_logger()
+local api_flags = require("netman.tools.options").api
+local string_generator = require("netman.tools.utils").generate_string
+local metadata_options = require("netman.tools.options").explorer.METADATA
+local shell = require("netman.tools.shell")
+local command_flags = shell.CONSTANTS.FLAGS
+local CACHE = require("netman.tools.cache")
+
+local container_pattern  = "^([%a%c%d%s%-_%.]*)"
+local find_pattern_globs = {
+    '^(MODE)=([%d%a]+),',
+    '^(BLOCKS)=([%d]+),',
+    '^(BLKSIZE)=([%d]+),',
+    '^(MTIME_SEC)=([%d]+),',
+    '^(USER)=([%w%-._]+),',
+    '^(GROUP)=([%w%-._]+),',
+    '^(INODE)=([%d]+),',
+    '^(PERMISSIONS)=([%d]+),',
+    '^(SIZE)=([%d]+),',
+    '^(TYPE)=([%l%s]+),',
+    '^(NAME)=(.*)$'
+}
+
+--- Creating the container object
+--- An abstraction layer of _existing_ docker/podman container instances
+local URI = {}
+local M = {
+    CONSTANTS = {
+        STATUS = {
+            RUNNING = "RUNNING",
+            NOT_RUNNING = "NOT RUNNING",
+            INVALID = "INVALID",
+            UNKNOWN = "UNKNOWN",
+            ERROR = "ERROR"
+        },
+        -- Maximimum number of bytes we are willing to read in at once from a file
+        IO_BYTE_LIMIT = 2 ^ 13,
+        STAT_FLAGS = {
+            ABSOLUTE_PATH = "ABSOLUTE_PATH",
+            MODE = 'MODE',
+            BLOCKS = 'BLOCKS',
+            BLKSIZE = 'BLKSIZE',
+            MTIME_SEC = 'MTIME_SEC',
+            USER = 'USER',
+            GROUP = 'GROUP',
+            INODE = 'INODE',
+            PERMISSIONS = 'PERMISSIONS',
+            SIZE = 'SIZE',
+            TYPE = 'TYPE',
+            NAME = 'NAME',
+            URI = 'URI'
+        },
+        MKDIR_UNKNOWN_ERROR = 'mkdir failed with unknown error'
+    },
+}
+M.URI = URI
+
+-- Consider making all shell communication async?
+function M:new(provider_name, container_name, provider_cache)
+    assert(provider_cache, "No cache provided to create container object")
+    if provider_cache:get_item(container_name) then
+        -- Me!!!
+        return provider_cache:get_item(container_name)
+    end
+
+    local _container = {}
+    self.__index = function(table, key)
+        if key == 'os' then
+            return M._get_os(table)
+        end
+
+        if key == 'archive_schemes' or key == '_archive_commands' or key == '_extract_commands' then
+            local details = M._get_archive_availability_details(table)
+            table.archive_schemes = details.archive_schemes
+            table._extract_commands = details.extract_commands
+            table._archive_commands = details.archive_commands
+            return table[key]
+        end
+        return self[key]
+    end
+
+    setmetatable(_container, self)
+    _container.name = container_name
+
+    _container.__type = string.format('netman_provider_%s', provider_name)
+    _container.protocol = provider_name
+    _container.cmd = provider_name
+    -- These are all lazy loaded via the index function
+    -- _container.os = ''
+    -- _container._archive_commands = {}
+    -- _container._extract_commands = {}
+    -- _container.archive_schemes = {}
+    _container.cache = CACHE:new(CACHE.FOREVER)
+    -- Might be worth trying to establish the actual default shell?
+    _container.console_command = {_container.cmd, "exec", "-it", _container.name, "/bin/sh"}
+    provider_cache:add_item(_container.name, _container)
+    return _container
+end
+
+function M:_get_os()
+    logger.trace(string.format("Checking OS For Container %s", self.name))
+    local _get_os_command = 'cat /etc/*release* | grep -E "^NAME=" | cut -b 6-'
+    local output = self:run_command(_get_os_command, {
+        [command_flags.STDOUT_JOIN] = '',
+        [command_flags.STDERR_JOIN] = ''
+    })
+    if output.exit_code ~= 0 then
+        logger.warn(string.format("Unable to identify operating system for %s", self.name))
+        return "Unknown"
+    end
+    return output.stdout:gsub('["\']', '')
+end
+
+function M:_get_archive_availability_details()
+    logger.trace(string.format("Checking Available Archive Formats for %s", self.name))
+    local output = self:run_command('tar --version', { [command_flags.STDERR_JOIN] = '' })
+    if output.exit_code ~= 0 then
+        -- complain about being unable to find archive details...
+        logger.warn(string.format("Unable to establish archive details for %s", self.name))
+    end
+    local schemes = {}
+    local archive_commands = {}
+    local extract_commands = {}
+    -- Making the assumption that if tar is installed, so is gzip. You _should_ have tar...
+    table.insert(schemes, 'tar.gz')
+    table.insert(schemes, 'tar')
+    -- Deal with the fact that tar may be busybox or GNU. They are different
+    -- enough that we will need different compress commands :(
+    local tar_type = output.stdout[1]
+    if tar_type:match('busybox') then
+        -- Found a busybox version of tar. Get ready for the fuckery!
+        archive_commands['tar.gz'] = function(locations)
+            local formatted_command = ''
+            local pre_format_command = "%s (%s tar -cf - -C %s %s)"
+            local header_offset = ''
+            local first_pass = true
+            for _, location in ipairs(locations) do
+                assert(location.__type and location.__type == 'netman_uri',
+                    string.format("%s is not a compatible netman uri", location))
+                local parent = location:parent():to_string()
+                local chain = ''
+                if not first_pass then
+                    header_offset = 'head -c -1024 &&'
+                    chain = '|'
+                end
+                formatted_command = formatted_command ..
+                    string.format(pre_format_command, chain, header_offset, parent,
+                        location.path[#location.path])
+                first_pass = false
+            end
+            formatted_command = formatted_command .. ' | gzip -9 -c -'
+            return formatted_command
+        end
+    else
+        -- GNU Tar. Ya!!!
+        archive_commands['tar.gz'] = function(locations)
+            local formatted_command = ''
+            local pre_format_command = "%s (%s tar --blocking-factor 1 -cf - -C %s %s)"
+            local header_offset = ''
+            local first_pass = true
+            for _, location in ipairs(locations) do
+                assert(location.__type and location.__type == 'netman_uri',
+                    string.format("%s is not a compatible netman uri", location))
+                local parent = location:parent():to_string()
+                local chain = ''
+                -- TODO: We should use `tar -a` instead of this absolute garbage
+                if not first_pass then
+                    header_offset = 'head -c -1024 &&'
+                    chain = '|'
+                end
+                formatted_command = formatted_command ..
+                    string.format(pre_format_command, chain, header_offset, parent,
+                        location.path[#location.path])
+                first_pass = false
+            end
+            formatted_command = formatted_command .. ' | gzip -9 -c -'
+            return formatted_command
+        end
+    end
+    extract_commands['tar.gz'] = function(location, archive)
+        local pre_format_command = "tar -oC %s -xzf %s"
+        return string.format(pre_format_command, location:to_string(), archive)
+    end
+    archive_commands['tar'] = archive_commands['tar.gz']
+    extract_commands['tar'] = extract_commands['tar.gz']
+    return {
+        archive_commands = archive_commands,
+        extract_commands = extract_commands,
+        archive_schemes  = schemes
+    }
+end
+
+--- Runs the provided command inside the container
+--- @param command string/table
+---     Command can be either a string or table or strings
+--- @param opts table | nil
+---     Default: {STDOUT_JOIN = '', STDERR_JOIN = ''}
+---     A table of command options. @see netman.tools.shell for details. Additional key/value options
+---     - no_shell
+---         - If provided, the command will not be wrapped in a `/bin/sh -c` execution context. Note, this will be set if you provide a table for command
+--- @return table
+---     @see netman.tools.shell:run as this returns exactly what that does
+--- @example
+---     local container = Container:new('ubuntu')
+---     print(container:run_command({"cat", "/etc/*release*"}).stdout)
+---         DISTRIB_ID=Ubuntu
+---         DISTRIB_RELEASE=22.04
+---         DISTRIB_CODENAME=jammy
+---         ...
+function M:run_command(command, opts)
+    -- It might be easier if we put some hooks into container to
+    -- listen for changes to the container...?
+    opts = opts or {
+        [command_flags.STDOUT_JOIN] = '',
+        [command_flags.STDERR_JOIN] = ''
+    }
+    local _command = { self.cmd, "exec", self.name }
+    if type(command) == 'string' then
+        if not opts.no_shell then
+            table.insert(_command, '/bin/sh')
+            table.insert(_command, '-c')
+        end
+        table.insert(_command, command)
+    elseif type(command) == 'table' then
+        for _, _c in ipairs(command) do
+            table.insert(_command, _c)
+        end
+    else
+        logger.error(string.format("I have no idea what I am supposed to do with %s", command),
+            { type = type(command), command = command })
+        return { exit_code = -1, stderr = "Invalid command passed to netman container!", stdout = '' }
+    end
+    -- TODO: Consider just having one shell that is reused instead of making new and discarding each time?
+    ---@diagnostic disable-next-line: missing-parameter
+    local _shell = shell:new(_command, opts)
+    ---@diagnostic disable-next-line: missing-parameter
+    local _shell_output = _shell:run()
+    logger.trace(_shell:dump_self_to_table())
+    return _shell_output
+end
+
+--- Retrieves the current status of the container from the container cli/socket
+--- @return string
+---     Will return one of the following strings
+---     - RUNNING
+---     - NOT RUNNING
+---     - ERROR
+---     - INVALID
+--- @example
+---     print(Container:new('ubuntu'):current_status())
+---         RUNNING
+function M:current_status()
+    -- Maybe cache this in ourselves?
+    local status = self.cache:get_item('status')
+    if status and status == M.CONSTANTS.STATUS.RUNNING then
+        return status
+    end
+    local status_command = { self.cmd, 'container', 'list', '--all', '--format', 'table {{.Status}}', '--filter',
+        string.format('name=%s', self.name) }
+    local command_options = { [command_flags.STDERR_JOIN] = '' }
+    ---@diagnostic disable-next-line: missing-parameter
+    local command = shell:new(status_command, command_options)
+    local command_output = command:run()
+    logger.trace(command:dump_self_to_table())
+
+
+    status = M.CONSTANTS.STATUS.NOT_RUNNING
+    if command_output.exit_code ~= 0 then
+        logger.warn(string.format("Received non-0 exit code while checking status of container %s", self.name),
+            { error = command_output.error, exit_code = command_output.exit_code })
+        status = M.CONSTANTS.STATUS.ERROR
+        goto continue
+    end
+    if not command_output.stdout[2] then
+        logger.info(string.format("Container %s doesn't exist!", self.name))
+        status = M.CONSTANTS.STATUS.INVALID
+        goto continue
+    end
+    if command_output.stdout[2]:match('^Up') then
+        status = M.CONSTANTS.STATUS.RUNNING
+        goto continue
+    end
+    ::continue::
+    self.cache:add_item('status', status, 20 * CACHE.SECOND)
+    return status
+end
+
+--- Starts the container
+--- @param opts table | nil
+---     If provided, this table will contain key value pairs that will modify how start is ran
+---     Valid Key Value Pairs
+---     - async: boolean
+---         - If provided, we will start the container asynchronously, returning immediately. To get output from
+---         this, it is recommended that you use `exit_callback`
+---     - exit_callback: function
+---         - If provided, we will call this after start instead of returning anything
+---     - ignore_errors: boolean
+---         - If provided, we wont complain if we get any errors while trying to start the container
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false to indicate if starting the container was successful
+---     - error: string | nil
+---         The string error that was encountered during start. May not be present
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:start()
+function M:start(opts)
+    opts = opts or {}
+    local return_details = {}
+    if self:current_status() == M.CONSTANTS.STATUS.RUNNING then
+        logger.info(string.format("Container %s is already running", self.name))
+        return { success = true }
+    end
+    local start_command = { self.cmd, 'container', 'start', self.name }
+    local finish_callback = function(command_output)
+        logger.trace(command_output)
+        if command_output.stderr and command_output.stderr:lower():match('no such container') then
+            -- Do we throw an actual error or just logger it and return nil?
+            return_details = { error = string.format("Container %s does not exist!", self.name), success = false }
+            logger.error(string.format("Container %s does not exist!", self.name))
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        if command_output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Received non-0 exit code while trying to start container %s", self.name)
+            logger.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
+            return_details = { error = _error, success = false}
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        if self:current_status() == M.CONSTANTS.STATUS.RUNNING then
+            logger.info(string.format("Successfully Started Container: %s", self.name))
+            return_details = { success = true }
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        local _error = string.format("Failed to start container: %s for reasons...?", self.name)
+        return_details = { error = _error, success = false}
+        logger.warn(_error, { exit_code = command_output.exit_code, stderr = command_output.exit_code })
+        if opts.finish_callback then opts.finish_callback(return_details) end
+    end
+    local command_options = {
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.EXIT_CALLBACK] = finish_callback
+    }
+    if opts.async then command_options[command_flags.ASYNC] = true end
+    logger.infon(string.format("Attempting to start %s", self.name))
+    ---@diagnostic disable-next-line: missing-parameter
+    shell:new(start_command, command_options):run()
+    if not opts.async then return return_details end
+end
+
+--- Stops the container
+--- @param opts table | nil
+---     Default: {}
+---     If provided, the following key value pairs are acceptable options
+---     - async: boolean
+---         - If provided, we will stop asynchronously, returning immediately. To get results, also provide
+---         a function with `finish_callback`
+---     - force: boolean
+---         - If provided, will force the container to stop (using kill instead of stop)
+---     - timeout: integer
+---         - If provided, will set the stop timeout to this integer. Ignored if force is provided
+---     - finish_callback: function
+---         - If provided, we will call this once complete.
+---     If provided, this will forcible "kill" the container, instead of
+---     allowing container to gracefully stop it
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false to indicate if stopping the container was successful
+---     - error: string | nil
+---         The string error that was encountered during stop. May not be present
+---     NOTE: This table is _only_ provided to opts.finish_callback.
+---     As this function performs asychronously, nothing is returned until its complete
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:stop()
+function M:stop(opts)
+    if self:current_status() ~= M.CONSTANTS.STATUS.RUNNING then
+        logger.info(string.format("Container %s is already stopped", self.name))
+        return { success = true }
+    end
+    opts = opts or {}
+    local return_details = {}
+    local stop = "stop"
+    local timeout = {}
+    if opts.force then
+        stop = "kill"
+    end
+    if opts.timeout and not opts.force then
+        timeout = { "-t", 0 }
+    end
+    local stop_command = { self.cmd, 'container', stop }
+    for _, flag in ipairs(timeout) do
+        table.insert(stop_command, flag)
+    end
+    table.insert(stop_command, self.name)
+    local finish_callback = function(command_output)
+        logger.trace(command_output)
+        if command_output.exit_code == nil then
+            -- stop timed out
+            local _error = string.format("Stop command timed out for %s", self.name)
+            logger.warn(_error, { error = command_output.stderr })
+            return_details = { error = _error, success = false }
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        if command_output.exit_code ~= 0 then
+            local _error = string.format("Received non-0 exit code while trying to stop %s", self.name)
+            logger.warn(_error, { error = command_output.stderr, exit_code = command_output.exit_code })
+            return_details = { error = _error, success = false }
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        if self:current_status() == M.CONSTANTS.STATUS.NOT_RUNNING then
+            logger.info(string.format("Successfully Stopped Container: %s", self.name))
+            return_details = { success = true }
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        local _error = string.format("Failed to properly stop container: %s for reasons...?", self.name)
+        return_details = { error = _error, success = false }
+        if opts.finish_callback then opts.finish_callback(return_details) end
+    end
+    local command_options = {
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.STDOUT_JOIN] = '',
+        [command_flags.EXIT_CALLBACK] = finish_callback
+    }
+    if opts.async then command_options[command_flags.ASYNC] = true end
+    logger.infon(string.format("Attempting to stop %s", self.name))
+    ---@diagnostic disable-next-line: missing-parameter
+    shell:new(stop_command, command_options):run()
+    if not opts.async then return return_details end
+    -- Return is done via callback in the above `finish_callback` function
+    ---@diagnostic disable-next-line: missing-return
+end
+
+--- Archives the provided location(s)
+--- @param locations table
+---     A table of Netman Docker URIs
+--- @param archive_dir string
+---     The directory to dump the archive in. Note, if opts.remote_dump is provided,
+---     This will dump the archive remotely into the provided directory, creating it
+---     if needed.
+--- @param compatible_scheme_list table
+---     A list of available archive types to chose from. By default, we will attempt
+---     to use tar.gz unless thats not an option. But if you cant accept a gzipped tar,
+---     what are you even doing with your life?
+--- @param provider_cache table
+---     The table that netman.api provides to you
+--- @param opts table | nil
+---     Default: {}
+---     A 2D table that can contain any of the following key, value pairs
+---     - async: boolean
+---         - If provided, we will perform the archive asychronously. It is recommended that
+---         this is used with finish_callback
+---     - remote_dump: boolean
+---         - If provided, indicates that the archive_dir is remote (on the container)
+---     - finish_callback: function
+---         - A function to call when the get is complete. Note, this is an asychronous function
+---           so if you want to get output from the get, you will want to provide this
+---     - output_file_name: string
+---         - If provided, we will write to this file. By default, we will generate the file name and return
+---         it in the exit_callback
+--- @return table
+---     NOTE: This will only return to the `finish_callback` function in opts as this is an asychronous function
+---     Returns a table with the following key, value pairs
+---     - archive_name string
+---     - scheme string
+---     - archive_path string
+---         - If opts.remote_dump is provided, archive_path will be the URI to access the archive
+---     - success boolean
+---         - A boolean (t/f) of if the archive succedded or not
+---     - error string | nil
+---         - Any errors that need to be displayed to the user
+--- @example
+---     -- This example assumes that you have received your cache from netman.api.
+---     -- If that confuses you, please see netman.api.register_provider for details
+---     -- or :help netman.api.providers
+---     local cache = cache
+---     local container = Container:new('ubuntu')
+---     container:archive('/tmp', '/tmp/', {'tar.gz'}, cache)
+function M:archive(locations, archive_dir, compatible_scheme_list, _provider_cache, opts)
+    opts = opts or {}
+    local return_details = {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    local compression_function = nil
+    local selected_compression = nil
+    for _, scheme in ipairs(self.archive_schemes) do
+        if compression_function then break end
+        local lower_scheme = scheme:lower()
+        for _, comp_scheme in ipairs(compatible_scheme_list) do
+            local lower_comp_scheme = comp_scheme:lower()
+            if lower_scheme == lower_comp_scheme then
+                compression_function = self._archive_commands[scheme]
+                selected_compression = scheme
+                break
+            end
+        end
+    end
+    assert(compression_function,
+        string.format("Unable to find valid compression scheme in %s", table.concat(compatible_scheme_list, ', ')))
+    local converted_locations = {}
+    for _, location in ipairs(locations) do
+        if type(location) == 'string' then
+            if not location:match(string.format('^%s://', self.protocol)) then
+                -- A little bit of uri coalescing
+                ---@diagnostic disable-next-line: cast-local-type
+                location = string.format('%s://%s/%s', self.protocol, self.name, location)
+            end
+            location = URI:new(location)
+        end
+        assert(location.__type and location.__type == 'netman_uri',
+            string.format("%s is not a valid Netman URI", location))
+        table.insert(converted_locations, location)
+    end
+    locations = converted_locations
+    local archive_name = opts.output_file_name or string.format("%s.%s", string_generator(10), selected_compression)
+    local compress_command = compression_function(locations)
+    local archive_path = string.format("%s/%s", archive_dir, archive_name)
+    local finish_callback = function(output)
+        if output.exit_code ~= 0 then
+            local _error = "Received non-0 exit code when trying to archive locations"
+            logger.warn(_error, { locations = locations, error = output.stderr, exit_code = output.exit_code })
+            return_details =  { error = _error, success = false }
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        return_details = {
+            archive_name = archive_name,
+            success = true,
+            archive_path = archive_path,
+            scheme = selected_compression
+        }
+        if opts.finish_callback then opts.finish_callback(return_details) end
+    end
+    local command_options = {
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.STDOUT_FILE_IS_BINARY] = true,
+        [command_flags.STDOUT_FILE_OVERWRITE] = true,
+        [command_flags.EXIT_CALLBACK] = finish_callback,
+        -- Turning off stdout pipe as STDOUT is being dumped to a file
+        [command_flags.STDOUT_PIPE_LIMIT] = 0
+    }
+    if opts.async then command_options[command_flags.ASYNC] = true end
+    if opts.remote_dump then
+        -- This probably doesn't work
+        compress_command = string.format("mkdir -p %s && %s > %s/%s", archive_dir, compress_command, archive_dir,
+            archive_name)
+        archive_path = string.format("%s://%s/%s/%s", self.protocol, self.name, archive_dir, archive_name)
+    else
+        command_options[command_flags.STDOUT_FILE] = string.format("%s/%s", archive_dir, archive_name)
+    end
+    local run_details = self:run_command(compress_command, command_options)
+    if not opts.async then return return_details else return run_details end
+end
+
+--- Extracts the provided archive into the target location in the container
+--- @param archive string
+---     The location of the archive to extract
+--- @param target_dir URI
+---     The location to extract to
+--- @param scheme string
+---     The scheme the archive is compressed with
+--- @param provider_cache table
+---     The cache that netman.api provided you
+--- @param opts table | nil
+---     Default: {}
+---     A list of options to be used when extracting. Available key/values are
+---         - async: boolean
+---             If provided, we will run the extraction asynchronously. It is recommended
+---             that finish_callback is used with this
+---         - ignore_errors: boolean
+---             If provided, we will not output any errors we get
+---         - remote_dump: boolean
+---             Indicates that the archive is already on the container
+---         - cleanup: boolean
+---             Indicates that we need to delete the archive after successful extraction
+---         - finish_callback: function
+---             A function to call when the get is complete. Note, this is an asychronous function
+---             so if you want to get output from the get, you will want to provide this
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false to indicate if the extraction was a success
+---     - error: string | nil
+---         The string error that was encountered during extraction. May not be present
+--- @example
+---     -- This example assumes that you have received your cache from netman.api.
+---     -- If that confuses you, please see netman.api.register_provider for details
+---     -- or :help netman.api.providers
+---     local cache = cache
+---     -- Additionally, it assumes that `/tmp/some.tar.gz` exists on the local machine
+---     local container = Container:new('ubuntu')
+---     container:extract('/tmp/some.tar.gz', '/tmp/', 'tar.gz', cache)
+---     -- TODO: Add an example of how to do an extract with a Pipe...
+function M:extract(archive, target_dir, scheme, provider_cache, opts)
+    opts = opts or {}
+    local return_details = {}
+    local run_details = {}
+    local extraction_function = nil
+    local lower_scheme = scheme:lower()
+    for _, comp_scheme in ipairs(self.archive_schemes) do
+        local lower_comp_scheme = comp_scheme:lower()
+        if lower_comp_scheme == lower_scheme then
+            extraction_function = self._extract_commands[scheme]
+            break
+        end
+    end
+    assert(extraction_function, string.format("Unable to find valid decompression scheme for %s", scheme))
+    if type(target_dir) == 'string' then
+        if not target_dir:match(string.format('^%s://', self.protocol)) then
+            -- A little bit of uri coalescing
+            ---@diagnostic disable-next-line: cast-local-type
+            target_dir = string.format('%s://%s/%s', self.protocol, self.name, target_dir)
+        end
+        target_dir = URI:new(target_dir)
+    end
+    assert(target_dir.__type and target_dir.__type == 'netman_uri',
+        string.format("%s is not a valid netman uri", target_dir))
+    -- If the archive isn't remote, we will want to craft a different command to extract it.
+    local extract_command
+    local cleanup = nil
+    local mkdir_status = self:mkdir(target_dir, { force = true })
+    if not mkdir_status or not mkdir_status.success then
+        return_details = { success = false, error = mkdir_status.error or M.CONSTANTS.MKDIR_UNKNOWN_ERROR }
+        if opts.finish_callback then
+            opts.finish_callback(return_details)
+            return
+        end
+        return return_details
+    end
+    local finish_callback = function(command_output)
+        logger.trace(command_output)
+        if command_output.exit_code ~= 0 then
+            local _error = string.format("Unable to extract %s", archive)
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            return_details = { error = _error, success = false }
+            if opts.finish_callback then opts.finish_callback(return_details) end
+        end
+        if cleanup then cleanup() end
+        return_details = {success = true}
+        if opts.finish_callback then opts.finish_callback(return_details) end
+    end
+    local command_options = {
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.ASYNC] = true,
+        -- We don't want STDOUT for this
+        [command_flags.STDOUT_PIPE_LIMIT] = 0,
+        [command_flags.EXIT_CALLBACK] = finish_callback
+    }
+    if not opts.remote_dump then
+        -- There is no way for us to do this asynchronously
+        opts.async = false
+        -- This is going to cat the contents of the archive into container in an
+        -- "interactive" session, which will pipe into the provided command.
+        local fh = io.open(archive, 'r+b')
+        if not fh then
+            local _error = string.format("Unable to read %s", archive)
+            if not opts.ignore_errors then logger.warn(_error) end
+            return { error = _error, success = false }
+        end
+        extract_command = {self.cmd, "exec", "-i", self.name, '/bin/sh', '-c', extraction_function(target_dir, '-')}
+        if opts.cleanup then
+            cleanup = function()
+                vim.loop.fs_unlink(archive)
+            end
+        end
+        local command = shell:new(extract_command, command_options)
+        command:run()
+        local stream
+        while true do
+            -- NOTE:
+            -- We will probably want to tweak this a bit to get better
+            -- performance. Also keep in mind that we will eventually
+            -- allow passing in PIPES to read straight through from
+            -- STDOUT from on provider into STDIN in another provider
+            stream = fh:read(M.CONSTANTS.IO_BYTE_LIMIT)
+            if not stream then break end
+            command:write(stream)
+        end
+        fh:close()
+        command:close()
+    else
+        extract_command = extraction_function(target_dir, archive)
+        if opts.cleanup then
+            cleanup = function()
+                ---@diagnostic disable-next-line: param-type-mismatch, missing-parameter
+                self:rm(archive, provider_cache)
+            end
+        end
+        self:run_command(extract_command, command_options)
+    end
+    if not opts.async then return return_details else return run_details end
+end
+
+--- Copies the locations into the provided location
+--- @param locations table
+---     A table of string locations to move. Can be files or directories
+--- @param target_location string
+---     The location to copy to. Must be a directory
+--- @param opts table | nil
+---     Default: {}
+---     If provided, a table of options that can be used to modify how cp works
+---     Valid Options:
+---     - ignore_errors : boolean
+---         If provided, we will not report any errors received while attempting to copy
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully executed the requested copy
+---     - message: string | nil
+---         Any messages that occured during the copy. Note, if opts.ignore_errors was provided, even if we
+---         get an error, it will not be returned. Ye be warned.
+--- @example
+---     local container = Container:new('ubuntu')
+---     -- Copies /tmp/testfile.txt into /opt
+---     container:cp('/tmp/testfile.txt', '/opt')
+---     -- Or to copy multiple locations
+---     container:cp({'/tmp/testfile.txt', '/tmp/new_dir/'}, '/opt')
+function M:cp(locations, target_location, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
+    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
+    local cp_command = { 'cp', '-a' }
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then
+            location = location:to_string()
+        end
+        table.insert(cp_command, location)
+        table.insert(__, location)
+    end
+    locations = __
+    table.insert(cp_command, '-t')
+    table.insert(cp_command, target_location)
+    cp_command = table.concat(cp_command, ' ')
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
+    local output = self:run_command(cp_command, command_options)
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
+        return { success = false, message = message }
+    end
+    return { success = true }
+end
+
+--- Moves a location to another location in the container
+--- @param locations table
+---     The a table of string locations to move. Can be a files or directories
+--- @param target_location string
+---     The location to move to. Can be a file or directory
+--- @param opts table | nil
+---     Default: {}
+---     If provided, a table of options that can be used to modify how mv works
+---     Valid Options
+---     - ignore_errors: boolean
+---         If provided, we will not report any errors received while attempting move
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully executed the requested move
+---     - message: string | nil
+---         Any messages that occured during the move. Note, if opts.ignore_errors was provided, even if we get an error
+---         it will not be returned. Ye be warned
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:mv('/tmp/testfile.txt', '/tmp/testfile2.txt')
+function M:mv(locations, target_location, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = {locations} end
+    if target_location.__type and target_location.__type == 'netman_uri' then target_location = target_location:to_string() end
+    local mv_command = { 'mv' }
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then
+            location = location:to_string()
+        end
+        table.insert(mv_command, location)
+        table.insert(__, location)
+    end
+    locations = __
+    if #locations > 1 then
+        table.insert(mv_command, '-t')
+    end
+    table.insert(mv_command, target_location)
+    mv_command = table.concat(mv_command, ' ')
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
+    local output = self:run_command(mv_command, command_options)
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local message = string.format("Unable to move %s to %s", table.concat(locations, ' '), target_location)
+        return { success = false, message = message }
+    end
+    return { success = true }
+end
+
+--- Touches a file in the container
+--- @param locations table
+---     A table of filesystem locations (as strings) touch
+--- @param opts table | nil
+---     Default: {}
+---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
+---     - ignore_errors: boolean
+---         - If provided, we will not complain one bit when things explode :)
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully created the directory
+---     - error: string | nil
+---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
+---         it will not be returned. Ye be warned
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:touch('/tmp/testfile.txt')
+function M:touch(locations, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    local touch_command = {"touch"}
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
+        table.insert(touch_command, location)
+        table.insert(__, location)
+    end
+    locations = __
+    local output = self:run_command(touch_command, { no_shell = true })
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local _error = string.format("Unable to touch %s", table.concat(locations, ' '))
+        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+        return { success = false, error = _error }
+    end
+    return { success = true }
+end
+
+--- Creates a directory in the container
+--- @param locations table
+---     A table of filesystem locations (as strings) create
+--- @param opts table | nil
+---     Default: {}
+---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
+---     - ignore_errors: boolean
+---         - If provided, we will not complain one bit when things explode :)
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully created the directory
+---     - error: string | nil
+---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
+---         it will not be returned. Ye be warned
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:mkdir('/tmp/testdir1')
+function M:mkdir(locations, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    -- It may be worth having this do something like
+    -- test -d location || mkdir -p location
+    -- instead, though I don't know that that is preferrable...?
+    local mkdir_command = { "mkdir", "-p" }
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
+        table.insert(mkdir_command, location)
+        table.insert(__, location)
+    end
+    locations = __
+    local output = self:run_command(mkdir_command, { no_shell = true })
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local _error = string.format("Unable to make %s", table.concat(locations, ' '))
+        logger.warn(_error, { exit_code = output.exit_code, error = output.stderr })
+        return { success = false, error = _error }
+    end
+    return { success = true }
+end
+
+--- @param locations table
+---     A table of netman uris to remove
+--- @param opts table | nil
+---     Default: {}
+---     A list of key/value pair options that can be used to tailor how mkdir does "things". Valid key/value pairs are
+---     - force: boolean
+---         - If provided, we will try to force the removal of the targets
+---     - ignore_errors: boolean
+---         - If provided, we will not complain one bit when things explode :)
+--- @return table
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         A true/false on if we successfully created the directory
+---     - error: string | nil
+---         Any errors that occured during creation of the directory. Note, if opts.ignore_errors was provided, even if we get an error
+---         it will not be returned. Ye be warned
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:rm('/tmp/somedir')
+---     -- You can also provide the `force` flag to force removal of a directory
+---     container:rm('/tmp/somedir', {force=true})
+---     -- You can also also provide the `ignore_errors` flag if you don't care if this
+---     -- works or not
+---     container:rm('/tmp/somedir', {ignore_errors=true})
+function M:rm(locations, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    local rm_command = {'rm', '-r'}
+    if opts.force then table.insert(rm_command, '-f') end
+    for _, location in ipairs(locations) do
+        if type(location) == 'string' then
+            if not location:match(string.format('^%s://', self.protocol)) then
+                -- A little bit of uri coalescing
+                ---@diagnostic disable-next-line: cast-local-type
+                location = string.format('%s://%s/%s', self.protocol, self.name, location)
+            end
+            location = URI:new(location)
+        end
+        assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman uri", location))
+        table.insert(rm_command, location:to_string())
+    end
+    local output = self:run_command(rm_command, { no_shell = true })
+    if output.exit_code ~= 0 and not opts.ignore_errors then
+        local _error = string.format("Unable to remove %s", table.concat(locations, ' '))
+        logger.error(_error, { exit_code = output.exit_code, error = output.stderr })
+        return { success = false, error = _error }
+    end
+    return { success = true }
+end
+
+---
+--- @param location string or URI
+---     The location to find from
+--- @param search_param string
+---     The string to search for
+--- @param opts table | nil
+---     - Default: {
+---         pattern_type = 'iname',
+---         follow_symlinks = true,
+---         min_depth = 1,
+---         filesystems = true
+---     }
+---     If provided, options to parse into the find command
+---     Valid keys
+---     - search_param: string
+---         - If provided will use this to filter find results
+---     - pattern_type: string
+---         - Used to match up the type of pattern provided. See find --help for details
+---         - Valid values:
+---             - name
+---             - iname
+---             - path
+---             - ipath
+---             - regex
+---     - regex_type: string
+---         @see https://www.gnu.org/software/findutils/manual/html_node/find_html/Regular-Expressions.html
+---         for valid regex types. Note: regex_type will _not_ work on busybox (alpine) based containers
+---     - follow_symlinks: boolean
+---         - If provided, tells us to follow (or not) symlinks
+---     - max_depth: integer
+---         - If provided, used to specify the maximum depth to traverse our search
+---     - min_depth: integer
+---         - If provided, used to specify the minimum depth to traverse our search
+---     - filesystems: boolean
+---         - If provided, tells us to descend (or not) into other filesystems
+---     - exec: string or function | nil
+---         - If provided, will be used as the `exec` flag with find.
+---         Note: the `string` form of this needs to be a find compliant shell string. @see man find for details
+---         Alternatively, you can provide a function that will be called with every match that find gets. Note, this will be significantly slower
+---         than simply providing a shell string command, so if performance is your goal, use `string`
+function M:find(location, opts)
+    local default_opts = {
+        follow_symlinks = true,
+        min_depth = 1,
+        filesystems = true
+    }
+    opts = opts or {}
+    -- Ensuring that sensible defaults are set in the event that options are provided and are missing defaults
+    for key, value in pairs(default_opts) do
+        if opts[key] == nil then opts[key] = value end
+    end
+    if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
+    local find_command = {'find', location}
+    if opts.filesystems then table.insert(find_command, '-xdev') end
+    if opts.max_depth then table.insert(find_command, '-maxdepth') table.insert(find_command, opts.max_depth) end
+    if opts.min_depth then table.insert(find_command, '-mindepth') table.insert(find_command, opts.min_depth) end
+    if opts.follow_symlinks then table.insert(find_command, '-follow') end
+    if opts.search_param then
+        if not opts.pattern_type then opts.pattern_type = 'iname' end
+        if opts.pattern_type == 'name' then
+            table.insert(find_command, '-name')
+        elseif opts.pattern_type == 'iname' then
+            table.insert(find_command, '-iname')
+        elseif opts.pattern_type == 'path' then
+            table.insert(find_command, '-path')
+        elseif opts.pattern_type == 'ipath' then
+            table.insert(find_command, '-ipath')
+        elseif opts.pattern_type == 'regex' then
+            table.insert(find_command, '-regex')
+        else
+            -- complain about invalid pattern type
+            error(string.format("Invalid Find Pattern Type: %s. See :h %s.find for details", opts.pattern_type, self.__type))
+        end
+        table.insert(find_command, opts.search_param)
+    end
+    local command_options = {
+        [command_flags.STDERR_JOIN] = ''
+    }
+    if opts.exec then
+        if type(opts.exec) == 'string' then
+            table.insert(find_command, "-exec")
+            table.insert(find_command, opts.exec .. " {} \\;")
+        elseif type(opts.exec) == 'function' then
+            command_options[command_flags.STDOUT_CALLBACK] = opts.exec
+            command_options[command_flags.STDOUT_PIPE_LIMIT] = 0
+        end
+    end
+    local output =  self:run_command(table.concat(find_command, ' '), command_options)
+    if output.exit_code ~= 0 then
+        return {
+            error = output.stderr
+        }
+    end
+    return output.stdout
+end
+
+--- Uploads a file to the container, placing it in the provided location
+--- @param file string
+---     The string file location on the host
+--- @param location URI
+---     The location to put the file
+--- @param opts table | nil
+---     Default: {}
+---     A table containing options to alter the effect of `put`. Valid key/value pairs are
+---     - new_file_name: string
+---         - If provided, we will use this name for the file instead of its current name
+---     - async: boolean
+---         - If provided, we will perform this action asychronously. It is recommended to use this
+---         with finish_callback
+---     - ignore_errors: boolean
+---         - If provided, we will not notify you of any errors that occur during the upload process.
+---     - finish_callback: function
+---         - A function to call when the put is complete. Note, this is an asychronous function
+---         so if you want to get output from the get, you will want to provide this
+--- @return table
+---     A table will be returned with the following key/value pairs
+---     - success: boolean
+---         - A true/false to indicate if the upload was successful or not
+---     - error: string
+---         - A string error that occured during upload
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:put('/tmp/ubuntu.tar.gz', '/tmp/ubuntu')
+function M:put(file, location, opts)
+    opts = opts or {}
+    local return_details = {}
+    assert(vim.loop.fs_stat(file), string.format("Unable to location %s", file))
+    if type(location) == 'string' then
+        if not location:match(string.format('^%s://', self.protocol)) then
+            -- A little bit of uri coalescing
+            ---@diagnostic disable-next-line: cast-local-type
+            location = string.format('%s://%s/%s', self.protocol, self.name, location)
+        end
+        location = URI:new(location)
+    end
+    assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman URI", location))
+    local file_name = location:to_string()
+    if location.type ~= api_flags.ATTRIBUTES.DIRECTORY then
+        local status, _stat = pcall(M.stat, self, location, {M.CONSTANTS.STAT_FLAGS.TYPE})
+        -- Running this in protected mode because `location` may not exist. If it doesn't we will get an error,
+        -- we don't actually care about the error we get, we are going to assume that the location doesn't exist
+        -- if we get an error. Thus, error == gud
+        if status == true and _stat[file_name] and _stat[file_name].TYPE ~= 'directory' then
+            logger.warn(string.format("Unable to verify that %s is a directory, you might see errors!", file_name))
+            file_name = location:to_string()
+            location = location:parent()
+        end
+    end
+    local mkdir_status = self:mkdir(location)
+    if not mkdir_status or not mkdir_status.success then
+        return_details = { success = false, error = mkdir_status.error or M.CONSTANTS.MKDIR_UNKNOWN_ERROR }
+        if opts.finish_callback then
+            opts.finish_callback(return_details)
+            return
+        end
+        return return_details
+    end
+    if opts.new_file_name then
+        file_name = string.format("%s/%s", location:to_string(), opts.new_file_name)
+    end
+    local details = self:stat({file_name}, {'USER', 'GROUP', 'PERMISSIONS'})
+    local finish_callback = function(command_output)
+        logger.trace(command_output)
+
+        if command_output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to upload %s", file)
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            return_details = { error = _error, success = false}
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        if details then
+            local _
+            _, details = next(details)
+        end
+        if details.PERMISSIONS then
+            self:stat_mod(file_name, details.PERMISSIONS)
+        end
+        if details.USER or details.GROUP then
+            self:own_mod(file_name, { user = details.USER, group = details.GROUP })
+        end
+        return_details = { success = true}
+        if opts.finish_callback then opts.finish_callback(return_details) end
+    end
+    local copy_command = { self.cmd, "cp", file, string.format("%s:%s", self.name, file_name) }
+    local command_options = {
+        [command_flags.STDOUT_JOIN] = '',
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.EXIT_CALLBACK] = finish_callback
+    }
+    if opts.async then
+        command_options[command_flags.ASYNC] = true
+    end
+    ---@diagnostic disable-next-line: missing-parameter
+    local run_details = shell:new(copy_command, command_options):run()
+    if not opts.async then return return_details else return run_details end
+end
+
+--- Retrieves a file from the container and saves it in the output directory
+--- NOTE: This can only be used to retrieve files. Directories must be archived with @see Container:archive
+--- @param location URI
+---     A netman URI of the location to download
+--- @param output_dir string
+---     The string filesystem path to download to
+--- @param opts table | nil
+---     Default: {}
+---     A table of key/value pairs that modify how get operates. Valid key/value pairs are
+---     - async: boolean
+---         - If provided, we will return immediately on start of fetching the file.
+---         Note: If you use the async option, you are advised to also use `finish_callback`
+---     - ignore_errors: boolean
+---         - If provided, we will not report any errors that occur during the get process
+---     - force: boolean
+---         - If provided, uses a different method to pull down the file from the container.
+---         Default process is to let container's cp command handle this, however there are some
+---         situations outlined in the docker documentation that would fail here. To counter that
+---         force will instead cat the file from within the container environment and pipe the STDOUT
+---         into the file location provided
+---     - finish_callback: function
+---         - A function to call when the get is complete. Note, this is an asychronous function
+---         so if you want to get output from the get, you will want to provide this
+---     - new_file_name: string
+---         - If provided, sets the downloaded file name to this. By default the file will maintain its
+---         current filename
+--- @return table
+---     NOTE: This is provided to the `finish_callback` if its provided.
+---     Returns a table that contains the following key/value pairs
+---     - success: boolean
+---         - A true/false indicating if the get was successful
+---     - error: string | nil
+---         - A string of errors that occured during the get
+--- @example
+---     local container = Container:new('ubuntu')
+---     container:get('/tmp/ubuntu.tar.gz', '/tmp/')
+function M:get(location, output_dir, opts)
+    opts = opts or {}
+    local return_details = {}
+    assert(vim.loop.fs_stat(output_dir), string.format("Unable to locate %s. Is it a directory?", output_dir))
+    if type(location) == 'string' then
+        if not location:match(string.format('^%s://', self.protocol)) then
+            -- A little bit of uri coalescing
+            ---@diagnostic disable-next-line: cast-local-type
+            location = string.format('%s://%s/%s', self.protocol, self.name, location)
+        end
+        location = URI:new(location)
+    end
+    assert(location.__type and location.__type == 'netman_uri', string.format("%s is not a valid netman URI", location))
+    local file_name = opts.new_file_name or location.path[#location.path]
+    local finish_callback = function(command_output)
+        logger.trace(command_output)
+        if command_output.exit_code ~= 0 and not opts.ignore_errors then
+            local _error = string.format("Unable to download %s", location:to_string())
+            logger.warn(_error, { exit_code = command_output.exit_code, error = command_output.stderr })
+            return_details = { error = _error, success = false}
+            if opts.finish_callback then opts.finish_callback(return_details) end
+            return
+        end
+        return_details = { success = true }
+        if opts.finish_callback then opts.finish_callback(return_details) end
+    end
+    local copy_command
+    local command_options = {
+        [command_flags.STDERR_JOIN] = '',
+        [command_flags.EXIT_CALLBACK] = finish_callback
+    }
+    if opts.async then
+        command_options[command_flags.ASYNC] = true
+    end
+    if opts.force then
+        -- Shenanigans activate!
+        command_options[command_flags.STDOUT_FILE] = string.format('%s/%s', output_dir, file_name)
+        copy_command = { self.cmd, 'exec', self.name, 'cat', location:to_string() }
+    else
+        copy_command = { self.cmd, "cp", string.format("%s:%s", self.name, location:to_string()),
+            string.format("%s/%s", output_dir, file_name) }
+        command_options[command_flags.STDOUT_JOIN] = ''
+    end
+    ---@diagnostic disable-next-line: missing-parameter
+    local run_details = shell:new(copy_command, command_options):run()
+    if not opts.async then return return_details else return run_details end
+end
+
+--- Takes a table of filesystem locations and returns the stat of them
+--- @param locations table
+---     - A table of filesystem locations
+--- @param target_flags table | nil
+---     Default: Values from @see Container.CONSTANTS.STAT_FLAGS
+---     - If provided, will return a table with only these keys and their respective values
+---     - NOTE: You will _always_ get `NAME` back, even if you explicitly tell us not to return
+---     it. We use it to order the stat entries on return, so deal with it
+--- @return table
+---     - Returns a table where each key is the uri's _local_ name, and its value is a stat table
+---     containing at most, the following keys
+---         - mode
+---         - blocks
+---         - blksize
+---         - mtime_sec
+---         - user
+---         - group
+---         - inode
+---         - permissions
+---         - size
+---         - type
+---         - name
+---         - uri
+--- @example
+---     local container = Container:new('ubuntu')
+---     print(vim.inspect(container:stat('/tmp')))
+function M:stat(locations, target_flags)
+    -- Coerce into a table for iteration
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    local stat_flags = {
+        '-L',
+        '-c',
+        'MODE=%f,BLOCKS=%b,BLKSIZE=%B,MTIME_SEC=%X,USER=%U,GROUP=%G,INODE=%i,PERMISSIONS=%a,SIZE=%s,TYPE=%F,NAME=%n' .. string.char(0)
+    }
+    local stat_command = { 'stat' }
+    for _, flag in ipairs(stat_flags) do
+        table.insert(stat_command, flag)
+    end
+    local __ = {}
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
+        table.insert(__, location)
+        table.insert(stat_command, location)
+    end
+    locations = __
+    local stat_details = self:run_command(stat_command, {[command_flags.STDERR_JOIN] = ''})
+    if stat_details.exit_code ~= 0 then
+        -- Complain about stat failure??
+        logger.warn(string.format("Unable to get stat details for %s", table.concat(locations, ', '),
+            { error = stat_details.stderr, exit_code = stat_details.exit_code }))
+        return {}
+    end
+    -- Consider caching this for a short amount of time????
+    return self:_stat_parse(stat_details.stdout, target_flags)
+end
+
+function M:_stat_parse(stat_output, target_flags)
+    if not target_flags then
+        target_flags = {}
+        for key, value in pairs(M.CONSTANTS.STAT_FLAGS) do
+            target_flags[key] = value
+        end
+    else
+        local __ = {}
+        for _, key in pairs(target_flags) do
+            __[key:upper()] = M.CONSTANTS.STAT_FLAGS[key]
+        end
+        if not __[M.CONSTANTS.STAT_FLAGS['NAME']] then __[M.CONSTANTS.STAT_FLAGS['NAME']] = M.CONSTANTS.STAT_FLAGS.NAME end
+        target_flags = __
+    end
+    if type(stat_output) == 'string' then stat_output = {stat_output} end
+    local stat = {}
+    for _, line in ipairs(stat_output) do
+        local item = {}
+        local _type = nil
+        for _, pattern in ipairs(find_pattern_globs) do
+            local key, value = line:match(pattern)
+            line = line:gsub(pattern, '')
+            if target_flags[key:upper()] then
+                item[key:upper()] = value
+            end
+            if not _type and key:upper() == M.CONSTANTS.STAT_FLAGS.TYPE then
+                _type = value
+            end
+        end
+        -- WARN: This may create invalid URIs if a stat is performed
+        -- on a _non_ absolute path. Figure out how to addres this
+        item[M.CONSTANTS.STAT_FLAGS.URI] = string.format(
+            "%s://%s%s", self.protocol, self.name, item.NAME
+        )
+        if _type:upper() == 'DIRECTORY' and item.NAME:sub(-1, -1) ~= '/' then
+            item[M.CONSTANTS.STAT_FLAGS.URI] = item[M.CONSTANTS.STAT_FLAGS.URI] .. '/'
+        end
+        if target_flags[M.CONSTANTS.STAT_FLAGS.TYPE] then
+            if _type:upper() == 'DIRECTORY' then
+                item['FIELD_TYPE'] = metadata_options.LINK
+            elseif _type:upper() == 'REGULAR FILE' or _type:upper() == 'REGULAR EMPTY FILE' then
+                item['FIELD_TYPE'] = metadata_options.DESTINATION
+            end
+        end
+        local name = ''
+        local cur_path = ''
+        local path = {}
+        for _ in item.NAME:gmatch('[^/]+') do
+            name = _
+            cur_path = cur_path .. "/" .. _
+            table.insert(path, {
+                uri = string.format("%s://%s%s/", self.protocol, self.name, cur_path),
+                name = _
+            })
+        end
+        path[#path] = {uri = item[M.CONSTANTS.STAT_FLAGS.URI], name = name}
+        local absolute_path = item.NAME
+        item[M.CONSTANTS.STAT_FLAGS.ABSOLUTE_PATH] = path
+        item.NAME = name
+        stat[absolute_path] = item
+    end
+    return stat
+end
+
+--- Executes remote chmod on provided locations
+--- @param locations table
+---     A table of filesystem string locations
+--- @param targets table | string
+---     A table that can contain any mix of the following strings
+---     - user
+---     - group
+---     - all
+---     - other
+---     This will set the `ugao` part of the chmod command
+---
+---     NOTE: You can also pass raw chmod compatible permissions here and leave everything else empty
+--- @param permission_mods table
+---     A table that can contain any mix of the following strings
+---     - read
+---     - write
+---     - execute
+---     This is the `rwx` part of the chmod command
+--- @param opts table | nil
+---     Default: {}
+---     If provided, a table that can alter how stat_mod operates. Valid Key Value Pairs are
+---     - remove_mod: boolean
+---         - If provided, will inverse and _remove_ the mods as opposed to adding them
+---           This is how you would set `chmod u-r` to remove read access from a user (for example)
+--- @return boolean
+---     Returns a true/false boolean on if the change was successful or not
+--- @example
+---     local container = Container:new('ubuntu')
+---     -- This is equivalent to chmod ug+r /tmp/ubuntu.tar.gz
+---     container:stat_mod('/tmp/ubuntu.tar.gz', {'user', 'group'}, {'read'})
+---     -- This is equivalent to chmod ug-w /tmp/ubuntu.tar.gz
+---     container:stat_mod('/tmp/ubuntu.tar.gz', {'user', 'group'}, {'write'}, {remove_mod = true})
+---     -- This is equivalent to chmod 664 /tmp/ubuntu.tar.gz
+---     container:stat_mod('/tmp/ubuntu.tar.gz', '0644')
+function M:stat_mod(locations, targets, permission_mods, opts)
+    opts = opts or {}
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    assert(targets, "Invalid user/group/nobody target provided")
+    local command
+    if type(targets) == 'string' then
+        logger.debug("I hope you know what you're doing by specifying your own permissions raw. Applying", permission_mods)
+        command = string.format("chmod %s", targets)
+    else
+        assert(permission_mods, "Invalid permission modification provided")
+        local target = ''
+        for _, _target in ipairs(targets) do
+            -- Might as well give up a bit of memory to avoid
+            -- doing this lower several times over
+            local _lower_target = _target:lower()
+            if _lower_target == 'user' or _lower_target == 'u' then
+                target = target .. 'u'
+            elseif _lower_target == 'group' or _lower_target == 'g' then
+                target = target .. 'g'
+            elseif _lower_target == 'all' or _lower_target == 'a' then
+                target = target .. 'a'
+            elseif _lower_target == 'other' or _lower_target == 'o' then
+                target = target .. 'o'
+            end
+        end
+        local permission = ''
+        for _, _permission in ipairs(permission_mods) do
+            local _lower_permission = _permission:lower()
+                if _lower_permission == 'read' or _lower_permission == 'r' then
+                permission = permission .. 'r'
+            elseif _lower_permission == 'write' or _lower_permission == 'w' then
+                permission = permission .. 'w'
+            elseif _lower_permission == 'execute' or _lower_permission == 'x' then
+                permission = permission .. 'x'
+            end
+        end
+        local _mod
+        if opts.remove_mod then _mod = '-' else _mod = '+' end
+        command = string.format('chmod %s%s%s', target, _mod, permission)
+    end
+    for _, location in ipairs(locations) do
+        if location.__type and location.__type == 'netman_uri' then location = location:to_string() end
+        command = command .. string.format(" %s", location)
+    end
+    local output = self:run_command(command)
+    if output.exit_code ~= 0 then
+        logger.warn("Received Error trying to modify permissions")
+        return false
+    end
+    return true
+end
+
+--- Changes the owner or group owner of a location
+--- @param locations table
+---     A table of filesystem locations
+--- @param ownership table
+---     A 2D table that can contain any of the following keys
+---     - user
+---     - group
+---     The value associated with each key should be the string for that key. EG { user = 'root', group = 'nogroup'}
+--- @param opts table | nil
+---     - Default: {}
+---     If provided, a table that can alter how own_mod operates. Valid Key Value Paris are
+---     - ignore_errors: boolean
+---         - If provided, we will not report any errors that occur while trying to change the ownership
+---          of the locations provided
+--- @example
+---     local container = Container:new('ubuntu')
+---     -- This will modify the owner and group of /tmp/ to be root
+---     container:own_mod('/tmp/', { user = 'root', group = 'root' })
+---     -- This will modify the group of /tmp/somedir and /tmp/somedir2 to be nogroup
+---     container:own_mod({'/tmp/somedir', '/tmp/somedir2'}, { group = 'nogroup' })
+function M:own_mod(locations, ownership, _opts)
+    if type(locations) ~= 'table' or #locations == 0 then locations = { locations } end
+    assert(ownership, "Invalid ownership provided")
+    local command = {'chown'}
+    if ownership.user then
+        if ownership.group then
+            table.insert(command, string.format("%s:%s", ownership.user, ownership.group))
+        else
+            table.insert(command, ownership.user)
+        end
+    elseif ownership.group then
+        command = { 'chgrp', ownership.group }
+    end
+    if #command <= 1 then
+        -- We didn't find any matches to apply to the command!
+        logger.warn("Invalid ownership provided", {locations = locations, ownership = ownership})
+        return false
+    end
+    for _, location in ipairs(locations) do
+        table.insert(command, location)
+    end
+    local output = self:run_command(command)
+    if output.exit_code ~= 0 then
+        logger.warn("Received Error trying to modify ownership")
+        return false
+    end
+    return true
+end
+
+--- URI Object functions
+--------------------------------------
+function URI:new(uri, cache)
+    -- Parse URI
+    local prefix = uri:match('[a-z]*://')
+    assert(prefix, string.format("%s is not a valid container uri. See :h netman for details", uri))
+    -- If a cache is provided and we are in it, return us!
+    if cache and cache:get_item(uri) then return cache:get_item(uri) end
+    local _uri = {}
+    _uri.uri = uri
+    _uri.prefix = prefix
+    uri = uri:gsub(_uri.prefix, '')
+    _uri.container = uri:match(container_pattern)
+    assert(_uri.container ~= nil,
+        string.format("%s does not contain a valid container name. See :h netman for details", uri))
+    uri = uri:gsub(container_pattern, '')
+    _uri.path = {}
+    for part in uri:gmatch('([^/]+)') do
+        table.insert(_uri.path, part)
+    end
+    if #_uri.path == 0 then
+        table.insert(_uri.path, '/')
+    end
+    if uri:sub(-1, -1) == '/' then
+        -- TODO: Consider using the container's `stat` method to check
+        -- the metadata for the URI instead of string guessing?
+        _uri.type = api_flags.ATTRIBUTES.DIRECTORY
+        _uri.return_type = api_flags.READ_TYPE.EXPLORE
+    else
+        _uri.type = api_flags.ATTRIBUTES.FILE
+        _uri.return_type = api_flags.READ_TYPE.FILE
+        _uri.extension = _uri.path[#_uri.path]:match('%..*$') or ''
+        _uri.unique_name = string.format("%s%s", string_generator(11), _uri.extension)
+    end
+    _uri.__type = 'netman_uri'
+    setmetatable(_uri, self)
+    self.__index = self
+    if cache then cache:add_item(uri, _uri) end
+    return _uri
+end
+
+--- Returns ourselves in string form
+--- @param type string | nil
+---     Default: 'local'
+---     Specifies the type of uri to return. Valid options are
+---     - 'local'
+---     - 'remote'
+--- @return string
+--- A URI will be returned in either a local (on container path) format, or
+--- a remote format. Examples
+--- - local
+---     - /bin/sh
+--- - remote
+---     - docker://container/bin/sh
+function URI:to_string(type)
+    if not type then type = 'local' end
+    local _path
+    if type == 'local' then
+        _path = table.concat(self.path, '/')
+        if not _path then _path = '/' end
+        if _path:sub(1, 1) ~= '/' then _path = '/' .. _path end
+        if self.type == api_flags.ATTRIBUTES.DIRECTORY and _path:sub(-1, -1) ~= '/' then
+            _path = _path .. '/'
+        end
+    else
+        _path = self.uri
+    end
+    return _path
+end
+
+--- Returns a URI object of our parent
+--- @return URI
+function URI:parent()
+    local _path = {}
+    for _, _item in ipairs(self.path) do
+        table.insert(_path, _item)
+    end
+    local tail = table.remove(_path, #_path)
+    -- If this is a shell variable, we have no idea what it could be or what it will expand to,
+    -- so just use generic `..`
+    if tail:match('^%$') then
+        table.insert(_path, tail)
+        table.insert(_path, '..')
+    end
+    if #_path == 0 then _path = { '/' } end
+
+    return URI:new(
+        string.format("%s%s/%s", self.prefix, self.container, table.concat(_path, '/') .. '/')
+    )
+end
+
+
+return M
