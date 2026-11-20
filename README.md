@@ -20,6 +20,7 @@
     - [Supported Network Protocols](#currently-supported-network-protocols)
         - [SSH](#ssh)
         - [Docker](#docker)
+        - [Podman](#podman)
     - [Targeted Network Protocols](#targeted-network-protocols)
 - [Debugging](#debugging)
 
@@ -220,16 +221,11 @@ OR
 
 #### Docker
 Accessing files/directories in a container can be done in the URI below format
-- $PROTOCOL://$CONTAINER/$PATH
+- docker://$CONTAINER/$PATH
     A break down of what is happening here
-    - `$PROTOCOL` : Must be `docker`
     - `$CONTAINER`: The container (by name) to open
     - `$PATH`     : The path to a file/directory to interact with.
     **NOTE: Unlike the `ssh` provider, the `docker` provider does _not_ allow relative pathing
-
-Current Limitations:
-- Does not respect container by ID
-    - Maybe addressed in the future if users care?
 
 Example:
 ```
@@ -238,6 +234,23 @@ OR
 :Nmread docker://mycontainer/my/dir/to/file.txt
 OR
 :lua require("netman"):read("docker://mycontainer/my/dir/to/file.txt")
+```
+
+#### Podman
+Accessing files/directories in a container can be done in the URI below format
+- podman://$CONTAINER/$PATH
+    A break down of what is happening here
+    - `$CONTAINER`: The container (by name) to open
+    - `$PATH`     : The path to a file/directory to interact with.
+    **NOTE: Unlike the `ssh` provider, the `podman` provider does _not_ allow relative pathing
+
+Example:
+```
+:edit podman://mycontainer/my/dir/to/file.txt
+OR
+:Nmread podman://mycontainer/my/dir/to/file.txt
+OR
+:lua require("netman"):read("podman://mycontainer/my/dir/to/file.txt")
 ```
 
 ### Targeted Network Protocols
