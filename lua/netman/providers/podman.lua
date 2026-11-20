@@ -13,7 +13,7 @@ local M = {
 }
 
 -- Check if devicons exists. If not, unicode boi!
-M.ui.icon = "🐋"
+M.ui.icon = "🦭"
 local success, web_devicons = pcall(require, "nvim-web-devicons")
 if success then
     local devicon, _ = web_devicons.get_icon('containerfile')
@@ -25,7 +25,7 @@ M.internal.Container = Container
 M.internal.URI = Container.URI
 M.name = 'podman'
 M.protocol_patterns = {'podman'}
-M.version = 0.2
+M.version = 0.1
 
 function M.init()
     -- Check if podman is installed??
