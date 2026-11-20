@@ -87,7 +87,7 @@ those details.
 
 ## Gotchas
 Netman auto populates its providers, and the providers auto populate what they can read. This means that any providers installed will "automagically" work if they can. If they work, they will "automagically" provide access to your remote systems.  
-Out of the box, Netman comes with `ssh` and `docker` providers. You can quickly check what providers are available by running the `:Nmlogs` command. This outputs (among the system logs) a section at the top of the buffer that states the active providers, as well as reasons for any inactive providers.
+Out of the box, Netman comes with `ssh`, `docker`, and `podman` providers. You can quickly check what providers are available by running the `:Nmlogs` command. This outputs (among the system logs) a section at the top of the buffer that states the active providers, as well as reasons for any inactive providers.
 
 Here is what you will see (roughly) with `:Nmlogs`. Note, if you are submitting an issue, please provide the full output of `:Nmlogs`  
 ![image](https://user-images.githubusercontent.com/2640668/232781757-45ab8386-cd1f-4f10-8bfa-261b78b9e28b.png)
@@ -98,8 +98,8 @@ The SSH provider will read your [user's ssh configuration](https://linux.die.net
 **This is only important if you wish to use a UI tool (such as [Neo-tree](#neo-tree)). It does not have an impact on the various vim commands.**  
 If you want more hosts to appear under the `SSH` provider, you will need to ensure you have valid entries in your SSH configuration and refresh the provider. Refer to the UI tool of choice for details on how to refresh.
 
-### Docker Provider
-The docker provider will talk to the system's docker cli (See [#65](https://github.com/miversen33/netman.nvim/issues/65) for tracking of migration to using docker socket) to establish what containers are on the system.  
-**This is only important if you wish to use a UI tool (such as [Neo-tree](#neo-tree)). It does not have an impact on the various vim commands.**  
-If you want more hosts to appear under the `Docker` provider, you will need to start a new container and refresh the provider. Refer to the UI tool of choice for details on how to perform a refresh.
+### Container Provider
+The docker/podman provider will talk to the system's cli (See [#65](https://github.com/miversen33/netman.nvim/issues/65) for tracking of migration to using docker/podman socket) to establish what containers are on the system.
+**This is only important if you wish to use a UI tool (such as [Neo-tree](#neo-tree)). It does not have an impact on the various vim commands.**
+If you want more hosts to appear under the `Docker` or `Podman` provider, you will need to start a new container and refresh the provider. Refer to the UI tool of choice for details on how to perform a refresh.
 

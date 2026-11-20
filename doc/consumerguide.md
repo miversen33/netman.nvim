@@ -604,11 +604,19 @@ print(inspect(netman_ui.get_providers()))
     path = "netman.providers.docker",
     ui = {
       highlight = "",
-      icon = ""
+      icon = "󰡨"
+    }
+  },
+  podman = {
+    hosts = <function 2>,
+    path = "netman.providers.podman",
+    ui = {
+      highlight = "",
+      icon = "󰡨"
     }
   },
   ssh = {
-    hosts = <function 2>,
+    hosts = <function 3>,
     path = "netman.providers.ssh",
     ui = {
       highlight = "",
